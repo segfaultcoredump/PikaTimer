@@ -25,7 +25,7 @@ import com.pikatimer.results.ResultsDAO;
 import io.javalin.Javalin;
 import static io.javalin.apibuilder.ApiBuilder.get;
 import static io.javalin.apibuilder.ApiBuilder.path;
-import io.javalin.websocket.WsSession;
+import io.javalin.websocket.WsContext;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -52,13 +52,13 @@ import org.json.JSONObject;
  */
 public class HTTPServices {
     
-    private static final List<WsSession> wsSessionList = new ArrayList();
+    private static final List<WsContext> wsSessionList = new ArrayList();
     private Integer port = 8080;
     private final Javalin server = Javalin.create();
     private String url = "Not Available";
     private static final BlockingQueue<String> eventQueue = new ArrayBlockingQueue(100000);
     
-    private static Map<WsSession,Set<String>> announcerDupeCheckHash = new HashMap();
+    private static Map<WsContext,Set<String>> announcerDupeCheckHash = new HashMap();
     private static Set<String> announcerDupeCheckSet = new HashSet();
     
     /**
@@ -93,7 +93,8 @@ public class HTTPServices {
         // but call it quits at 9,000 
         while(bound.equals(false) && port < 9000) {
             try {
-                server.port(port).start();
+                //server.port(port).start();
+                server.start(port);
                 bound = true;
                 url += ":" + port;
             } catch (Exception e) {

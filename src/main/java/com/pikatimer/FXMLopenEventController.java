@@ -49,7 +49,7 @@ import javafx.stage.Stage;
 import org.apache.commons.io.FileUtils;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
-import org.flywaydb.core.internal.dbsupport.FlywaySqlScriptException;
+import org.flywaydb.core.internal.sqlscript.FlywaySqlScriptException;
 import org.h2.store.fs.FilePath;
 
 /**
@@ -121,7 +121,7 @@ public class FXMLopenEventController {
                     //FXMLLoader loader = null;
                     try {
                         // Create the Flyway instance
-                        Flyway flyway = new Flyway();
+                        //Flyway flyway = new Flyway();
                         //LoadingProgressBar.setProgress(0.10F);
                         //System.out.println("Progress: " + LoadingProgressBar.getProgress());
                         FilePath.register(new PikaFilePathWrapper());
@@ -138,8 +138,8 @@ public class FXMLopenEventController {
                         // saving a copy that v1.0 can still read
                         try {
                             if (dbFile.exists()) {
-                                Flyway flyway_check = new Flyway();
-                                flyway_check.setDataSource(jdbcURL + ";ACCESS_MODE_DATA=r", "sa", null);
+                                //Flyway flyway_check = new Flyway();
+                                Flyway flyway_check = Flyway.configure().dataSource(jdbcURL+ ";ACCESS_MODE_DATA=r", "sa", null).load();
                                 Boolean backup_needed = false;
                                 try {
 
@@ -152,10 +152,11 @@ public class FXMLopenEventController {
                                 }
                                 if (backup_needed) {
                                     System.out.println("Pending Migrations, saving a copy");
-                                    FileUtils.copyFile(dbFile, new File(dbFile.getAbsolutePath() + ".pre_v1.5_update.pika"));
+                                    FileUtils.copyFile(dbFile, new File(dbFile.getAbsolutePath() + ".pre_v2.0_update.pika"));
                                 }
                             }
-                            flyway.setDataSource(jdbcURL, "sa", null);
+                            //flyway.setDataSource(jdbcURL, "sa", null);
+                            Flyway flyway = Flyway.configure().dataSource(jdbcURL, "sa", null).load();
                             flyway.migrate();
                         } catch (Exception ex) {
                             ex.printStackTrace();

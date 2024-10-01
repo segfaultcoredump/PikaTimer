@@ -1118,8 +1118,8 @@ public class PikaReaderDirectReader implements TimingReader {
             public Void call() {
 
                 // This is ugly but it works
-                byte one = new Integer(1).byteValue();
-                byte zero = new Integer(0).byteValue();
+                byte one = Integer.valueOf(1).byteValue();
+                byte zero = Integer.valueOf(0).byteValue();
                 byte[] packetData = "DISCOVER_PIKA_READER_REQUEST".getBytes();
 
                 // Find the server using UDP broadcast

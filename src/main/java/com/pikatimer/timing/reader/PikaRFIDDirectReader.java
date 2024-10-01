@@ -1351,8 +1351,8 @@ public class PikaRFIDDirectReader implements TimingReader {
                 @Override public Void call() {
                     
                     // This is ugly but it works
-                    byte one = new Integer(1).byteValue();
-                    byte zero = new Integer(0).byteValue();
+                    byte one = Integer.valueOf(1).byteValue();
+                    byte zero = Integer.valueOf(0).byteValue();
                     byte[] packetData = {one,zero,zero,zero,zero,zero,zero,zero};
                     
                     // Find the server using UDP broadcast

@@ -120,7 +120,7 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.connection.url",Pikatimer.getJDBCUrl());
         cfg.setProperty("hibernate.connection.username", "sa");
         cfg.setProperty("hibernate.connection.password", "");
-        cfg.setProperty("hibernate.show_sql", "true");
+        //cfg.setProperty("hibernate.show_sql", "true");
         cfg.setProperty("hibernate.jdbc.batch_size","100"); 
         
         cfg.setProperty("hibernate.enable_lazy_load_no_trans", "true");
@@ -133,6 +133,8 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.c3p0.max_statements", "100");
         cfg.setProperty("hibernate.c3p0.idle_test_period", "300");
         cfg.setProperty("hibernate.c3p0.acquire_increment", "1");
+        
+        cfg.setProperty("hibernate.globally_quoted_identifiers", "true");
         return cfg;
     } 
     

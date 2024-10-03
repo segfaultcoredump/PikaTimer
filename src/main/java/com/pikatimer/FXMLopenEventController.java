@@ -126,7 +126,7 @@ public class FXMLopenEventController {
                         //System.out.println("Progress: " + LoadingProgressBar.getProgress());
                         FilePath.register(new PikaFilePathWrapper());
                         jdbcURL = "jdbc:h2:pika:" + dbFile.getAbsolutePath().replace(".pika", "");
-                        jdbcURL += ";MULTI_THREADED=TRUE;TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;CACHE_SIZE=131072"; // disable trace options
+                        jdbcURL += ";CASE_INSENSITIVE_IDENTIFIERS=TRUE;TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;CACHE_SIZE=131072"; // disable trace options
                         Pikatimer.setJdbcUrl(jdbcURL);
                         //LoadingProgressBar.setProgress(0.15F);
                         

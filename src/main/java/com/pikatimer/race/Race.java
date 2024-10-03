@@ -62,7 +62,7 @@ import org.hibernate.annotations.GenericGenerator;
 
 @Entity
 @DynamicUpdate
-@Table(name="race")
+@Table(name="RACE")
 public class Race {
     
 
@@ -423,7 +423,7 @@ public class Race {
     }
     
 
-    @Column(name="uuid")
+    @Column(name="UUID")
     public String getUUID() {
        // System.out.println("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 

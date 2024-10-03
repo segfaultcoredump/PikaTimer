@@ -328,7 +328,7 @@ public class Participant {
         return IDProperty; 
     }
     
-    @Column(name="uuid")
+    @Column(name="UUID")
     public String getUUID() {
        // System.out.println("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 

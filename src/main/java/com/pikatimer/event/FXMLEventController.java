@@ -24,6 +24,7 @@ import com.pikatimer.race.FXMLRaceDetailsController;
 import com.pikatimer.race.Race;
 import com.pikatimer.race.RaceAwards;
 import com.pikatimer.race.RaceDAO;
+import com.pikatimer.race.SexGroups;
 import com.pikatimer.timing.TimingLocation;
 import com.pikatimer.timing.TimingDAO;
 import com.pikatimer.util.Unit;
@@ -236,12 +237,16 @@ public class FXMLEventController  {
             selectedRace.setRaceName(event.getEventName());
             selectedRace.setRaceDistance(new BigDecimal("5.0")); 
             selectedRace.setRaceDistanceUnits(Unit.KILOMETERS);
-            raceDAO.addRace(selectedRace);
+            
             AgeGroups ageGroups = new AgeGroups();
             selectedRace.setAgeGroups(ageGroups);
             RaceAwards ra = new RaceAwards();
             selectedRace.setAwards(ra);
-            raceDAO.updateRace(selectedRace);
+            //raceDAO.updateRace(selectedRace);
+            SexGroups sg = new SexGroups();
+            selectedRace.setSexGroups(sg);
+            
+            raceDAO.addRace(selectedRace);
         } else {
             selectedRace = raceList.get(0); 
         }

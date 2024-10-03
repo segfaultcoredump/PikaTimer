@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,6 +17,9 @@
 package com.pikatimer;
 
 import com.pikatimer.util.HTTPServices;
+import java.awt.Taskbar;
+import java.awt.Toolkit;
+import java.net.URL;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
@@ -29,6 +32,7 @@ import javafx.scene.layout.Pane;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
+import org.apache.commons.lang3.SystemUtils;
 
 
 /**
@@ -42,7 +46,7 @@ public class Pikatimer extends Application {
     private static String jdbcURL; // Holds the jdbcURL for the open db
     private static HTTPServices webServer;
     
-    public static final String VERSION = "1.6";
+    public static final String VERSION = "2.0 Alpha 1";
     
     /**
     * SingletonHolder is loaded on the first execution of Singleton.getInstance() 
@@ -82,6 +86,8 @@ public class Pikatimer extends Application {
         
         // Start the WebServices javalin process
         webServer = HTTPServices.getInstance();
+        
+        
               
         Pane myPane = (Pane)FXMLLoader.load(getClass().getResource("FXMLopenEvent.fxml"));
         Scene myScene = new Scene(myPane);
@@ -100,8 +106,27 @@ public class Pikatimer extends Application {
         // Icons
         String[] sizes = {"256","128","64","48","32"};
         for(String s: sizes){
-            primaryStage.getIcons().add(new Image("resources/icons/Pika_"+s+".ico"));
-            primaryStage.getIcons().add(new Image("resources/icons/Pika_"+s+".png"));
+            primaryStage.getIcons().add(new Image("icons/Pika_"+s+".ico"));
+            primaryStage.getIcons().add(new Image("icons/Pika_"+s+".png"));
+        }
+        
+        // Total hack and a half to set the dock icon in MacOS
+        // From https://runmodule.com/2020/01/05/how-to-set-dock-icon-of-java-application/ 
+        if (SystemUtils.IS_OS_MAC) {
+            final Toolkit defaultToolkit = Toolkit.getDefaultToolkit();
+            final URL imageResource = getClass().getClassLoader().getResource("icons/Pika_256.png");
+            final java.awt.Image image = defaultToolkit.getImage(imageResource);
+            //this is new since JDK 9
+            final Taskbar taskbar = Taskbar.getTaskbar();
+
+            try {
+                //set icon for mac os (and other systems which do support this method)
+                taskbar.setIconImage(image);
+            } catch (final UnsupportedOperationException e) {
+                System.out.println("The os does not support: 'taskbar.setIconImage'");
+            } catch (final SecurityException e) {
+                System.out.println("There was a security exception for: 'taskbar.setIconImage'");
+            }
         }
         
         primaryStage.setScene(myScene);

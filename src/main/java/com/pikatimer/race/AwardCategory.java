@@ -59,6 +59,8 @@ import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.hibernate.annotations.LazyCollection;
+import org.hibernate.annotations.LazyCollectionOption;
 
 /**
  *
@@ -302,7 +304,8 @@ public class AwardCategory {
         return mastersAgeProperty;
     }
     
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection 
+    @LazyCollection(LazyCollectionOption.FALSE)
     @CollectionTable(
           name="race_award_category_depths",
           joinColumns=@JoinColumn(name="ac_id")
@@ -355,7 +358,8 @@ public class AwardCategory {
         return customFilteredProperty;
     }
     
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection
+    @LazyCollection(LazyCollectionOption.FALSE)
     @CollectionTable(
           name="race_award_category_filters",
           joinColumns=@JoinColumn(name="ac_id")

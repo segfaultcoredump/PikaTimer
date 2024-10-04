@@ -33,7 +33,7 @@ create table custom_participant_attributes (
 
 create table custom_participant_attributes_values (
     id int,
-    "value" varchar
+    attribute_value varchar
 );
 
 create table participant_attributes (
@@ -79,8 +79,8 @@ create table race_award_categories (
 
 create table race_award_category_depths (
     ac_id int,
-    "start" int,
-    "depth" int
+    start int,
+    depth int
 );
 
 create table race_award_category_filters (
@@ -107,7 +107,7 @@ alter table race_segment add (
 );
 
 alter table overrides add (
-    "type" varchar, 
+    type varchar, 
     note varchar
 ); 
 

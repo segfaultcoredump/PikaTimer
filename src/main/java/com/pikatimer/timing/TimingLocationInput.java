@@ -213,7 +213,7 @@ public class TimingLocationInput implements TimingListener{
     // Where we stash the attributes for the input
     @ElementCollection(fetch = FetchType.EAGER)
     @MapKeyColumn(name="attribute", insertable=false,updatable=false)
-    @Column(name="value")
+    @Column(name="attribute_value")
     @CollectionTable(name="timing_location_input_attributes", joinColumns=@JoinColumn(name="tli_id"))
     @OrderColumn(name = "index_id")
     public Map<String, String> getAttributes() {

@@ -113,7 +113,6 @@ public class Race {
         this.raceSplits = FXCollections.observableArrayList(Split.extractor());
         this.raceReports = FXCollections.observableArrayList();
 
-        
     }
         
     
@@ -444,9 +443,10 @@ public class Race {
     // easier than a really wide table of attributes since this thing will just 
     // grow once we add in custom stuff
     @ElementCollection(fetch = FetchType.EAGER)
-    @MapKeyColumn(name="attribute", insertable=false,updatable=false)
-    @Column(name="value")
-    @CollectionTable(name="race_attributes", joinColumns=@JoinColumn(name="race_id"))
+    //@MapKeyColumn(name="attribute", insertable=false,updatable=false)
+    @MapKeyColumn(name="attribute")
+    @Column(name="attribute_value")
+    @CollectionTable(name="race_attributes", joinColumns=@JoinColumn(name="race_id") )
     private Map<String, String> getAttributes() {
         return attributes;
     }
@@ -459,8 +459,7 @@ public class Race {
         return attributes.keySet();
     }
 
-    //Overall
-    //male
+    
     public Integer getIntegerAttribute(String key) {
         if (!intAttributes.containsKey(key)) {
             if (attributes.containsKey(key)) {
@@ -478,7 +477,7 @@ public class Race {
     }
     
     
-    //Pull, Gun, etc
+    
      public Boolean getBooleanAttribute(String key) {
         if (!boolAttributes.containsKey(key)) {
             if (attributes.containsKey(key)) {

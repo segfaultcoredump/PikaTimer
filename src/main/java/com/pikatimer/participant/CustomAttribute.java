@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 John Garner <segfaultcoredump@gmail.com>
+ * Copyright (C) 2024 John Garner <segfaultcoredump@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,6 +37,8 @@ import javax.persistence.JoinColumn;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -47,6 +49,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="custom_participant_attributes")
 public class CustomAttribute {
+    private static final Logger logger = LoggerFactory.getLogger(CustomAttribute.class);
+    
     private CustomAttributeType type;
     private final StringProperty name = new SimpleStringProperty();
     private List<String> allowable_values;
@@ -74,12 +78,12 @@ public class CustomAttribute {
     //    uuid varchar,
     @Column(name="uuid")
     public String getUUID() {
-       // System.out.println("RaceReport UUID is " + uuidProperty.get());
+        logger.trace("CustomAttribute UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("RaceReport UUID is now " + uuidProperty.get());
+        logger.trace("CustomAttribute UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -106,7 +110,7 @@ public class CustomAttribute {
     }
     
     @ElementCollection(fetch = FetchType.EAGER)
-    @Column(name="value", nullable=false)
+    @Column(name="attribute_value", nullable=false)
     @CollectionTable(name="custom_participant_attributes_values", joinColumns=@JoinColumn(name="id"))
     public List<String> getAllowableValues() {
         return allowable_values;  

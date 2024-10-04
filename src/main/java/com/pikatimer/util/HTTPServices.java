@@ -40,18 +40,18 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.concurrent.Task;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class HTTPServices {
-    
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(HTTPServices.class);
+
     private static final List<WsContext> wsSessionList = new ArrayList();
     private Integer port = 8080;
     private final Javalin server = Javalin.create();
@@ -81,10 +81,10 @@ public class HTTPServices {
         InetAddress localhost; 
         try {
             localhost = InetAddress.getLocalHost();
-            System.out.println("System IP Address : " + (localhost.getHostAddress()).trim()); 
+            logger.info("System IP Address : " + (localhost.getHostAddress()).trim()); 
             url = "http://" + (localhost.getHostAddress()).trim();
         } catch (UnknownHostException ex) {
-            Logger.getLogger(HTTPServices.class.getName()).log(Level.SEVERE, null, ex);
+            logger.error("Error in InetAddress.getLocalHost()", ex);
         }
         
         //server.enableCaseSensitiveUrls();
@@ -102,7 +102,7 @@ public class HTTPServices {
             }
         }
         
-        System.out.println("Web server listening on " + url); 
+        logger.info("Web server listening on " + url); 
         
         setupHTTPDRoutes();
         startDiscoveryListener();
@@ -136,26 +136,26 @@ public class HTTPServices {
                   socket.setBroadcast(true);
 
                     while (true) {
-                        System.out.println(getClass().getName() + ">>>Ready to receive broadcast packets!");
+                        logger.info("DiscoveryListener:  Ready to receive broadcast packets!");
                         //Receive a packet
                         byte[] recvBuf = new byte[15000];
                         DatagramPacket packet = new DatagramPacket(recvBuf, recvBuf.length);
                         socket.receive(packet);
 
                         //Packet received
-                        System.out.println(getClass().getName() + ">>>Discovery packet received from: " + packet.getAddress().getHostAddress());
-                        System.out.println(getClass().getName() + ">>>Packet received; data: " + new String(packet.getData()).trim());
+                        logger.debug(">>>Discovery packet received from: " + packet.getAddress().getHostAddress());
+                        logger.debug(">>>Packet received; data: " + new String(packet.getData()).trim());
                         //See if the packet holds the right command (message)
                         String message = new String(packet.getData()).trim();
                         if (message.equals("DISCOVER_PIKA_REQUEST") && PikaPreferences.getInstance().getDBLoaded() ) {
                           byte[] sendData = url.getBytes();
                           DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, packet.getAddress(), packet.getPort());
                           socket.send(sendPacket);
-                          System.out.println(getClass().getName() + ">>>Sent packet to: " + sendPacket.getAddress().getHostAddress());
+                          logger.debug(">>>Sent packet to: " + sendPacket.getAddress().getHostAddress());
                         }
                     }
                 } catch (IOException ex) {
-                    System.out.println(ex.getStackTrace());
+                    logger.debug("Discovery Listener Exception",ex);
                 }
                 return null;
             }
@@ -164,19 +164,19 @@ public class HTTPServices {
         };
         Thread discovery = new Thread(discoveryThread);
         discovery.setDaemon(true);
-        discovery.setName("Marmot Discovery Listener Thread");
+        discovery.setName("PikaAnnouncer Discovery Listener Thread");
         discovery.start();
     }
     
     public void publishEvent(String category, JSONObject event){
-        System.out.println("WebSocket Publish Event: " + category + ":" + event);
+        logger.debug("WebSocket Publish Event: " + category + ":" + event);
         
         eventQueue.add(new JSONObject().put(category, event).toString());
     }
     
     public void publishEvent(String category, String event){
         
-        System.out.println("WebSocket Publish Event: " + category + ":" + event);
+        logger.debug("WebSocket Publish Event: " + category + ":" + event);
         
         eventQueue.add(new JSONObject().put(category, event).toString());
         
@@ -190,32 +190,32 @@ public class HTTPServices {
                     String save = "";
                     try {
                         while(true) {
-                            System.out.println("HTTPServices: Waiting for events to publish");
+                            logger.debug("HTTPServices: Waiting for events to publish");
                             String m = eventQueue.poll(20, TimeUnit.SECONDS);
                             if (m == null) {
                                 m = "{\"KEEPALIVE\":\"" + System.currentTimeMillis() + "\"}";
                             }
                             String message = m;
-                            System.out.println("HTTPServices: Publishing Event");
+                            logger.debug("HTTPServices: Publishing Event");
                             wsSessionList.stream().forEach(ctx -> {
                                 if(message.contains("PARTICIPANT") || message.contains("KEEPALIVE") || ! announcerDupeCheckHash.get(ctx).contains(message)) {
                                     announcerDupeCheckHash.get(ctx).add(message);
                                     try {
-                                        System.out.println(" HTTPServices: Publishing Event  to " + ctx.sessionId() + " " + ctx.host());
+                                        logger.debug(" HTTPServices: Publishing Event  to " + ctx.sessionId() + " " + ctx.host());
                                         ctx.send(message);
-                                        System.out.println(" HTTPServices: Successfuly published to " + ctx.sessionId() + " " + ctx.host());
+                                        logger.trace(" HTTPServices: Successfuly published to " + ctx.sessionId() + " " + ctx.host());
                                     } catch (Exception e){
                                         eventQueue.add(message);
-                                        System.out.println("Event Processor Exception: " + e.getMessage());
+                                        logger.warn("Event Processor Exception: " + e.getMessage());
                                     }     
                                 }
                             });
                         }
                     } catch (Exception ex) {
-                        System.out.println("Event Processor Outer Exception: " + ex.getMessage());
+                        logger.warn("Event Processor Outer Exception: " + ex.getMessage());
                     }
                     
-                    System.out.println("Marmot Event Processor Thread Ended!!!");
+                    logger.info("Marmot Event Processor Thread Ended!!!");
                     if (!save.isEmpty()) eventQueue.add(save);
                 }
             }
@@ -236,35 +236,22 @@ public class HTTPServices {
                 wsSessionList.add(ctx);
                 announcerDupeCheckHash.put(ctx, new HashSet());
                 
-                System.out.println("WebSocket Connected: " + ctx.host() + " Size: " + wsSessionList.size());
+                logger.debug("WebSocket Connected: " + ctx.host() + " Size: " + wsSessionList.size());
                 
             });
             ws.onClose(session -> {
                 wsSessionList.remove(session);
             
             });
-//            ws.onError(wsErrorHandler -> {
-//                wsSessionList.remove(wsErrorHandler.);
-//            
-//            });
-//            ws.onError((session, throwable) -> {
-//                if (wsSessionList.contains(session) ) {
-//                    System.out.println("WebSocket: websocket session disconnected: " + session.host());
-//                    wsSessionList.remove(session);
-//                } else {
-//                    System.out.println("WebSocket: Unknown websocket session disconnected: " + session.host());
-//                }
-//                System.out.println("WebSocket Error: " + session.host());
-//            });
         });
         
         // Setup the routes
         server.get("/participants/{id}", ctx -> {
 
-                            System.out.println("Requesting participant with bib " + ctx.pathParam("id"));
+                            logger.debug("Requesting participant with bib " + ctx.pathParam("id"));
                             Participant p = ParticipantDAO.getInstance().getParticipantByBib(ctx.pathParam("id"));
                             if (p==null) {
-                                System.out.println("No Participant found!");
+                                logger.debug("No Participant found!");
                                 ctx.status(404);
                                 ctx.result("NOT_FOUND");
                             }
@@ -303,7 +290,7 @@ public class HTTPServices {
                         json.put("Bib", bib);
                         json.put("Race", race);
                         json.put("Time", time);
-                        //System.out.println("/ Results -> " + bib + " -> " + time);
+                        //logger.debug("/ Results -> " + bib + " -> " + time);
                         p.put(json);
                     }
                 });
@@ -311,74 +298,6 @@ public class HTTPServices {
             });
             ctx.json(o);
         });
- //       server.routes ( () -> {
-                
-                // Participant data
-//                path("/participants", () -> {
-//                    get( cx -> {
-//                        JSONArray p = new JSONArray();
-//                        JSONObject o = new JSONObject();
-//
-//                        ParticipantDAO.getInstance().listParticipants().forEach(part -> {p.put(part.getJSONObject());});
-//                        o.put("Participants", p);
-//                        cx.contentType("application/json; charset=utf-8");
-//                        cx.result( o.toString(4));
-//                    });
-//                    path(":id", () -> {
-//                        get( cx -> {
-//                            cx.pathParamMap().keySet().forEach(k -> {
-//                                System.out.println("pathParam: " + k + " -> " + cx.pathParam(k));
-//                            });
-//                            System.out.println("Requesting participant with bib " + cx.pathParam("id"));
-//                            Participant p = ParticipantDAO.getInstance().getParticipantByBib(cx.pathParam("id"));
-//                            if (p==null) {
-//                                System.out.println("No Participant found!");
-//                                cx.status(404);
-//                                cx.result("NOT_FOUND");
-//                            }
-//                            else {
-//                                cx.result(p.getJSONObject().toString(4));
-//                            }
-//                            
-//                        });  
-//                    });
-//                });   
-                // Result Data
-//                
-//                path("/results", () -> {
-//                    get( cx -> {
-//                        JSONArray p = new JSONArray();
-//                        JSONObject o = new JSONObject();
-//                        ResultsDAO resDAO = ResultsDAO.getInstance();
-//                        RaceDAO.getInstance().listRaces().forEach(r -> {
-//                            resDAO.getResults(r.getID()).forEach(res -> {
-//                                
-//                                if (!res.isEmpty() && res.getFinish()>0) {
-//                                    String race = "";
-//                                    if (RaceDAO.getInstance().listRaces().size() > 1) 
-//                                        race = RaceDAO.getInstance().getRaceByID(res.getRaceID()).getRaceName();
-//                                    String bib = res.getBib();
-//                                    //String time = DurationFormatter.durationToString(res.getFinishDuration().minus(res.getStartDuration()), "[HH:]MM:SS");
-//                                    ProcessedResult pr = resDAO.processResult(res,r);
-//                                    String time = DurationFormatter.durationToString(pr.getChipFinish(), "[HH:]MM:SS");
-// 
-//                                    JSONObject json = new JSONObject();
-//                                    json.put("Bib", bib);
-//                                    json.put("Race", race);
-//                                    json.put("Time", time);
-//                                    //System.out.println("/ Results -> " + bib + " -> " + time);
-//                                    p.put(json);
-//                                }
-//                            });
-//                            o.put("Results", p);
-//                        });
-//                        cx.result( o.toString(4));
-//                    });
-//                });
-//                
-              
-                                
-//        }); 
     }
     
     public Javalin getServer(){

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 John Garner <segfaultcoredump@gmail.com>
+ * Copyright (C) 2024 John Garner <segfaultcoredump@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -27,6 +29,8 @@ import javafx.scene.control.Label;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class FXMLAboutController{
+    private static final Logger logger = LoggerFactory.getLogger(FXMLAboutController.class);
+
 
     @FXML Label pikaVersionLabel;
     
@@ -45,7 +49,7 @@ public class FXMLAboutController{
         if (link.contains("(")) {
             link = link.replaceFirst("^.+\\(", "").replaceFirst("\\).*$", "");
         }
-        System.out.println("Hyperlink pressed: " + link);
+        logger.trace("Hyperlink pressed: " + link);
         Pikatimer.getInstance().getHostServices().showDocument(link);
     }
     

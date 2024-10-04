@@ -127,6 +127,7 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.dialect","org.hibernate.dialect.H2Dialect");
         cfg.setProperty("hibernate.cache.provider_class","org.hibernate.cache.NoCacheProvider");
         cfg.setProperty("hibernate.current_session_context_class", "thread");
+        
         cfg.setProperty("hibernate.c3p0.max_size", "4");
         cfg.setProperty("hibernate.c3p0.min_size", "1");
         cfg.setProperty("hibernate.c3p0.timeout", "5000");
@@ -134,7 +135,8 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.c3p0.idle_test_period", "300");
         cfg.setProperty("hibernate.c3p0.acquire_increment", "1");
         
-        cfg.setProperty("hibernate.globally_quoted_identifiers", "true");
+//        cfg.setProperty("hibernate.globally_quoted_identifiers", "true");
+        
         return cfg;
     } 
     

@@ -187,7 +187,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
     }
     
     
-    @Column(name="time",nullable=true)
+    @Column(name="cr_time",nullable=true)
     public Long getRecord() {
         if( recordDuration != null) {
             return recordDuration.toNanos();
@@ -229,7 +229,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return segmentProperty;
     }
     
-    @Column(name="category")
+    @Column(name="cr_category")
     public String getCategory() {
         return categoryProperty.getValueSafe();
     }
@@ -240,7 +240,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return categoryProperty;
     }
     
-    @Column(name="sex")
+    @Column(name="cr_sex")
     public String getSex() {
         return sexProperty.getValueSafe();
     }
@@ -251,7 +251,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return sexProperty;
     }
     
-    @Column(name="age")
+    @Column(name="cr_age")
     public String getAge() {
         return ageProperty.getValueSafe();
     }
@@ -262,7 +262,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return ageProperty;
     }
     
-    @Column(name="year")
+    @Column(name="cr_year")
     public String getYear() {
         return crYearProperty.getValueSafe();
     }
@@ -272,7 +272,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
     public StringProperty yearProperty() {
         return crYearProperty;
     }
-    @Column(name="name")
+    @Column(name="cr_name")
     public String getName() {
         return crNameProperty.getValueSafe();
     }
@@ -283,7 +283,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return crNameProperty;
     }
     
-    @Column(name="note")
+    @Column(name="cr_note")
     public String getNote() {
         return crNoteProperty.getValueSafe();
     }
@@ -294,7 +294,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return crNoteProperty;
     }
     
-    @Column(name="city")
+    @Column(name="cr_city")
     public String getCity() {
         return crCityProperty.getValueSafe();
     }
@@ -305,7 +305,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return crCityProperty;
     }
     
-    @Column(name="state")
+    @Column(name="cr_state")
     public String getState() {
         return crStateProperty.getValueSafe();
     }
@@ -316,7 +316,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         return crStateProperty;
     }
     
-    @Column(name="country")
+    @Column(name="cr_country")
     public String getCountry() {
         return crCountryProperty.getValueSafe();
     }

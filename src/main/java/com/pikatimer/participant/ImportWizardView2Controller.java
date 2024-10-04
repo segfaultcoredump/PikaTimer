@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 package com.pikatimer.participant;
 
 import com.pikatimer.race.RaceDAO;
-import io.datafx.controller.FXMLController;
+import io.datafx.controller.ViewController;
 import io.datafx.controller.flow.FlowException;
 import io.datafx.controller.flow.context.FXMLViewFlowContext;
 import io.datafx.controller.flow.context.ViewFlowContext;
@@ -31,8 +31,6 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -45,10 +43,14 @@ import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
 import javax.annotation.PostConstruct;
 import org.h2.tools.Csv;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
-@FXMLController("FXMLImportWizardView2.fxml")
+@ViewController("FXMLImportWizardView2.fxml")
 public class ImportWizardView2Controller {
+    private static final Logger logger = LoggerFactory.getLogger(ImportWizardView2Controller.class);
+    
     @FXMLViewFlowContext
     private ViewFlowContext context;
     
@@ -57,7 +59,7 @@ public class ImportWizardView2Controller {
     
     @PostConstruct
     public void init() throws FlowException {
-        System.out.println("ImportWizardView2Controller.initialize()");
+        logger.debug("ImportWizardView2Controller.initialize()");
         ImportWizardData model = context.getRegisteredObject(ImportWizardData.class);
         //model.setFileName("Test2");
         
@@ -89,7 +91,7 @@ public class ImportWizardView2Controller {
         try {
              String result = new BufferedReader(new InputStreamReader(new FileInputStream(model.getFileName()),uft8Decoder)).lines().collect(Collectors.joining("\n"));
          } catch (Exception ex) {
-             System.out.println("Not UTF-8: " + ex.getMessage());
+             logger.debug("Not UTF-8: " + ex.getMessage());
              charset = "Cp1252"; // Windows standard txt file stuff
          }
         
@@ -101,14 +103,14 @@ public class ImportWizardView2Controller {
             ResultSetMetaData meta = rs.getMetaData();
             for (int i = 0; i < meta.getColumnCount(); i++) {
                 csvColumns.add(meta.getColumnLabel(i+1));
-                System.out.println(meta.getColumnLabel(i+1));
+                logger.debug(meta.getColumnLabel(i+1));
             }
             int numAdded = 0;
             while (rs.next()) { numAdded++; }
             model.setNumToAdd(numAdded);
             
         } catch (SQLException ex) {
-            Logger.getLogger(ImportWizardView2Controller.class.getName()).log(Level.SEVERE, null, ex);
+            logger.error("SQL Exception:",ex);
         }
         
         ObservableMap<String,String> participantAttributes = Participant.getAvailableAttributes();

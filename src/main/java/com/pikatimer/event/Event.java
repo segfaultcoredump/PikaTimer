@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.scene.control.TabPane;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -28,12 +30,13 @@ import javafx.scene.control.TabPane;
  * @author jcgarner
  */
 public class Event {
+    private static final Logger logger = LoggerFactory.getLogger(Event.class);
     
     private final SimpleStringProperty eventName = new SimpleStringProperty("");
     private final SimpleStringProperty eventDateString = new SimpleStringProperty("");
     private LocalDate eventDate = LocalDate.now(); 
     private final long eventID = 1;
-    private  TabPane mainTabPane;  
+    private TabPane mainTabPane;  
     private EventOptions eventOptions;
  
 	/**
@@ -62,6 +65,7 @@ public class Event {
         
         public void setEventName(String a) {
             eventName.set(a);
+            logger.debug("Event Name is now " + a);
         } 
         
         
@@ -76,11 +80,13 @@ public class Event {
         public void setEventDate(LocalDate d) {
             eventDate = d;
             eventDateString.set(eventDate.format(DateTimeFormatter.ofPattern("MM/dd/yyyy")));
+            logger.debug("Event date is now " + eventDateString);
         }
         
         public void setEventDate(String d) {
             eventDate = LocalDate.parse(d,DateTimeFormatter.ISO_LOCAL_DATE);
             eventDateString.set(eventDate.format(DateTimeFormatter.ofPattern("MM/dd/yyyy")));
+            logger.debug("Event date is now " + eventDateString);
         }
                
         public LocalDate getLocalEventDate() {

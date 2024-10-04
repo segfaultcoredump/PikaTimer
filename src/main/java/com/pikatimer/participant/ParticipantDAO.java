@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  */
 package com.pikatimer.participant;
 
-import com.pikatimer.Pikatimer;
 import com.pikatimer.race.RaceDAO;
 import com.pikatimer.race.Wave;
 import com.pikatimer.race.WaveAssignment;
@@ -31,8 +30,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -40,6 +37,8 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import org.hibernate.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * TODO: Figure out the locking so that mass updates/deletes/etc do not screw things up
@@ -50,6 +49,8 @@ import org.hibernate.Session;
  * @author jcgarner
  */
 public class ParticipantDAO {
+    private static final Logger logger = LoggerFactory.getLogger(ParticipantDAO.class);
+    
     private static final ObservableList<Participant> participantsList = FXCollections.observableArrayList(Participant.extractor());
     private static final Map<String,Participant> Bib2ParticipantMap = new HashMap<>();
     private static final Map<Integer,Participant> ID2ParticipantMap = new HashMap<>(); 
@@ -143,13 +144,13 @@ public class ParticipantDAO {
 
                 Session s=HibernateUtil.getSessionFactory().getCurrentSession();
                 s.beginTransaction();
-                System.out.println("ParticipantDAO:: refreshParticipantsList Runing the Query");
+                logger.debug("ParticipantDAO:: refreshParticipantsList Runing the Query");
 
                 try {  
                     list=s.createQuery("from Participant").list();
                     attributeList=s.createQuery("from CustomAttribute").list();
 
-                    System.out.println("ParticipantDAO::refreshParticipantsList found " + list.size() + " Participants");
+                    logger.debug("ParticipantDAO::refreshParticipantsList found " + list.size() + " Participants");
                     //if(!participantsList.isEmpty()) participantsList.clear();
 
                     Platform.runLater(() -> {
@@ -164,7 +165,7 @@ public class ParticipantDAO {
                         ID2ParticipantMap.put(p.getID(),p);
                     });
                 } catch (Exception e) {
-                    System.out.println(e.getMessage());
+                    logger.debug(e.getMessage());
                 } 
                 s.getTransaction().commit();
                 participantsLoadedLatch.countDown();
@@ -274,7 +275,7 @@ public class ParticipantDAO {
     
     public void updateParticipant(Participant p) {
         if (p == null){
-            System.out.println("Cant save NULL!!!");
+            logger.debug("Cant save NULL!!!");
             return;
         }
         Session s=HibernateUtil.getSessionFactory().getCurrentSession();
@@ -283,7 +284,7 @@ public class ParticipantDAO {
         s.getTransaction().commit();
         if ( ! p.getBib().equals(Participant2BibMap.get(p))) {
             // bib number changed
-            System.out.println("bib Number Change... "); 
+            logger.debug("bib Number Change... "); 
             String oldBib = Participant2BibMap.get(p);
             Bib2ParticipantMap.remove(Participant2BibMap.get(p));
             Bib2ParticipantMap.put(p.getBib(), p);
@@ -304,7 +305,7 @@ public class ParticipantDAO {
         try {
             participantsLoadedLatch.await();
         } catch (InterruptedException ex) {
-            Logger.getLogger(ParticipantDAO.class.getName()).log(Level.SEVERE, null, ex);
+            logger.debug("Interrupted!", ex);
         }
         return Bib2ParticipantMap.get(b);
     }
@@ -312,7 +313,7 @@ public class ParticipantDAO {
         try {
             participantsLoadedLatch.await();
         } catch (InterruptedException ex) {
-            Logger.getLogger(ParticipantDAO.class.getName()).log(Level.SEVERE, null, ex);
+            logger.debug("Interrupted!", ex);
         }
         return ID2ParticipantMap.get(id); 
     }
@@ -346,11 +347,11 @@ public class ParticipantDAO {
         Set<Wave> waves = new HashSet<>();
         Map raceMap = new HashMap(); 
         
-        System.out.println("Only one wave to assign them to...");
+        logger.debug("Only one wave to assign them to...");
 
         // If there is only one...
         if (RaceDAO.getInstance().listWaves().size() == 1) {
-            System.out.println("Only one wave to assign them to...");
+            logger.debug("Only one wave to assign them to...");
             waves.add(RaceDAO.getInstance().listWaves().get(0));
             return waves;
         }
@@ -361,7 +362,7 @@ public class ParticipantDAO {
                 String end = i.getWaveAssignmentEnd(); 
                 if (!(start.isEmpty() && end.isEmpty()) && (comp.compare(start, bib) <= 0 || start.isEmpty()) && (comp.compare(end, bib) >= 0 || end.isEmpty())) {
                     if(!raceMap.containsKey(i.getRace())) {
-                        //System.out.println("Bib " + bibTextField.getText() + " matched wave " + i.getWaveName() + " results: "+ comp.compare(start, bibTextField.getText()) + " and " + comp.compare(end, bibTextField.getText()) );
+                        //logger.debug("Bib " + bibTextField.getText() + " matched wave " + i.getWaveName() + " results: "+ comp.compare(start, bibTextField.getText()) + " and " + comp.compare(end, bibTextField.getText()) );
                         raceMap.put(i.getRace(), true); 
                         waves.add(i); 
                     }

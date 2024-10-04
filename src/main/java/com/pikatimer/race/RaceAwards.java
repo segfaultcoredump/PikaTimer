@@ -219,7 +219,7 @@ public class RaceAwards {
     // grow once we add in custom stuff
     @ElementCollection(fetch = FetchType.EAGER)
     @MapKeyColumn(name="attribute", insertable=false,updatable=false)
-    @Column(name="value")
+    @Column(name="attribute_value")
     @CollectionTable(name="race_awards_attributes", joinColumns=@JoinColumn(name="race_id"))
     @OrderColumn(name = "index_id")
     private Map<String, String> getAttributes() {

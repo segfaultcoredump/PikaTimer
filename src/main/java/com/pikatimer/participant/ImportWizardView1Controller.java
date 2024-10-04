@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@ package com.pikatimer.participant;
 import com.pikatimer.PikaPreferences;
 import com.pikatimer.race.RaceDAO;
 import com.pikatimer.race.Wave;
-import io.datafx.controller.FXMLController;
+import io.datafx.controller.ViewController;
 import io.datafx.controller.flow.FlowException;
 import io.datafx.controller.flow.context.FXMLViewFlowContext;
 import io.datafx.controller.flow.context.ViewFlowContext;
@@ -37,10 +37,13 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javax.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
-@FXMLController("FXMLImportWizardView1.fxml")
+@ViewController("FXMLImportWizardView1.fxml")
 public class ImportWizardView1Controller {
+    private static final Logger logger = LoggerFactory.getLogger(ImportWizardView1Controller.class);
     
     @FXMLViewFlowContext private ViewFlowContext context;
     
@@ -63,7 +66,7 @@ public class ImportWizardView1Controller {
     
     @PostConstruct
     public void init() throws FlowException {
-        System.out.println("ImportWizardView1Controller.initialize()");
+        logger.debug("ImportWizardView1Controller.initialize()");
         
         // TODO: 
         cleanupCityCheckBox.disableProperty().set(true);
@@ -142,13 +145,13 @@ public class ImportWizardView1Controller {
         fileTextField.textProperty().addListener((ob, oldT, newT) -> {
             File file = new File(fileTextField.getText());
             if (file.exists() && file.isFile() && file.canRead()) {
-                System.out.println("  The file is good...");
+                logger.debug("  The file is good...");
                 fileStatusLabel.setText("");
 
                 model.nextButtonDisabledProperty().set(false);
                 model.setFileName(file.getAbsolutePath());
             } else {
-                System.out.println("  Unable to use this file");
+                logger.debug("  Unable to use this file");
                 if (! file.exists()) fileStatusLabel.setText("File does not exist");
                 else if (! file.isFile()) fileStatusLabel.setText("The path entered is not a regular file");
                 else if (!file.canRead()) fileStatusLabel.setText("Unable to read the file");

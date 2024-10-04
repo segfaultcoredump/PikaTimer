@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,6 @@ import io.datafx.controller.flow.FlowHandler;
 import io.datafx.controller.flow.container.DefaultFlowContainer;
 import java.io.File;
 import java.io.IOException;
-import static java.lang.Boolean.FALSE;
 import static java.lang.Double.MAX_VALUE;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -112,12 +111,15 @@ import org.controlsfx.control.CheckComboBox;
 import org.controlsfx.control.ListSelectionView;
 import org.controlsfx.control.PrefixSelectionChoiceBox;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 /**
  *
  * @author jcgarner
  */
 public class FXMLParticipantController  {
-
+    private static final Logger logger = LoggerFactory.getLogger(FXMLParticipantController.class);
+    
     @FXML private TableView<Participant> participantTableView;
     @FXML private TableColumn bibNumberColumn;
     //@FXML private TableColumn<Participant,ObservableList<Wave>> raceColumn;
@@ -179,15 +181,15 @@ public class FXMLParticipantController  {
     protected void initialize() {
         // setup the ObservableList of people
         
-        System.out.println("Initializing ParticipantController");
-        System.out.println("Creating ParticipantDAO");
+        logger.debug("Initializing ParticipantController");
+        logger.trace("Creating ParticipantDAO");
         participantDAO=ParticipantDAO.getInstance();
         //participantsList=FXCollections.observableArrayList();
-        System.out.println("Retrieving Participants");
+        logger.debug("Retrieving Participants");
         //participantsList.addAll(participantDAO.listParticipants());
         participantsList=participantDAO.listParticipants(); 
         
-        System.out.println("Binding tableView to the participantsList");
+        logger.trace("Binding tableView to the participantsList");
         
         filterField.requestFocus(); // set the focus to the filter menu first
         
@@ -312,7 +314,7 @@ public class FXMLParticipantController  {
         });
         searchWaveComboBox.getCheckModel().getCheckedItems().addListener((ListChangeListener.Change<? extends Wave> c) -> {
             
-            System.out.println("PartController::searchWaveComboBox(changeListener) fired...");
+            logger.trace("PartController::searchWaveComboBox(changeListener) fired...");
             updateFilterPredicate();
             //System.out.println(waveComboBox.getCheckModel().getCheckedItems());
         });
@@ -356,7 +358,7 @@ public class FXMLParticipantController  {
         RaceDAO.getInstance().listWaves().addListener((Change<? extends Wave> change) -> {
             //waveComboBox.getItems().clear();
             //Platform.runLater(() -> {
-               System.out.println("PartController::raceWaves(changeListener) fired...");
+               logger.trace("PartController::raceWaves(changeListener) fired...");
                 
             // TODO
             //rework the popup menu for the add/delete
@@ -411,7 +413,7 @@ public class FXMLParticipantController  {
             }
             //System.out.println(waveComboBox.getCheckModel().getCheckedItems());
         });
-        System.out.println("Done Initializing ParticipantController");
+        logger.debug("Done Initializing ParticipantController");
         
         ageTextField.textProperty().addListener((observable, oldValue, newValue) -> {
                     //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
@@ -446,7 +448,7 @@ public class FXMLParticipantController  {
       
         bibTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
-                System.out.println("bibTextField out focus");
+                logger.trace("bibTextField out focus");
                 
                 
                 //Find out if the bib changed, and if so, if it conflicts with anybody else
@@ -606,7 +608,7 @@ public class FXMLParticipantController  {
         
         birthdayDatePicker.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
-                System.out.println("birthdayDatePicker out focus");
+                logger.trace("birthdayDatePicker out focus");
                 
                 //If it is now null, just bail
                 if (birthdayDatePicker.getValue() == null) return; 
@@ -632,7 +634,7 @@ public class FXMLParticipantController  {
     @FXML
     protected void addPerson(ActionEvent fxevent) {
         // Make sure they actually entered something first
-        System.out.println("addPerson fired");
+        logger.debug("addPerson fired");
         if (!(firstNameField.getText().isEmpty() && lastNameField.getText().isEmpty())) {
             Participant p = new Participant(firstNameField.getText(),
                 lastNameField.getText()
@@ -841,7 +843,7 @@ public class FXMLParticipantController  {
             System.out.println("Upating....");
             //custom attributes
             participantDAO.getCustomAttributes().forEach(a -> {
-                System.out.println("Upating " + a.getName());
+                logger.trace("Upating " + a.getName());
                 Integer aID = a.getID();
                 switch (a.getAttributeType()) {
                     case LIST:
@@ -1208,7 +1210,7 @@ public class FXMLParticipantController  {
                     
                     if (filtered.getValue()) return;
                     
-                    System.out.println("Exporting Particpant " + p.fullNameProperty().getValueSafe());
+                    logger.trace("Exporting Particpant " + p.fullNameProperty().getValueSafe());
                     String part = "";
                     String fieldName;
                     
@@ -1345,15 +1347,15 @@ public class FXMLParticipantController  {
         skipBibs.setPrefWidth(90);
         skipBibs.setPrefHeight(75);
         skipBibs.textProperty().addListener((obs, prevVal, newVal) -> {
-            System.out.println("SkipBibs updated: " + newVal);
+            logger.trace("SkipBibs updated: " + newVal);
             int c = skipBibs.getCaretPosition();
             for (String line: newVal.split("\\R")) {
-                System.out.println("skipBibs: " + line);
+                logger.trace("skipBibs: " + line);
                 if (line != null && !line.isEmpty() ){
                     try {
                         Integer.parseUnsignedInt(line);
                     } catch (Exception e) {
-                        System.out.println("Abort! reset to " + prevVal);
+                        logger.trace("Abort! reset to " + prevVal);
                         Platform.runLater(() -> {
                             skipBibs.textProperty().set(prevVal);
                             skipBibs.positionCaret(c);
@@ -1463,7 +1465,7 @@ public class FXMLParticipantController  {
             Set<String> skipList = new HashSet(Arrays.asList(skipBibs.getText().split("\\R")));
             for(String t: skipList) {
                 if (t.isEmpty()) skipList.remove(t);
-                System.out.println("Skipping bibs ending with \"" + t + "\"");
+                logger.trace("Skipping bibs ending with \"" + t + "\"");
             }
             
             Attribute s1 = sort1ComboBox.getSelectionModel().getSelectedItem();
@@ -1472,35 +1474,35 @@ public class FXMLParticipantController  {
             String s2Type = sort2TypeComboBox.getSelectionModel().getSelectedItem();   
             List<Participant> assignees = participantDAO.listParticipants().stream()
                     .filter(p -> {  // race filter
-                        System.out.println("F1: Evaling " + p.fullNameProperty().getValueSafe());
+                        logger.trace("F1: Evaling " + p.fullNameProperty().getValueSafe());
                         if (raceDAO.listRaces().size()== 1) return true; // only one race
                         if (p.wavesObservableList().isEmpty()) return true; // unassigned
                         if (p.wavesObservableList().stream().anyMatch((w) -> (w.getRace().equals(raceComboBox.getSelectionModel().getSelectedItem())))) {
                             return true;
                         }
-                        System.out.println("F1: Rejected");
+                        logger.trace("F1: Rejected");
                         return false;
                     }) 
                     .filter(p -> {          // existing assignment filter
-                        System.out.println("F2: Evaling " + p.fullNameProperty().getValueSafe());
+                        logger.trace("F2: Evaling " + p.fullNameProperty().getValueSafe());
                         if (clearExistingToggleSwitch.selectedProperty().get()) return true;
                         else if (p.getBib().isEmpty()) return true;
-                        System.out.println("F2: Rejected");
+                        logger.trace("F2: Rejected");
 
                         return false;
                     }) 
                     .filter(p -> { // start bib filter
-                        System.out.println("F3: Evaling " + p.fullNameProperty().getValueSafe());
+                        logger.trace("F3: Evaling " + p.fullNameProperty().getValueSafe());
                         if (p.getBib().isEmpty()) return true;
                         if (startTextField.getText().isEmpty()) return true;
-                        System.out.println("F3: " + ac.compare(startTextField.getText(), p.getBib()));
+                        logger.trace("F3: " + ac.compare(startTextField.getText(), p.getBib()));
                         return ac.compare(startTextField.getText(), p.getBib()) <= 0;
                     }) 
                     .filter(p -> {// end bib filter
-                        System.out.println("F4: Evaling " + p.fullNameProperty().getValueSafe());
+                        logger.trace("F4: Evaling " + p.fullNameProperty().getValueSafe());
                         if (p.getBib().isEmpty()) return true;
                         if (endTextField.getText().isEmpty()) return true;
-                        System.out.println("F4: " + ac.compare(endTextField.getText(), p.getBib()));
+                        logger.trace("F4: " + ac.compare(endTextField.getText(), p.getBib()));
 
                         return ac.compare(endTextField.getText(), p.getBib()) >= 0;
                     }) 
@@ -1508,7 +1510,7 @@ public class FXMLParticipantController  {
                         
                         if (s1.cKey >=0){
                             Integer r1 = ac.compare(p1.getCustomAttribute(s1.cKey).getValueSafe(), p2.getCustomAttribute(s1.cKey).getValueSafe());
-                            System.out.println("Sort C1: " + p1.getCustomAttribute(s1.cKey).getValueSafe() + " vs " + p2.getCustomAttribute(s1.cKey).getValueSafe() + " -> " + r1);
+                            logger.trace("Sort C1: " + p1.getCustomAttribute(s1.cKey).getValueSafe() + " vs " + p2.getCustomAttribute(s1.cKey).getValueSafe() + " -> " + r1);
 
                             if (r1  != 0) {
                                 if (s1Type.equals("Asc"))return r1;
@@ -1516,7 +1518,7 @@ public class FXMLParticipantController  {
                             }
                         } else if (! s1.key.equals("SKIP")) {
                             Integer r1 = ac.compare(p1.getNamedAttribute(s1.key), p2.getNamedAttribute(s1.key));
-                            System.out.println("Sort A1: " + p1.getNamedAttribute(s1.key) + " vs " + p2.getNamedAttribute(s1.key) + " -> " + r1);
+                            logger.trace("Sort A1: " + p1.getNamedAttribute(s1.key) + " vs " + p2.getNamedAttribute(s1.key) + " -> " + r1);
                             if (r1  != 0) {
                                 if (s1Type.equals("Asc"))return r1;
                                 else return -r1;
@@ -1524,20 +1526,20 @@ public class FXMLParticipantController  {
                         }
                         if (s2.cKey >=0){
                             Integer r2 = ac.compare(p1.getCustomAttribute(s2.cKey).getValueSafe(), p2.getCustomAttribute(s2.cKey).getValueSafe());
-                            System.out.println("Sort C2: " + r2);
+                            logger.trace("Sort C2: " + r2);
                             if (r2  != 0) {
                                 if (s2Type.equals("Asc"))return r2;
                                 else return -r2;
                             }
                         } else if (! s2.key.equals("SKIP")) {
                             Integer r2 = ac.compare(p1.getNamedAttribute(s2.key), p2.getNamedAttribute(s2.key));
-                            System.out.println("Sort A2: " + p1.getNamedAttribute(s2.key) + " vs " + p2.getNamedAttribute(s2.key) + " -> " + r2);
+                            logger.trace("Sort A2: " + p1.getNamedAttribute(s2.key) + " vs " + p2.getNamedAttribute(s2.key) + " -> " + r2);
                             if (r2  != 0) {
                                 if (s2Type.equals("Asc"))return r2;
                                 else return -r2;
                             }
                         }
-                        System.out.println("Sort returning 0");
+                        logger.trace("Sort returning 0");
                         return 0;
                     
                     })  // Sort them
@@ -1547,16 +1549,16 @@ public class FXMLParticipantController  {
             Participant existing = null;
             for(Participant p: assignees){
                 if (currentBib > lastBib) break;
-                System.out.println("Assigning bib for " + p.fullNameProperty().getValueSafe());
-                System.out.println("  currentBib is now " + currentBib.toString());
+                logger.trace("Assigning bib for " + p.fullNameProperty().getValueSafe());
+                logger.trace("  currentBib is now " + currentBib.toString());
                 if (!clearExistingToggleSwitch.selectedProperty().get()) {
                     while(currentBib <= lastBib && participantDAO.getParticipantByBib(currentBib.toString()) != null){
-                        System.out.println("  currentBib is now " + currentBib.toString());
+                        logger.trace("  currentBib is now " + currentBib.toString());
                         currentBib++;
                     }
                 }
                 if (!skipList.isEmpty()) {
-                    System.out.println("skiList is NOT empty");
+                    logger.trace("skiList is NOT empty");
                     Boolean good = true;
                     do {
                         good = true;
@@ -1567,7 +1569,7 @@ public class FXMLParticipantController  {
                         if (currentBib > lastBib) break;
                     } while (!good);
                 } else {
-                    System.out.println("skiList was empty");
+                    logger.trace("skiList was empty");
                 }
                 if (currentBib > lastBib) break;
                 
@@ -1578,11 +1580,11 @@ public class FXMLParticipantController  {
                     existing.setBib("OLD: " + currentBib.toString());
                     participantDAO.updateParticipant(existing);
                 }
-                System.out.println("Assigning " + currentBib.toString() + "...");
+                logger.trace("Assigning " + currentBib.toString() + "...");
                 p.setBib(currentBib.toString());
                 p.setWaves(participantDAO.getWaveByBib(currentBib.toString()));
                 participantDAO.updateParticipant(p);
-                System.out.println("  " + p.fullNameProperty().getValueSafe() + " now has bib " + currentBib);
+                logger.trace("  " + p.fullNameProperty().getValueSafe() + " now has bib " + currentBib);
                 currentBib++;
             }
         }
@@ -1640,7 +1642,7 @@ public class FXMLParticipantController  {
             TextField name = new TextField();
             name.setPrefWidth(150);
             name.textProperty().addListener((observable, oldValue, newValue) -> {
-                System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+                logger.trace("TextField Text Changed (newValue: " + newValue + ")");
                 ca.nameProperty().set(newValue);
             });
             
@@ -1669,7 +1671,7 @@ public class FXMLParticipantController  {
             });
             
             list.setOnEditCommit((ListView.EditEvent<String> t) -> {
-                System.out.println("setOnEditCommit " + t.getIndex());
+                logger.trace("setOnEditCommit " + t.getIndex());
                 if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                     if (t.getNewValue().isEmpty()) {
                         list.getItems().remove(t.getIndex());
@@ -1677,20 +1679,20 @@ public class FXMLParticipantController  {
                         list.getItems().set(t.getIndex(), t.getNewValue());
                     }
                 } else {
-                    System.out.println("Timing setOnEditCancel event out of index: " + t.getIndex());
+                    logger.trace("Timing setOnEditCancel event out of index: " + t.getIndex());
                 }
                 add.requestFocus();
                 add.setDefaultButton(true);
             });
             list.setOnEditCancel((ListView.EditEvent<String> t) -> {
-                System.out.println("setOnEditCancel " + t.getIndex());
+                logger.trace("setOnEditCancel " + t.getIndex());
                 if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                    
                     if (t.getNewValue() == null || t.getNewValue().isEmpty()) {
                         list.getItems().remove(t.getIndex());
                     } 
                 } else {
-                    System.out.println("Timing setOnEditCancel event out of index: " + t.getIndex());
+                    logger.trace("Timing setOnEditCancel event out of index: " + t.getIndex());
                 }
                 add.requestFocus();
                 add.setDefaultButton(true);
@@ -1750,7 +1752,7 @@ public class FXMLParticipantController  {
             name.setPrefWidth(150);
             
             name.textProperty().addListener((observable, oldValue, newValue) -> {
-                System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+                logger.trace("TextField Text Changed (newValue: " + newValue + ")");
                 attrib.nameProperty().set(newValue);
             });
             
@@ -1782,7 +1784,7 @@ public class FXMLParticipantController  {
                 });
 
                 list.setOnEditCommit((ListView.EditEvent<String> t) -> {
-                    System.out.println("setOnEditCommit " + t.getIndex());
+                    logger.trace("setOnEditCommit " + t.getIndex());
                     if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                         if (t.getNewValue().isEmpty()) {
                             list.getItems().remove(t.getIndex());
@@ -1790,20 +1792,20 @@ public class FXMLParticipantController  {
                             list.getItems().set(t.getIndex(), t.getNewValue());
                         }
                     } else {
-                        System.out.println("Timing setOnEditCancel event out of index: " + t.getIndex());
+                        logger.trace("Timing setOnEditCancel event out of index: " + t.getIndex());
                     }
                     add.requestFocus();
                     add.setDefaultButton(true);
                 });
                 list.setOnEditCancel((ListView.EditEvent<String> t) -> {
-                    System.out.println("setOnEditCancel " + t.getIndex());
+                    logger.trace("setOnEditCancel " + t.getIndex());
                     if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
 
                         if (t.getNewValue() == null || t.getNewValue().isEmpty()) {
                             list.getItems().remove(t.getIndex());
                         } 
                     } else {
-                        System.out.println("Timing setOnEditCancel event out of index: " + t.getIndex());
+                        logger.trace("Timing setOnEditCancel event out of index: " + t.getIndex());
                     }
                     add.requestFocus();
                     add.setDefaultButton(true);
@@ -1849,11 +1851,11 @@ public class FXMLParticipantController  {
         Optional<Boolean> result = dialog.showAndWait();
         if (result.isPresent()) {
             deletedCustomAttributes.forEach(ca -> {
-                System.out.println("Deleting Custom Attribute " + ca.getName());
+                logger.debug("Deleting Custom Attribute " + ca.getName());
                 participantDAO.deleteCustomAttribute(ca);
             });
             customAttributes.forEach(ca -> {
-                System.out.println("Saving Custom Attribute " + ca.getName());
+                logger.trace("Saving Custom Attribute " + ca.getName());
                 // remove duplicates from the allowable values list
                 Set<String> s = new LinkedHashSet<>(ca.allowableValuesProperty());
                 ca.setAllowableValues(new ArrayList(s)); 
@@ -1943,7 +1945,7 @@ public class FXMLParticipantController  {
                         // user can type into the field. 
                         if (a.getAttributeType().equals(CustomAttributeType.NUMBER)) {
                             aInput.textProperty().addListener((observable, oldValue, newValue) -> {
-                                System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+                                logger.trace("TextField Text Changed (newValue: " + newValue + ")");
                                 if (!newValue.isEmpty()) {
                                     if (newValue.matches("^-?\\.\\d+$")) {
                                         Platform.runLater(() -> {
@@ -1978,7 +1980,7 @@ public class FXMLParticipantController  {
                                         aInput.positionCaret(caret+1);
                                     });
                                 } else if (newValue.matches("^-?(\\d*:)?(\\d*:)?\\d*\\.?\\d*$")){
-                                    System.out.println("Good time: " + newValue);
+                                    logger.trace("Good time: " + newValue);
                                 } else {
                                     Platform.runLater(() -> {
                                         int caret = aInput.getCaretPosition();

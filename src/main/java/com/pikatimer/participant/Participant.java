@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,8 +43,6 @@ import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.property.ListProperty;
-import javafx.beans.property.SimpleListProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -67,6 +65,8 @@ import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -77,7 +77,7 @@ import org.json.JSONObject;
 @DynamicUpdate
 @Table(name="PARTICIPANT")
 public class Participant {
-    
+    private static final Logger logger = LoggerFactory.getLogger(Participant.class);
 
    
     private final StringProperty firstNameProperty = new SimpleStringProperty("");
@@ -227,7 +227,7 @@ public class Participant {
         
         attribMap.entrySet().stream().forEach((Map.Entry<String, String> entry) -> {
             if (entry.getKey() != null) {
-                //System.out.println("processing " + entry.getKey() );
+                //logger.debug("processing " + entry.getKey() );
              switch(entry.getKey()) {
                  case "bib": this.setBib(entry.getValue()); break; 
                  case "first": this.setFirstName(entry.getValue()); break;
@@ -243,7 +243,7 @@ public class Participant {
                      try {
                         if (this.birthday == null) this.setAge(Integer.parseUnsignedInt(entry.getValue())); 
                      } catch (Exception e) {
-                         System.out.println("Unable to parse age " + entry.getValue() );
+                         logger.debug("Unable to parse age " + entry.getValue() );
                      }
                      break; 
                      
@@ -278,7 +278,7 @@ public class Participant {
     public String getNamedAttribute(String attribute) {
         
         if (attribute != null) {
-                //System.out.println("processing " + entry.getKey() );
+                //logger.debug("processing " + entry.getKey() );
             switch(attribute) {
                 case "bib": return this.bibProperty.getValueSafe();
                 case "first": return this.firstNameProperty.getValueSafe();
@@ -330,12 +330,12 @@ public class Participant {
     
     @Column(name="UUID")
     public String getUUID() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        //logger.debug("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -489,7 +489,7 @@ public class Participant {
         }
     }    
     public void setBirthday(String d) {
-        //System.out.println("Birthdate String: " + d);
+        //logger.debug("Birthdate String: " + d);
         if (d != null) {
             //Try and parse the date
             // First try the ISO_LOCAL_DATE (YYYY-MM-DD)
@@ -497,18 +497,18 @@ public class Participant {
             // finally a last ditch effort for things like MM.DD.YYYY
             try{
                 birthday = LocalDate.parse(d,DateTimeFormatter.ISO_LOCAL_DATE);
-                //System.out.println("Parsed via ISO_LOCAL_DATE: " + d);
+                //logger.debug("Parsed via ISO_LOCAL_DATE: " + d);
             } catch (Exception e){
                 try {
                     birthday = LocalDate.parse(d,DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT));
-                    //System.out.println("FormatStyle.SHORT: " + d);
+                    //logger.debug("FormatStyle.SHORT: " + d);
                     
                 } catch (Exception e2){ 
                     try {
                         birthday = LocalDate.parse(d,DateTimeFormatter.ofPattern("M/d/yyyy"));
-                        // System.out.println("Parsed via M/d/yyyy: " + d);
+                        // logger.debug("Parsed via M/d/yyyy: " + d);
                     } catch (Exception e3) {
-                        //System.out.println("Unble to parse date: " + d);
+                        //logger.debug("Unble to parse date: " + d);
                     }
                 }
             }
@@ -516,7 +516,7 @@ public class Participant {
             if (this.birthday != null) {
                 birthdayProperty.setValue(birthday);
                 this.setAge(Period.between(this.birthday, Event.getInstance().getLocalEventDate()).getYears());
-                //System.out.println("Parsed Date: " + d + " -> " + getAge());
+                //logger.debug("Parsed Date: " + d + " -> " + getAge());
             }
 
             //Instant instant = Instant.ofEpochMilli(d.getTime());
@@ -585,14 +585,14 @@ public class Participant {
     }
     
     public void setWaves(List<Wave> w) {
-        System.out.println("SetWaves(List) called with " + w.size());
+        logger.debug("SetWaves(List) called with " + w.size());
         waves.setAll(w);
         waveIDSet = new HashSet();
         waves.stream().forEach(n -> {waveIDSet.add(n.getID());});
         Platform.runLater(() -> wavesChangedCounterProperty.setValue(wavesChangedCounterProperty.get()+1));
     }
     public void setWaves(Set<Wave> w){
-        System.out.println("SetWaves(Set) called with " + w.size());
+        logger.debug("SetWaves(Set) called with " + w.size());
         waves.setAll(w);
         waveIDSet = new HashSet();
         waves.stream().forEach(n -> {waveIDSet.add(n.getID());});
@@ -600,7 +600,7 @@ public class Participant {
 
     }
     public void setWaves(Wave w) {
-        System.out.println("Participant.setWaves(Wave w)");
+        logger.debug("Participant.setWaves(Wave w)");
         waves.setAll(w);
         
         waveIDSet = new HashSet();
@@ -609,10 +609,10 @@ public class Participant {
 
     }
     public void addWave(Wave w) {
-        //System.out.println("Participant.addWave(Wave w)");
-        if(w == null) System.out.println("Wave is NULL!!!");
+        //logger.debug("Participant.addWave(Wave w)");
+        if(w == null) logger.debug("Wave is NULL!!!");
         else { 
-            //System.out.println("Participant.addWave(Wave w) " + w.getID());
+            //logger.debug("Participant.addWave(Wave w) " + w.getID());
             waves.add(w); 
             waveIDSet.add(w.getID()); 
         }
@@ -622,7 +622,7 @@ public class Participant {
         if (waves.size() != waveIDSet.size()){
             waves.clear();
             waveIDSet.stream().forEach(id -> {
-                if (RaceDAO.getInstance().getWaveByID(id) == null) System.out.println("Null WAVE!!! " + id);
+                if (RaceDAO.getInstance().getWaveByID(id) == null) logger.debug("Null WAVE!!! " + id);
                 waves.add(RaceDAO.getInstance().getWaveByID(id)); 
             });
         }

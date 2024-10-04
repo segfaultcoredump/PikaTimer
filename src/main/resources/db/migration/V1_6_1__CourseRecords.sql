@@ -23,15 +23,15 @@ create table course_records (
     id int,
     race_id int,
     seg_id int,
-    "time" bigint,
-    category varchar,
-    sex varchar,
-    age varchar,
-    "name" varchar,
-    note varchar,
-    "year" varchar,
-    city varchar,
-    "state" varchar,
-    country varchar
+    cr_time bigint,
+    cr_category varchar,
+    cr_sex varchar,
+    cr_age varchar,
+    cr_name varchar,
+    cr_note varchar,
+    cr_year varchar,
+    cr_city varchar,
+    cr_state varchar,
+    cr_country varchar
     
 );

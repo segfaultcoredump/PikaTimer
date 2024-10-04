@@ -169,10 +169,11 @@ public class RaceReport {
     // easier than a really wide table of attributes since this thing will just 
     // grow once we add in custom stuff
     @ElementCollection(fetch = FetchType.EAGER)
-    @MapKeyColumn(name="attribute", insertable=false,updatable=false)
-    @Column(name="value")
+    //@MapKeyColumn(name="attribute", insertable=false,updatable=false)
+    @MapKeyColumn(name="attribute")
+    @Column(name="attribute_value")
     @CollectionTable(name="race_output_attributes", joinColumns=@JoinColumn(name="output_id"))
-    @OrderColumn(name = "id")
+    //@OrderColumn(name = "id")
     private Map<String, String> getAttributes() {
         return attributes;
     }

@@ -22,7 +22,7 @@ create table event_options_attributes (
     event_id int, 
     index_id int, 
     attribute varchar, 
-    "value" varchar
+    attribute_value varchar
 );
 
 create table race (
@@ -39,9 +39,9 @@ create table race (
 
 create table race_attributes (
     race_id int, 
-    index_id int, 
+    -- index_id int, 
     attribute varchar, 
-    "value" varchar
+    attribute_value varchar
 );
 
 create table race_waves (
@@ -63,7 +63,7 @@ create table race_awards_attributes (
     race_id int, 
     index_id int, 
     attribute varchar, 
-    "value" varchar
+    attribute_value varchar
 );
 
 create table race_age_groups (
@@ -112,7 +112,7 @@ create table participant (
     bib_number varchar, 
     sex varchar, 
     city varchar, 
-    "state" varchar, 
+    state varchar, 
     zip varchar,
     country varchar,
     team_id int,
@@ -122,7 +122,7 @@ create table participant (
     reg_id varchar
 );
 
-create table participant_attributes (part_id int, index_id int, attribute varchar, "value" varchar); 
+create table participant_attributes (part_id int, index_id int, attribute varchar, attribute_value varchar); 
 
 create table timing_location (
     timing_location_id int primary key, 
@@ -151,7 +151,7 @@ create table timing_location_input_attributes (
     index_id int, 
     tli_id int, 
     attribute varchar, 
-    "value" varchar
+    attribute_value varchar
 ); 
 
 create table raw_timing_data (
@@ -205,10 +205,10 @@ create table race_outputs (
 );
 
 create table race_output_attributes (
-    id int, 
+    --id int, 
     output_id int, 
     attribute varchar, 
-    "value" varchar
+    attribute_value varchar
 ); 
 
 create table race_output_targets (

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 John Garner <segfaultcoredump@gmail.com>
+ * Copyright (C) 2024 John Garner <segfaultcoredump@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,9 +26,10 @@ import javax.persistence.FetchType;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
 import javax.persistence.MapKeyColumn;
-import javax.persistence.OrderColumn;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -38,11 +39,12 @@ import org.hibernate.annotations.DynamicUpdate;
 @DynamicUpdate
 @Table(name="event_options")
 public class EventOptions {
-
+    private static final Logger logger = LoggerFactory.getLogger(EventOptions.class);
+    
     private Integer eventID;
     private Map<String,String> attributes = new HashMap();
-    private Map<String,Integer> intAttributes = new HashMap();
-    private Map<String,Boolean> boolAttributes = new HashMap();
+    private final Map<String,Integer> intAttributes = new HashMap();
+    private final Map<String,Boolean> boolAttributes = new HashMap();
 
     
 
@@ -69,21 +71,21 @@ public class EventOptions {
     // grow once we add in custom stuff
     @ElementCollection(fetch = FetchType.EAGER)
     @MapKeyColumn(name="attribute", insertable=false,updatable=false)
-    @Column(name="value")
+    @Column(name="attribute_value")
     @CollectionTable(name="event_options_attributes", joinColumns=@JoinColumn(name="event_id"))
     //@OrderColumn(name = "index_id")
     private Map<String, String> getAttributes() {
-        System.out.println("EventOptions::getAttributes()");
+        logger.trace("EventOptions::getAttributes() called");
         attributes.keySet().forEach(k -> {
-        System.out.println("  " + k + " -> " + attributes.get(k));
+        logger.trace("  " + k + " -> " + attributes.get(k));
         });
         return attributes;
     }
     private void setAttributes(Map<String,String> m) {
         attributes = m;
-        System.out.println("EventOptions::setAttributes(Map)");
+        logger.trace("EventOptions::setAttributes(Map)");
         m.keySet().forEach(k -> {
-        System.out.println("  " + k + " -> " + m.get(k));
+        logger.trace("  " + k + " -> " + m.get(k));
         });
     } 
     
@@ -93,7 +95,7 @@ public class EventOptions {
             if (attributes.containsKey(key)) {
                 intAttributes.put(key,Integer.parseUnsignedInt(attributes.get(key)));
             } else {
-                System.out.println("EventOptions.getIntegerAtrribute value for " + key + " is NULL!");
+                logger.trace("EventOptions.getIntegerAtrribute value for " + key + " is NULL!");
                 return null;
             }
         }
@@ -111,7 +113,7 @@ public class EventOptions {
             if (attributes.containsKey(key)) {
                 boolAttributes.put(key,Boolean.parseBoolean(attributes.get(key)));
             } else {
-                System.out.println("EventOptions.getBooleanAtrribute value for " + key + " is NULL!");
+                logger.debug("EventOptions.getBooleanAtrribute value for " + key + " is NULL!");
                 return null;
             }
         }
@@ -124,7 +126,7 @@ public class EventOptions {
     
     public String getStringAttribute(String key) {
         if (!attributes.containsKey(key)) {
-            System.out.println("EventOptions.getStringAttribute value for " + key + " is NULL!");
+            logger.debug("EventOptions.getStringAttribute value for " + key + " is NULL!");
 
             return null;
         }

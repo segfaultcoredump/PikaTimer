@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
-import io.datafx.controller.FXMLController;
+import io.datafx.controller.ViewController;
 import io.datafx.controller.flow.Flow;
 import io.datafx.controller.flow.FlowException;
 import io.datafx.controller.flow.FlowHandler;
@@ -31,8 +31,6 @@ import io.datafx.controller.flow.container.ContainerAnimations;
 import io.datafx.controller.flow.context.FXMLViewFlowContext;
 import io.datafx.controller.flow.context.ViewFlowContext;
 import io.datafx.controller.util.VetoException;
-import javafx.application.Platform;
-import javafx.stage.Stage;
 import javafx.stage.Window;
 
 import javax.annotation.PostConstruct;
@@ -42,7 +40,7 @@ import javax.annotation.PostConstruct;
  * flow that contains all the custom views of the wizard is added to the view. The navigation for this internal flow
  * is managed here.
  */
-@FXMLController("FXMLImportWizard.fxml")
+@ViewController("FXMLImportWizard.fxml")
 public class ImportWizardController {
 
     @FXMLViewFlowContext

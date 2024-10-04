@@ -33,6 +33,8 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 import org.apache.commons.lang3.SystemUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -41,12 +43,14 @@ import org.apache.commons.lang3.SystemUtils;
  */
 public class Pikatimer extends Application {
     
+    private static final Logger logger = LoggerFactory.getLogger(Pikatimer.class);
+    
     //private final Event event = Event.getInstance(); 
     private static Stage mainStage;
     private static String jdbcURL; // Holds the jdbcURL for the open db
     private static HTTPServices webServer;
     
-    public static final String VERSION = "2.0 Alpha 1";
+    public static final String VERSION = "2.0_Alpha_1";
     
     /**
     * SingletonHolder is loaded on the first execution of Singleton.getInstance() 
@@ -76,6 +80,24 @@ public class Pikatimer extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         
+        System.out.println("""
+            
+            8888888b.  d8b 888           88888888888 d8b                                
+            888   Y88b Y8P 888               888     Y8P                                
+            888    888     888               888                                        
+            888   d88P 888 888  888  8888b.  888     888 88888b.d88b.   .d88b.  888d888 
+            8888888P"  888 888 .88P     "88b 888     888 888 "888 "88b d8P  Y8b 888P"   
+            888        888 888888K  .d888888 888     888 888  888  888 88888888 888     
+            888        888 888 "88b 888  888 888     888 888  888  888 Y8b.     888     
+            888        888 888  888 "Y888888 888     888 888  888  888  "Y8888  888     
+
+                                     ©2024 by John Garner
+                                    https://PikaTimer.com/
+                               Released under the GPL-3.0 license.                                                                            
+                            
+                           """);
+        
+        logger.info("Starting PikaTimer");
         //stash the primaryStage in the event object
         mainStage=primaryStage;
         
@@ -123,9 +145,9 @@ public class Pikatimer extends Application {
                 //set icon for mac os (and other systems which do support this method)
                 taskbar.setIconImage(image);
             } catch (final UnsupportedOperationException e) {
-                System.out.println("The os does not support: 'taskbar.setIconImage'");
+                logger.debug("The os does not support: 'taskbar.setIconImage'");
             } catch (final SecurityException e) {
-                System.out.println("There was a security exception for: 'taskbar.setIconImage'");
+                logger.debug("There was a security exception for: 'taskbar.setIconImage'");
             }
         }
         
@@ -139,7 +161,7 @@ public class Pikatimer extends Application {
             System.exit(0);
         });
         
-        System.out.println("Exiting Pikatimer.start()");
+        logger.debug("Exiting Pikatimer.start()");
     }
 
     /**

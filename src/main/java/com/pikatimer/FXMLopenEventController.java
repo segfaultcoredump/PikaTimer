@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 2017 John Garner
+ * Copyright (C) 2024 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,6 +51,8 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.internal.sqlscript.FlywaySqlScriptException;
 import org.h2.store.fs.FilePath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -80,6 +82,8 @@ public class FXMLopenEventController {
     
     Preferences globalPrefs = PikaPreferences.getInstance().getGlobalPreferences();
     
+    private static final Logger logger = LoggerFactory.getLogger(FXMLopenEventController.class);
+    
     @FXML
     protected void initialize() {
         // initialize your logic here: all @FXML variables will have been injected
@@ -95,7 +99,7 @@ public class FXMLopenEventController {
     @FXML
     protected void openDB(File dbFile) {
         
-        System.out.println("Opening " + dbFile.getAbsolutePath());
+        logger.info("Opening " + dbFile.getAbsolutePath());
 
         
         OpenHBox.setVisible(false);
@@ -112,7 +116,7 @@ public class FXMLopenEventController {
         globalPrefs.put("PikaEventHome", dbFile.getParent());
         System.setProperty("user.dir", dbFile.getParent());
 
-        System.out.println("Just hid the Open stuff and revealed the Loading stuff");
+        logger.trace("Just hid the Open stuff and revealed the Loading stuff");
         
         Task loadPika = new Task<Void>() {
 
@@ -126,7 +130,7 @@ public class FXMLopenEventController {
                         //System.out.println("Progress: " + LoadingProgressBar.getProgress());
                         FilePath.register(new PikaFilePathWrapper());
                         jdbcURL = "jdbc:h2:pika:" + dbFile.getAbsolutePath().replace(".pika", "");
-                        jdbcURL += ";CASE_INSENSITIVE_IDENTIFIERS=TRUE;TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;CACHE_SIZE=131072"; // disable trace options
+                        jdbcURL += ";TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;CACHE_SIZE=131072"; // disable trace options
                         Pikatimer.setJdbcUrl(jdbcURL);
                         //LoadingProgressBar.setProgress(0.15F);
                         
@@ -147,19 +151,15 @@ public class FXMLopenEventController {
                                         if (pending.length > 0) backup_needed = true;
 
                                 } catch (FlywaySqlScriptException sql_ex){
-                                    System.out.println("Pending metadata update, saving a copy");
-                                    backup_needed = true;
-                                }
-                                if (backup_needed) {
-                                    System.out.println("Pending Migrations, saving a copy");
-                                    FileUtils.copyFile(dbFile, new File(dbFile.getAbsolutePath() + ".pre_v2.0_update.pika"));
+                                    logger.info("Pending metadata update, saving a copy");
+                                    FileUtils.copyFile(dbFile, new File(dbFile.getAbsolutePath() + ".pre_" + Pikatimer.VERSION +"_update.pika"));
                                 }
                             }
                             //flyway.setDataSource(jdbcURL, "sa", null);
                             Flyway flyway = Flyway.configure().dataSource(jdbcURL, "sa", null).load();
                             flyway.migrate();
                         } catch (Exception ex) {
-                            ex.printStackTrace();
+                            logger.error("Unable to open the event!", ex);
                             Platform.runLater(() -> {
                                 Alert alert = new Alert(AlertType.ERROR);
                                 alert.setTitle("Unable to Open Event");
@@ -187,12 +187,13 @@ public class FXMLopenEventController {
                         FXMLLoader loader = new FXMLLoader(getClass().getResource("FXMLpika.fxml"));
                     
                         // Pre-Load stuff...
-                        System.out.println("Pre-Loading the data...");
-                        TimingDAO.getInstance().listTimingLocations(); //Load first to prevent deadlock!
-                        RaceDAO.getInstance().listRaces();
-                        ParticipantDAO.getInstance().listParticipants();
+                        logger.info("Pre-Loading the data...");
+                        logger.info("Loaded " + TimingDAO.getInstance().listTimingLocations().size() + " timing locations"); //Load first to prevent deadlock!
+                        logger.info("Loaded " + RaceDAO.getInstance().listRaces().size()+ " races locations");
+                        ParticipantDAO.getInstance().listParticipants().size();
                         ParticipantDAO.getInstance().getParticipantByBib("1"); // arbitrary to block on the listParticipants() thread
-                        System.out.println("Done Pre-Loading the data...");
+                        logger.info("Loaded " + ParticipantDAO.getInstance().listParticipants().size() + " Participants");
+                        logger.info("Done Pre-Loading the data...");
                         PikaPreferences.getInstance().setDBLoaded();
 
                         try {
@@ -228,14 +229,14 @@ public class FXMLopenEventController {
                             });
                             
                         } catch (Exception ex) {
-                            System.out.println("OOPS! " + getClass().getResource("FXMLpika.fxml"));
-                            ex.printStackTrace();
+                            logger.error("OOPS! " + getClass().getResource("FXMLpika.fxml"), ex);
+                            logger.debug(ex.getLocalizedMessage());
                         }    
                     
                     
                     } catch (Exception ex) {
-                        System.out.println("OOPS!");
-                        ex.printStackTrace();
+                        logger.error("Error!", ex);
+                        //ex.printStackTrace();
                     }
                     
                     return null;
@@ -261,7 +262,7 @@ public class FXMLopenEventController {
            
         }
         
-        System.out.println("Using initial directory of " + lastEventFolder.getAbsolutePath());
+        logger.info("Using initial directory of " + lastEventFolder.getAbsolutePath());
 
         fileChooser.setInitialDirectory(lastEventFolder); 
         fileChooser.getExtensionFilters().addAll(
@@ -269,7 +270,7 @@ public class FXMLopenEventController {
                 new FileChooser.ExtensionFilter("All files", "*")
             );
         File file = fileChooser.showOpenDialog(rootGridPane.getScene().getWindow());
-        System.out.println("Opening existing file....");
+        logger.info("Opening existing db file....");
         if (file != null) {
             
             // does the file end in .mv.db? 
@@ -342,7 +343,7 @@ public class FXMLopenEventController {
         if (link.contains("(")) {
             link = link.replaceFirst("^.+\\(", "").replaceFirst("\\).*$", "");
         }
-        System.out.println("Hyperlink pressed: " + link);
+        logger.trace("Hyperlink pressed: " + link);
         Pikatimer.getInstance().getHostServices().showDocument(link);
     }
 }

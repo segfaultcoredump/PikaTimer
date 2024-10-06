@@ -394,7 +394,7 @@ public class FXMLParticipantController  {
 //        });
         // Does Work
         waveComboBox.getCheckModel().getCheckedItems().addListener((ListChangeListener.Change<? extends Wave> c) -> {
-            System.out.println("PartController::waveComboBox(changeListener) fired...");
+            logger.debug("PartController::waveComboBox(changeListener) fired...");
 
             while (c.next()) {
                 if (c.wasAdded()) {
@@ -413,7 +413,7 @@ public class FXMLParticipantController  {
             }
             //System.out.println(waveComboBox.getCheckModel().getCheckedItems());
         });
-        logger.debug("Done Initializing ParticipantController");
+        
         
         ageTextField.textProperty().addListener((observable, oldValue, newValue) -> {
                     //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
@@ -628,6 +628,8 @@ public class FXMLParticipantController  {
         
         // Custom attribute setup
         displayCustomAttributes();
+        
+        logger.debug("Done Initializing ParticipantController");
 
     }
     
@@ -807,7 +809,8 @@ public class FXMLParticipantController  {
         
         if (!(firstNameField.getText().isEmpty() && lastNameField.getText().isEmpty())) {
             
-            // pull the list of checked waves
+            // Save the old bib
+            String org_bib = editedParticipant.getBib();
             editedParticipant.setBib(bibTextField.getText());
             
             editedParticipant.setFirstName(firstNameField.getText());
@@ -840,35 +843,27 @@ public class FXMLParticipantController  {
                 editedParticipant.setWaves(waveComboBox.getCheckModel().getCheckedItems());
             }
             
-            System.out.println("Upating....");
+            logger.debug("Upating Participant {} {}",firstNameField.getText(), lastNameField.getText());
             //custom attributes
             participantDAO.getCustomAttributes().forEach(a -> {
-                logger.trace("Upating " + a.getName());
+                logger.trace("Upating Custom Attribute" + a.getName());
                 Integer aID = a.getID();
                 switch (a.getAttributeType()) {
-                    case LIST:
-                        {
+                    case LIST ->                         {
                             editedParticipant.setCustomAttribute(aID, customAttributesChoiceBoxes.get(aID).getValue());
-                            break;
                         }
-                    case DATE:
-                        {
+                    case DATE ->                         {
                             try {
                             editedParticipant.setCustomAttribute(aID, customAttributesDatePickers.get(aID).getValue().format(DateTimeFormatter.ISO_DATE));
                             } catch (Exception e){
                                 editedParticipant.setCustomAttribute(aID, "");
                             }
-                            break;
                         }
-                    case BOOLEAN:
-                        {
+                    case BOOLEAN ->                         {
                             editedParticipant.setCustomAttribute(aID, customAttributesCheckBox.get(aID).selectedProperty().getValue().toString());
-                            break;
                         }
-                    default:
-                        {
+                    default ->                         {
                             editedParticipant.setCustomAttribute(aID, customAttributesTextFields.get(aID).getText());                        
-                            break;
                         }
                 }
             });
@@ -878,6 +873,8 @@ public class FXMLParticipantController  {
             // perform the actual update
             participantDAO.updateParticipant(editedParticipant);
             TimingDAO.getInstance().reprocessBib(editedParticipant.getBib());
+            if (!org_bib.equals(editedParticipant.getBib())) TimingDAO.getInstance().reprocessBib(org_bib);
+            
             ResultsDAO.getInstance().reprocessAllCRs();
             
             // reset the fields
@@ -926,25 +923,17 @@ public class FXMLParticipantController  {
         participantDAO.getCustomAttributes().forEach(a -> {
             Integer aID = a.getID();
             switch (a.getAttributeType()) {
-                case LIST:
-                    {
+                case LIST ->                     {
                         customAttributesChoiceBoxes.get(aID).getSelectionModel().selectFirst();
-                        break;
                     }
-                case DATE:
-                    {
+                case DATE ->                     {
                         customAttributesDatePickers.get(aID).setValue(null);
-                        break;
                     }
-                case BOOLEAN:
-                    {
+                case BOOLEAN ->                     {
                         customAttributesCheckBox.get(aID).setSelected(false);
-                        break;
                     }
-                default:
-                    {
+                default ->                     {
                         customAttributesTextFields.get(aID).setText("");
-                        break;
                     }
             }
         });
@@ -1137,6 +1126,7 @@ public class FXMLParticipantController  {
             if (file != null) {
                 // Make suer we can open it for writting
                 if (file.exists() && ! file.canWrite()) {
+                    logger.warn("Unable to create the export file! File existes and we don't have write permissions." );
                     // oops, we can't write to the file
                     // toss up an error dialog and bail
                     Alert alert = new Alert(AlertType.INFORMATION);
@@ -1148,6 +1138,7 @@ public class FXMLParticipantController  {
                 } else if (!file.exists()){
                     try {
                         if (!file.createNewFile()){
+                            logger.warn("Unable to create the export file!");
                             // oops, we can't create the target file
                             // toss up an error dialog and bail
                             Alert alert = new Alert(AlertType.INFORMATION);
@@ -1159,6 +1150,7 @@ public class FXMLParticipantController  {
                             return;
                         }
                     } catch (IOException ex) {
+                        logger.warn("Unable to create the export file!",ex);
                         // oops, we can't create the target file
                         // toss up an error dialog and bail
                         Alert alert = new Alert(AlertType.INFORMATION);

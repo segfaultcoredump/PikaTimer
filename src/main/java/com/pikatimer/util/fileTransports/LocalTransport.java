@@ -22,20 +22,22 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 public class LocalTransport implements FileTransport {
+    private static final Logger logger = LoggerFactory.getLogger(LocalTransport.class);
+    
     Boolean goodToGo = false;
     Boolean stripAccents = false;
     String basePath;
@@ -49,7 +51,7 @@ public class LocalTransport implements FileTransport {
 
     @Override
     public void save(String filename, String contents) {
-        System.out.println("LocalTransport.save called for " + filename);
+        logger.debug("LocalTransport.save called for " + filename);
         
         //String Accented chars if needed
         if (stripAccents) contents = StringUtils.stripAccents(contents);
@@ -62,16 +64,11 @@ public class LocalTransport implements FileTransport {
             
             try {
                 Platform.runLater(() -> {transferStatus.set("Saving: " + filename);});
-//                try {
-//                    Thread.sleep(3000);
-//                } catch (InterruptedException ex) {
-//                    Logger.getLogger(LocalTransport.class.getName()).log(Level.SEVERE, null, ex);
-//                }
                 FileUtils.writeStringToFile(new File(FilenameUtils.concat(basePath, filename)), '\ufeff' + contents, StandardCharsets.UTF_8);
                 Platform.runLater(() -> {transferStatus.set("Idle");});
             } catch (IOException ex) {
                 Platform.runLater(() -> {transferStatus.set("ERROR! " + filename);});
-                Logger.getLogger(LocalTransport.class.getName()).log(Level.SEVERE, null, ex);
+                logger.warn("Error in saving to {}",filename,ex);
             }
         }
     }

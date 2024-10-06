@@ -41,6 +41,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -50,6 +52,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="race_segment")
 public class Segment implements Comparable<Segment>{
+    private static final Logger logger = LoggerFactory.getLogger(Segment.class);
+    
     private final IntegerProperty IDProperty = new SimpleIntegerProperty(); // split_id
     private Race race; // race_id
     private Integer startSplitID; // 
@@ -123,7 +127,7 @@ public class Segment implements Comparable<Segment>{
     }
     public void setStartSplit(Split s) {
         if (s != null) {
-            System.out.println("Segment.setStartSplit: " + s.getID());
+            logger.debug("Segment.setStartSplit: " + s.getID());
             startSplitID=s.getID();
             startSplitStringProperty.unbind();
             startSplitStringProperty.bind(s.splitNameProperty());
@@ -133,7 +137,7 @@ public class Segment implements Comparable<Segment>{
             updateDistanceStringProperty();
 
         } else {
-            System.out.println("Segment.setStartSplit: null"); 
+            logger.debug("Segment.setStartSplit: null"); 
         }
     }
     public StringProperty startSplitStringProperty() {
@@ -188,14 +192,14 @@ public class Segment implements Comparable<Segment>{
     }
     public void setEndSplit(Split s) {
         if (s != null) {
-            System.out.println("Segment.setEndSplit: " + s.getID());
+            logger.debug("Segment.setEndSplit: " + s.getID());
             endSplitID=s.getID();
             endSplitStringProperty.unbind();
             endSplitStringProperty.bind(s.splitNameProperty());
             checkSplitOrder();
             updateDistanceStringProperty();
         } else {
-            System.out.println("Segment.setEndSplit: null"); 
+            logger.debug("Segment.setEndSplit: null"); 
         }
     }
     public StringProperty endSplitStringProperty() {

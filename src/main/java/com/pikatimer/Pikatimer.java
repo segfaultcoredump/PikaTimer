@@ -80,8 +80,8 @@ public class Pikatimer extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         
-        System.out.println("""
-            
+        logger.info("""
+            \n
             8888888b.  d8b 888           88888888888 d8b                                
             888   Y88b Y8P 888               888     Y8P                                
             888    888     888               888                                        
@@ -94,7 +94,7 @@ public class Pikatimer extends Application {
                                      ©2024 by John Garner
                                     https://PikaTimer.com/
                                Released under the GPL-3.0 license.                                                                            
-                            
+                            \n
                            """);
         
         logger.info("Starting PikaTimer");

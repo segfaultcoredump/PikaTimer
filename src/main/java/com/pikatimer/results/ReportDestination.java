@@ -37,6 +37,8 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -46,6 +48,7 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="report_destinations")
 public class ReportDestination {
+    private static final Logger logger = LoggerFactory.getLogger(ReportDestination.class);
 
     private final IntegerProperty IDProperty = new SimpleIntegerProperty();
     private final StringProperty uuidProperty = new SimpleStringProperty(java.util.UUID.randomUUID().toString());
@@ -68,7 +71,7 @@ public class ReportDestination {
     
     public ReportDestination(){
         // nothing to do here for now
-        //System.out.println("ReportDestination construtor called...");
+        logger.trace("ReportDestination construtor called...");
     }
     
     //    id int primary key, 
@@ -89,12 +92,12 @@ public class ReportDestination {
     //    uuid varchar,
     @Column(name="uuid")
     public String getUUID() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+        logger.trace("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -103,12 +106,12 @@ public class ReportDestination {
 //    target_name varchar
     @Column(name="target_name")
     public String getName() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return nameProperty.getValue(); 
     }
     public void setName(String  n) {
         nameProperty.setValue(n);
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty nameProperty() {
         return nameProperty; 
@@ -129,10 +132,10 @@ public class ReportDestination {
             fileTransport = t.getNewTransport();
             fileTransport.setOutputPortal(this);
             
-            System.out.println("Binding fileTransport.statusProperty() to transferStatusProperty");
+            logger.debug("Binding fileTransport.statusProperty() to transferStatusProperty");
             transferStatusProperty.bind(fileTransport.statusProperty());
             transferStatusProperty.addListener((ob, oldStatus, newStatus) -> {
-                System.out.println("FileTransport.statusProperty() is now " + newStatus);
+                logger.debug("FileTransport.statusProperty() is now " + newStatus);
             });
             
             outputProtocol = t;
@@ -142,13 +145,13 @@ public class ReportDestination {
 //    server varchar,
     @Column(name="server")
     public String getServer() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return serverProperty.getValue(); 
     }
     public void setServer(String  s) {
         serverProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty serverProperty() {
         return serverProperty; 
@@ -157,14 +160,14 @@ public class ReportDestination {
 //    base_path varchar,
     @Column(name="base_path")
     public String getBasePath() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return basePathProperty.getValue(); 
         
     }
     public void setBasePath(String  s) {
         basePathProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty basePathProperty() {
         return basePathProperty; 
@@ -173,13 +176,13 @@ public class ReportDestination {
 //    username varchar,
     @Column(name="username")
     public String getUsername() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return usernameProperty.getValue(); 
     }
     public void setUsername(String  s) {
         usernameProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty usernameProperty() {
         return usernameProperty; 
@@ -188,13 +191,13 @@ public class ReportDestination {
 //    password varchar,
     @Column(name="password")
     public String getPassword() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return passwordProperty.getValue(); 
     }
     public void setPassword(String  s) {
         passwordProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty passwordProperty() {
         return passwordProperty; 
@@ -203,13 +206,13 @@ public class ReportDestination {
 //    private_key varchar,
     @Column(name="private_key")
     public String getPrivateKey() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return privateKeyProperty.getValue(); 
     }
     public void setPrivateKey(String  s) {
         privateKeyProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty privateKeyProperty() {
         return privateKeyProperty; 
@@ -218,13 +221,13 @@ public class ReportDestination {
 //    remote_cert varchar,
     @Column(name="remote_cert")
     public String getRemoteCert() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return remoteCertProperty.getValue(); 
     }
     public void setRemoteCert(String  s) {
         remoteCertProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty remoteCertProperty() {
         return remoteCertProperty; 
@@ -233,14 +236,14 @@ public class ReportDestination {
 //    permit_any boolean
     @Column(name="permit_any")
     public Boolean getCheckCert() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return checkCertProperty.get();
     }
     public void setCheckCert(Boolean  s) {
         if (s == null) return;
         checkCertProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public BooleanProperty checkCertProperty() {
         return checkCertProperty; 
@@ -249,14 +252,14 @@ public class ReportDestination {
     //    strip Accents boolean
     @Column(name="stripAccents")
     public Boolean getStripAccents() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return stripAccentsProperty.getValue();
     }
     public void setStripAccents(Boolean  s) {
         if (s == null) return;
         stripAccentsProperty.setValue(s);
         if(fileTransport != null) fileTransport.refreshConfig();
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public BooleanProperty stripAccentsProperty() {
         return stripAccentsProperty; 
@@ -309,7 +312,7 @@ public class ReportDestination {
     }
 
     void save(String filename, String contents) {
-        System.out.println("OutputPortal.save() called for " + filename);
+        logger.debug("OutputPortal.save() called for " + filename);
         if (fileTransport != null && enabledProperty.get()) {
             if (fileTransport.isOK())
                 fileTransport.save(filename,contents);

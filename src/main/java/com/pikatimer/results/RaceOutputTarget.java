@@ -30,6 +30,8 @@ import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -39,7 +41,7 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="race_output_targets")
 public class RaceOutputTarget {
-    
+    private static final Logger logger = LoggerFactory.getLogger(RaceOutputTarget.class);
         
     private final IntegerProperty IDProperty = new SimpleIntegerProperty();
     private final StringProperty uuidProperty = new SimpleStringProperty(java.util.UUID.randomUUID().toString());
@@ -77,12 +79,12 @@ public class RaceOutputTarget {
     //    uuid varchar,
     @Column(name="uuid")
     public String getUUID() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       logger.trace("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -127,16 +129,16 @@ public class RaceOutputTarget {
     }
     
     public void saveOutput(String s){
-        System.out.println("RaceOutputTarget.saveOutput() called");
+        logger.debug("RaceOutputTarget.saveOutput() called");
         outputDestination = ResultsDAO.getInstance().getReportDestinationByID(outputDestinationID);
         
         if (outputDestination != null && ! outputFilenameProperty.isEmpty().getValue()) 
             outputDestination.save(outputFilenameProperty.getValue(), s);
         
         if (outputDestination == null) 
-            System.out.println("RaceOutputTarget.saveOutput() outputDestination is NULL!" + outputDestinationID);
+            logger.debug("RaceOutputTarget.saveOutput() outputDestination is NULL!" + outputDestinationID);
         
         if (outputFilenameProperty.isEmpty().getValue()) 
-            System.out.println("RaceOutputTarget.saveOutput() outputFilenameProperty is empty!: " + outputFilenameProperty.getValueSafe());
+            logger.debug("RaceOutputTarget.saveOutput() outputFilenameProperty is empty!: " + outputFilenameProperty.getValueSafe());
     }
 }

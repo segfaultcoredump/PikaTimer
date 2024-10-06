@@ -41,12 +41,16 @@ import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 public class Award implements RaceReportType {
+    private static final Logger logger = LoggerFactory.getLogger(Award.class);
+    
     Race race;
     IntegerProperty fullNameLength = new SimpleIntegerProperty(10);
     List<ProcessedResult> prList;
@@ -83,7 +87,7 @@ public class Award implements RaceReportType {
     
     @Override
     public String process(List<ProcessedResult> resList, RaceReport rr) {
-        System.out.println("Award.process() Called... ");
+        logger.debug("Award.process() Called... ");
         race = rr.getRace(); 
         supportedOptions.keySet().forEach(k -> supportedOptions.put(k, rr.getBooleanAttribute(k)));
         

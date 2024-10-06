@@ -24,15 +24,12 @@ import com.pikatimer.timing.TimingReader;
 import com.pikatimer.util.DurationFormatter;
 import com.pikatimer.util.DurationParser;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -56,13 +53,16 @@ import javafx.stage.FileChooser;
 import org.apache.commons.io.input.Tailer;
 import org.apache.commons.io.input.TailerListenerAdapter;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class PikaGenericBibTimeFileReader implements TimingReader{
-        
+    private static final Logger logger = LoggerFactory.getLogger(PikaGenericBibTimeFileReader.class);
+    
     protected TimingListener timingListener;
     protected File sourceFile; 
     protected final StringProperty fileName; 
@@ -132,7 +132,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
 
     @Override
     public void startReading() {
-        System.out.println("TailingReader:StartReading() called");
+        logger.debug("TailingReader:StartReading() called");
         if (tailingThread != null && tailingThread.isAlive()) return;
         if (readingThread != null && readingThread.isAlive()) return;
         Task readingTask = new Task<Void>() {
@@ -143,7 +143,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                         
                         while (readingStatus.getValue() && (sourceFile == null || !sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile())){
                             Thread.sleep(1000);
-                            System.out.println("Waiting for " + sourceFile.getPath());
+                            logger.debug("Waiting for " + sourceFile.getPath());
                             Platform.runLater(() ->{
                                 statusLabel.setText("Waiting for " + sourceFile.getPath());
                             });
@@ -159,7 +159,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                             readingStatus.setValue(Boolean.TRUE);
                         }
                     } catch (InterruptedException ex) {
-                        Logger.getLogger(PikaGenericBibTimeFileReader.class.getName()).log(Level.SEVERE, null, ex);
+                        logger.warn("Interrupted: ",ex);
                     }
                     return null;
                 }
@@ -215,7 +215,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                     } else readOnce();
                         
                 } else {
-                    System.out.println("No change in file name");
+                    logger.debug("No change in file name");
                 }
             });
             
@@ -232,7 +232,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
             bibIndexHBox.getChildren().addAll(bibIndexLabel,bibIndexSpinner);
             
             bibIndexSpinner.valueProperty().addListener((obs, oldValue, newValue) -> {
-                System.out.println("bibIndexSpinner new value: "+newValue);
+                logger.debug("bibIndexSpinner new value: "+newValue);
                 timingListener.setAttribute("TailingReader:bibIndex", newValue.toString());
             });
             
@@ -248,7 +248,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
             timeIndexHBox.getChildren().addAll(timeIndexLabel,timeIndexSpinner);
             
             timeIndexSpinner.valueProperty().addListener((obs, oldValue, newValue) -> {
-                System.out.println("timeIndexSpinner new value: "+newValue);
+                logger.debug("timeIndexSpinner new value: "+newValue);
                 timingListener.setAttribute("TailingReader:timeIndex", newValue.toString());
             });
             
@@ -274,10 +274,10 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
             watchProgressIndicator.setMaxHeight(30.0);
             autoImportToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if(newValue) {
-                    System.out.println("TailingReader: autoImportToggleSwitch event: calling startReading()");
+                    logger.debug("TailingReader: autoImportToggleSwitch event: calling startReading()");
                     startReading();
                 } else {
-                    System.out.println("TailingReader: autoImportToggleSwitch event: calling stopReading()");
+                    logger.debug("TailingReader: autoImportToggleSwitch event: calling stopReading()");
                     stopReading();
                 }
             });
@@ -307,7 +307,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
     private class MyHandler extends TailerListenerAdapter {
         @Override
         public void handle(String line) {
-            System.out.println("handle: " + line);
+            logger.debug("handle: " + line);
             process(line);
         }
     }
@@ -315,14 +315,14 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
     @Override
     public void readOnce() {
         // get the event date, just in case we need it
-        System.out.println("TailingReader.readOnce called.");
+        logger.debug("TailingReader.readOnce called.");
         stopReading();
         
         if (sourceFile == null || !sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile()) {
             statusLabel.setText("Unable to open file: " + fileName.getValueSafe());
             return;
         }
-        System.out.println("  Current file is: \"" + sourceFile.getAbsolutePath() + "\"");
+        logger.debug("  Current file is: \"" + sourceFile.getAbsolutePath() + "\"");
         // Run this in a tailingThread....
         Task task;
         task = new Task<Void>() {
@@ -331,7 +331,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                     reading.acquire();
                     try (Stream<String> s = Files.lines(sourceFile.toPath())) {
                         s.map(line -> line.trim()).filter(line -> !line.isEmpty()).forEach(line -> {
-                            //System.out.println("readOnce read " + s);
+                            logger.trace("readOnce read " + s);
                             process(line);
                         });
                         s.close();
@@ -372,10 +372,10 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
             dateAndTime = tokens[3].replaceAll("\"", "");
             
             if (port.equals("0") && ! chip.equals("0")) { // invalid combo
-                System.out.println("Non Start time: " + s);
+                logger.debug("Non Start time: " + s);
                 return;
             } else if (!port.matches("[1234]") && !chip.equals("0")){
-                System.out.println("Invalid Port: " + s);
+                logger.debug("Invalid Port: " + s);
                 return;
             }
             
@@ -405,8 +405,8 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
             time = dateTime[1];
         } else time = dateTime[0];
 
-        //System.out.println("Chip: " + chip);
-        //System.out.println("dateTime: " + dateTime);
+        logger.trace("Chip: " + chip);
+        logger.trace("dateTime: " + dateTime);
         
 
         
@@ -423,7 +423,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                 // if it is before the event date, just return
                 if (timestamp.isNegative()) {
                     String status = "Date of " + date + " is in the past, ignoring";
-                    System.out.println(status);
+                    logger.debug(status);
                     Platform.runLater(() -> {
                         statusLabel.textProperty().setValue(status);
                     });
@@ -431,7 +431,7 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                 } 
             } catch (Exception e) {
                 String status = "Unable to parse the date in \"" + date +"\" : " + e.getMessage();
-                System.out.println(status);
+                logger.debug(status);
                 Platform.runLater(() -> {
                     statusLabel.textProperty().setValue(status);
                 });
@@ -458,14 +458,14 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
                 timingListener.processRead(rawTime); // process it
             } else {
                 String status = "Unable to parse the time in " + time;
-                System.out.println(status);
+                logger.debug(status);
                 Platform.runLater(() -> {
                     statusLabel.textProperty().setValue(status);
                 });
             }
         } else {
             String status="Unable to parse the time: " + s;
-            System.out.println(status);
+            logger.debug(status);
             Platform.runLater(() -> {
                 statusLabel.textProperty().setValue(status);
             });
@@ -481,12 +481,12 @@ public class PikaGenericBibTimeFileReader implements TimingReader{
         // get any existing attributes
         String filename = timingListener.getAttribute("TailingReader:filename");
         if (filename != null) {
-            System.out.println("TailingReader: Found existing file setting: " + filename);
+            logger.debug("TailingReader: Found existing file setting: " + filename);
             sourceFile = new File(filename).getAbsoluteFile();
             fileName.setValue(filename);
             
         } else {
-            System.out.println("TailingReader: Did not find existing file setting." );
+            logger.debug("TailingReader: Did not find existing file setting." );
         }
         
         

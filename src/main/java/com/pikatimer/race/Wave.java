@@ -43,6 +43,8 @@ import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -52,6 +54,7 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="race_waves")
 public class Wave {
+    private static final Logger logger = LoggerFactory.getLogger(Wave.class);
     
     //private final Wave self; 
     private final IntegerProperty IDProperty;
@@ -245,10 +248,10 @@ public class Wave {
     
     public StringProperty waveDisplayNameProperty(){
         // setup the bindings for the waveDisplayName
-        System.out.println("Wave:waveDisplayNameProperty() called");
+        logger.debug("Wave:waveDisplayNameProperty() called");
 
         if (waveDNBinding==null && race != null && RaceDAO.getInstance().listRaces().size() > 0) {
-            System.out.println("Null WaveDNBinding");
+            logger.debug("Null WaveDNBinding");
 
 
             StringBinding waveDNBinding = new StringBinding() {
@@ -258,16 +261,16 @@ public class Wave {
 
                     @Override
                     protected String computeValue(){
-                        System.out.println("WaveDNBinding.computeValue() called");
+                        logger.debug("WaveDNBinding.computeValue() called");
 
                         if (race.wavesProperty().size() == 1 ) {
-                            System.out.println("WaveDNBinding.computeValue() returning " + race.getRaceName());
+                            logger.debug("WaveDNBinding.computeValue() returning " + race.getRaceName());
                             return race.getRaceName();
                         } else if (RaceDAO.getInstance().listRaces().size() == 1 ) {
-                            System.out.println("WaveDNBinding.computeValue() returning " + waveName.getValueSafe());
+                            logger.debug("WaveDNBinding.computeValue() returning " + waveName.getValueSafe());
                             return waveName.getValueSafe();
                         } else {
-                            System.out.println("WaveDNBinding.computeValue() returning " + race.getRaceName() + " " + waveName.getValueSafe());
+                            logger.debug("WaveDNBinding.computeValue() returning " + race.getRaceName() + " " + waveName.getValueSafe());
                             return race.getRaceName() + " " + waveName.getValueSafe();
                         } 
                     }
@@ -283,10 +286,10 @@ public class Wave {
     @Override
     public String toString(){
         if(race.wavesProperty().size()> 1) {
-            //System.out.println("Wave.toString() called: " + race.getRaceName() + " " + waveName.getValueSafe());
+            logger.trace("Wave.toString() called: " + race.getRaceName() + " " + waveName.getValueSafe());
             return race.getRaceName() + " " + waveName.getValueSafe(); 
         } else {
-            //System.out.println("Wave.toString() called: " + race.getRaceName() );
+            logger.trace("Wave.toString() called: " + race.getRaceName() );
             return race.getRaceName();
         }
     }
@@ -305,7 +308,7 @@ public class Wave {
 
     @Override
     public boolean equals(Object obj) {
-        //System.out.println("Wave.equals called for " + this.IDProperty.toString());
+        logger.trace("Wave.equals called for " + this.IDProperty.toString());
         if (obj == null) {
             return false;
         }
@@ -313,28 +316,28 @@ public class Wave {
             return false;
         }
         final Wave other = (Wave) obj;
-        //System.out.println("Wave.equals comparing to " + other.IDProperty.toString());
+        logger.trace("Wave.equals comparing to " + other.IDProperty.toString());
         if (!Objects.equals(this.race, other.race)) {
-        //System.out.println("Wave.equals false: race");
+        logger.trace("Wave.equals false: race");
         return false;
         }
         if (!Objects.equals(this.waveName.getValue(), other.waveName.getValue())) {
-            //System.out.println("Wave.equals false: waveName: " + this.waveName + " vs " + other.waveName);
+            logger.trace("Wave.equals false: waveName: " + this.waveName + " vs " + other.waveName);
             return false;
         }
         if (!Objects.equals(this.waveStart, other.waveStart)) {
-            //System.out.println("Wave.equals false: waveStart");
+            logger.trace("Wave.equals false: waveStart");
             return false;
         }
         if (this.waveAssignmentMethod != other.waveAssignmentMethod) {
-            //System.out.println("Wave.equals false: waveAssignmentMethod");
+            logger.trace("Wave.equals false: waveAssignmentMethod");
             return false;
         }
         if (!Objects.equals(this.wavePosition.getValue(), other.wavePosition.getValue())) {
-            //System.out.println("Wave.equals false: wavePosition");
+            logger.trace("Wave.equals false: wavePosition");
             return false;
         }
-        //System.out.println("Wave.equals true");
+        logger.trace("Wave.equals true");
         return true;
     }
     

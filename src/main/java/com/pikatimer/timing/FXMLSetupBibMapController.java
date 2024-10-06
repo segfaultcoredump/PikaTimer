@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import javafx.application.Platform;
@@ -54,6 +52,8 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.stage.FileChooser;
 import javafx.stage.WindowEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -61,6 +61,7 @@ import javafx.stage.WindowEvent;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class FXMLSetupBibMapController  {
+    private static final Logger logger = LoggerFactory.getLogger(FXMLSetupBibMapController.class);
 
     @FXML private TableView<ChipMap> bibMappingTableView;
     @FXML private TableColumn<ChipMap,String> chipTableColumn;
@@ -159,7 +160,7 @@ public class FXMLSetupBibMapController  {
         
         // Integers only... 
         startBibTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            System.out.println("startChipTextField Text Changed (newValue: " + newValue + ")");
+            logger.debug("startChipTextField Text Changed (newValue: " + newValue + ")");
             if (!newValue.isEmpty() && ! newValue.matches("^\\d+$")) {
                     Platform.runLater(() -> { 
                     int c = startBibTextField.getCaretPosition();
@@ -169,7 +170,7 @@ public class FXMLSetupBibMapController  {
             }
         });
         endBibTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            System.out.println("startChipTextField Text Changed (newValue: " + newValue + ")");
+            logger.debug("startChipTextField Text Changed (newValue: " + newValue + ")");
             if (!newValue.isEmpty() && ! newValue.matches("^\\d+$")) {
                     Platform.runLater(() -> { 
                     int c = endBibTextField.getCaretPosition();
@@ -179,7 +180,7 @@ public class FXMLSetupBibMapController  {
             }
         });
         chipOffsetTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            System.out.println("startChipTextField Text Changed (newValue: " + newValue + ")");
+            logger.debug("startChipTextField Text Changed (newValue: " + newValue + ")");
             if (!newValue.isEmpty() && ! newValue.matches("^\\d+$")) {
                     Platform.runLater(() -> { 
                     int c = chipOffsetTextField.getCaretPosition();
@@ -192,7 +193,7 @@ public class FXMLSetupBibMapController  {
         // no leading spaces, no leading zeroes
         // we remove trailing spaces on focus lost
         chipTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+            logger.debug("TextField Text Changed (newValue: " + newValue + ")");
             if (!newValue.isEmpty()) {
                 
 
@@ -212,7 +213,7 @@ public class FXMLSetupBibMapController  {
         });
         
         bibTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+            logger.debug("TextField Text Changed (newValue: " + newValue + ")");
             if (!newValue.isEmpty()) {
                 
 
@@ -270,10 +271,10 @@ public class FXMLSetupBibMapController  {
                     
                     if(t[0].toLowerCase().contains("chip")) {
                         chipFirst.set(true);
-                        System.out.println("Found a chip -> bib file");
+                        logger.debug("Found a chip -> bib file");
                     } else if (t[0].toLowerCase().contains("bib")) {
                         chipFirst.set(false);
-                        System.out.println("Found a bib -> chip file");
+                        logger.debug("Found a bib -> chip file");
                     } else {
                         ChipMap newMapping = new ChipMap(t[0],t[1]);
                         if (chipMapList.contains(newMapping)){
@@ -283,24 +284,24 @@ public class FXMLSetupBibMapController  {
                         }
                         mapModified.setValue(true);    
                         
-                        System.out.println("No header in file");
-                        System.out.println("Mapped chip " + t[0] + " to " + t[1]);
+                        logger.debug("No header in file");
+                        logger.debug("Mapped chip " + t[0] + " to " + t[1]);
                     }
                     Files.lines(sourceFile.toPath())
                         .map(s -> s.trim())
                         .filter(s -> !s.isEmpty())
                         .skip(1)
                         .forEach(s -> {
-                            //System.out.println("readOnce read " + s); 
+                            logger.trace("readOnce read " + s); 
                             String[] tokens = s.split(",", -1);
                             if (t.length != 2) return; 
                             ChipMap newMapping;
                             if(chipFirst.get()) {
                                 newMapping = new ChipMap(tokens[0],tokens[1]);
-                                System.out.println("Mapped chip " + tokens[0] + " to " + tokens[1]);
+                                logger.debug("Mapped chip " + tokens[0] + " to " + tokens[1]);
                             } else {
                                 newMapping = new ChipMap(tokens[1],tokens[0]);
-                                System.out.println("Mapped chip " + tokens[1] + " to " + tokens[0]);
+                                logger.debug("Mapped chip " + tokens[1] + " to " + tokens[0]);
                             }
                             
                             if (chipMapList.contains(newMapping)){
@@ -312,10 +313,10 @@ public class FXMLSetupBibMapController  {
                             
                             
                         });
-                    System.out.println("Found a total of " + chipMapList.size() + " mappings");
+                    logger.debug("Found a total of " + chipMapList.size() + " mappings");
                     
                 } catch (IOException ex) {
-                    Logger.getLogger(PikaRFIDFileReader.class.getName()).log(Level.SEVERE, null, ex);
+                    logger.warn("Error Reading file {}",sourceFile.getAbsolutePath(),ex);
                     // We had an issue reading the file.... 
                 }
             
@@ -352,7 +353,7 @@ public class FXMLSetupBibMapController  {
             }
             
         } catch (Exception ex){
-            System.out.println(ex.getMessage());
+            logger.debug(ex.getMessage());
         }
         startBibTextField.setText("");
         endBibTextField.setText("");
@@ -391,9 +392,9 @@ public class FXMLSetupBibMapController  {
         
         Task reprocessAllRawTimes = new Task<Void>() {
             @Override public Void call() {
-                System.out.println("Starting reprocessAllRawTimes()");
+                logger.debug("Starting reprocessAllRawTimes()");
                 timingDAO.reprocessAllRawTimes();
-                System.out.println("Done with reprocessAllRawTimes()");
+                logger.debug("Done with reprocessAllRawTimes()");
                 return null;
             }
         };
@@ -430,11 +431,10 @@ public class FXMLSetupBibMapController  {
     private void updateFilterPredicate(){
         filteredchipMapList.setPredicate(chipMap -> {
             // If filter text is empty, display all persons.
-           // System.out.println("filteredParticpantsList.predicateProperty changing...");
-            //System.out.println("...filterField="+filterField.textProperty().getValue());
-            //System.out.println("...searchWaveComboBox=" + searchWaveComboBox.getCheckModel().getCheckedItems().size());
+            logger.trace("filteredParticpantsList.predicateProperty changing...");
+
             if (searchTextField.textProperty().getValueSafe().isEmpty()) {
-                //System.out.println("...both are empty: true");
+                logger.trace("...both are empty: true");
                 return true;
             }
 
@@ -478,7 +478,7 @@ public class FXMLSetupBibMapController  {
         
         @Override
         public boolean equals(Object obj) {
-        //System.out.println("Wave.equals called for " + this.IDProperty.toString());
+        
         if (obj == null) {
             return false;
         }
@@ -486,7 +486,6 @@ public class FXMLSetupBibMapController  {
             return false;
         }
         final ChipMap other = (ChipMap) obj;
-            //System.out.println("Wave.equals true");
         
         return Objects.equals(this.chipProperty.getValue(), other.chipProperty.getValue());
     }

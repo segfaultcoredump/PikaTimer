@@ -41,6 +41,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -50,6 +52,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="overrides")
 public class TimeOverride {
+    private static final Logger logger = LoggerFactory.getLogger(TimeOverride.class);
+    
     private Integer timeOverrideID;
     private String chip;
     private Integer splitId;
@@ -90,7 +94,7 @@ public class TimeOverride {
         if (ot != null) {
             overrideType = ot;
         } else {
-            System.out.println("setOverrideType called with NULL!!!");
+            logger.debug("setOverrideType called with NULL!!!");
         }
     }
 
@@ -151,11 +155,9 @@ public class TimeOverride {
     
     @Column(name="split_id") 
     public Integer getSplitId() {
-        //System.out.println("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return splitId;
     }
     public void setSplitId(Integer i) {
-        //System.out.println("RawTimeData: Setting timingLocationInputId to " + i);
         splitId = i;
         splitIdProperty.set(i);
     }

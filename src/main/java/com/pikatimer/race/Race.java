@@ -59,12 +59,14 @@ import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Entity
 @DynamicUpdate
 @Table(name="RACE")
 public class Race {
-    
+    private static final Logger logger = LoggerFactory.getLogger(Race.class);
 
     private final IntegerProperty IDProperty;
     private final StringProperty uuidProperty = new SimpleStringProperty(java.util.UUID.randomUUID().toString());
@@ -216,7 +218,7 @@ public class Race {
     }
     public void setRaceCutoff(Long c) {
         if(c != null) {
-            System.out.println("setRaceCutoff " + c.toString());
+            logger.debug("setRaceCutoff " + c.toString());
             raceCutoff = Duration.ofNanos(c);
             if (raceCutoff.isZero()) raceCutoffProperty.set(""); 
             else raceCutoffProperty.set(DurationFormatter.durationToString(raceCutoff, 0, Boolean.TRUE));
@@ -238,13 +240,13 @@ public class Race {
     public void setWaves(List<Wave> waves) {
         raceWavesList = waves; 
         if (waves == null) {
-            System.out.println("Race.setWaves(list) called for " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " with null waves");
+            logger.debug("Race.setWaves(list) called for " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " with null waves");
         } else {
-            System.out.println("Race.setWaves(list) called for " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " with " + waves.size() + " waves");
+            logger.debug("Race.setWaves(list) called for " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " with " + waves.size() + " waves");
         } 
         
         if (waves != null) raceWaves.setAll(waves);
-        System.out.println("Race.setWaves(list) " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " now has " + raceWaves.size() + " waves");
+        logger.debug("Race.setWaves(list) " + raceName.getValueSafe() + "(" + IDProperty.toString() + ")" + " now has " + raceWaves.size() + " waves");
     }
     public ObservableList<Wave> wavesProperty() {
         return raceWaves; 
@@ -269,16 +271,16 @@ public class Race {
         //return raceSplits.sorted((Split o1, Split o2) -> o1.getPosition().compareTo(o2.getPosition()));
     }
     public void setSplits(List<Split> splits) {
-//        System.out.println("Race.setSplits(list) called for " + raceName + " with " + splits.size() + " splits"); 
-//        splits.stream().forEach(e -> System.out.println(e.getSplitName() + " " + e.getPosition()));
+//        logger.debug("Race.setSplits(list) called for " + raceName + " with " + splits.size() + " splits"); 
+//        splits.stream().forEach(e -> logger.debug(e.getSplitName() + " " + e.getPosition()));
 //        splits
 //            .stream()
 //            .sorted((e1, e2) -> Integer.compare(e1.getPosition(),
 //                    e2.getPosition()))
-//            .forEach(e -> System.out.println(e.getSplitName()));
+//            .forEach(e -> logger.debug(e.getSplitName()));
         raceSplitList = splits;
         if (splits != null) raceSplits.setAll(splits);
-//        System.out.println("Race.setSplits(list) " + raceName + " now has " + raceSplits.size() + " splits");
+//        logger.debug("Race.setSplits(list) " + raceName + " now has " + raceSplits.size() + " splits");
     }
     public ObservableList<Split> splitsProperty() {
         return raceSplits; 
@@ -304,10 +306,10 @@ public class Race {
         return awards;
     }
     public void setAwards(RaceAwards a) {
-        System.out.println("Race::setAwards called.... ");
+        logger.debug("Race::setAwards called.... ");
         if (awards == null) awards = a;
         
-        if (awards != null && awards.equals(a)) System.out.println("Race::setAwards called to set the awards to an equal awards object... ");
+        if (awards != null && awards.equals(a)) logger.debug("Race::setAwards called to set the awards to an equal awards object... ");
         // make sure awards is linked back to us
         if (awards != null && awards.getRace() != this) awards.setRace(this);
         
@@ -342,9 +344,9 @@ public class Race {
     }
     public void setRaceReports(List<RaceReport> rr) {
         raceReportsList = rr;
-        if (rr == null) System.out.println("Race.setRaceReports(list) called with null list");
+        if (rr == null) logger.debug("Race.setRaceReports(list) called with null list");
         if (rr != null) raceReports.setAll(rr);
-        System.out.println("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
+        logger.debug("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
 
     }
     public ObservableList<RaceReport> raceReportsProperty() {
@@ -370,9 +372,9 @@ public class Race {
     }
     public void setSegments(List<Segment> s) {
         segmentsList = s;
-        if (s == null) System.out.println("Race.setRaceReports(list) called with null list");
+        if (s == null) logger.debug("Race.setRaceReports(list) called with null list");
         if (s != null) raceSegments.setAll(s);
-        //System.out.println("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
+        logger.trace("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
     }
     public ObservableList<Segment> raceSegmentsProperty() {
         return raceSegments.sorted((s1, s2)-> s1.compareTo(s2)); 
@@ -399,12 +401,12 @@ public class Race {
     }
     public void setCourseRecords(List<CourseRecord> crs) {
         courseRecordList = crs;
-        if (crs == null) System.out.println("Race.setCourseRecords(list) called with null list");
+        if (crs == null) logger.debug("Race.setCourseRecords(list) called with null list");
         if (crs != null) {
             crs.sort((s1, s2)-> s1.compareTo(s2));
             courseRecords.setAll(crs);
         }
-        //System.out.println("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
+        logger.trace("Race.setRaceReports(list) " + raceName.getValueSafe() + "( " + IDProperty.getValue().toString() + ")" + " now has " + raceReports.size() + " Reports");
     }
     public ObservableList<CourseRecord> raceCourseRecordsProperty() {
         return courseRecords; 
@@ -424,12 +426,12 @@ public class Race {
 
     @Column(name="UUID")
     public String getUUID() {
-       // System.out.println("Participant UUID is " + uuidProperty.get());
+       // logger.debug("Participant UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("Participant UUID is now " + uuidProperty.get());
+        logger.trace("Participant UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -465,7 +467,7 @@ public class Race {
             if (attributes.containsKey(key)) {
                 intAttributes.put(key,Integer.parseUnsignedInt(attributes.get(key)));
             } else {
-                System.out.println("RaceAwards.getIntegerAtrribute key of " + key + " is NULL!");
+                logger.debug("RaceAwards.getIntegerAtrribute key of " + key + " is NULL!");
                 return null;
             }
         }
@@ -483,7 +485,7 @@ public class Race {
             if (attributes.containsKey(key)) {
                 boolAttributes.put(key,Boolean.parseBoolean(attributes.get(key)));
             } else {
-                System.out.println("RaceAwards.getBooleanAtrribute key of " + key + " is NULL!");
+                logger.debug("RaceAwards.getBooleanAtrribute key of " + key + " is NULL!");
                 return null;
             }
         }

@@ -40,12 +40,16 @@ import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 public class AgeGroup implements RaceReportType {
+    private static final Logger logger = LoggerFactory.getLogger(AgeGroup.class);
+    
     Race race;
     
     // Defaults
@@ -97,7 +101,7 @@ public class AgeGroup implements RaceReportType {
     
     @Override
     public String process(List<ProcessedResult> prList, RaceReport rr) {
-        System.out.println("AgeGroup.process() Called... ");
+        logger.debug("AgeGroup.process() Called... ");
         String report = new String();
         
         race = rr.getRace();
@@ -215,7 +219,7 @@ public class AgeGroup implements RaceReportType {
         String dispFormat = race.getStringAttribute("TimeDisplayFormat");
         String roundMode = race.getStringAttribute("TimeRoundingMode");
         Pace pace = Pace.valueOf(race.getStringAttribute("PaceDisplayFormat"));
-        //System.out.println("Age Group Processing: Display Format: " + dispFormat + " Rounding " + roundMode);
+        logger.trace("Age Group Processing: Display Format: " + dispFormat + " Rounding " + roundMode);
         
         Integer dispFormatLength;  // add a space
         if (dispFormat.contains("[HH:]")) dispFormatLength = dispFormat.length()-1; // get rid of the two brackets and add a space
@@ -326,13 +330,13 @@ public class AgeGroup implements RaceReportType {
             if (showGun && ! hideTime) chars.append(StringUtils.leftPad(DurationFormatter.durationToString(pr.getGunFinish(), dispFormat, roundMode), dispFormatLength));
             if (showPace && ! hideTime) chars.append(StringUtils.leftPad(pace.getPace(race.getRaceDistance().floatValue(), race.getRaceDistanceUnits(), pr.getChipFinish()),pace.getFieldWidth()+1));
 
-//            System.out.println("Results: " + r.getRaceName() + ": "
-//                    + r.getParticipant().fullNameProperty().getValueSafe() 
-//                    + "(" + pr.getSex() + pr.getAGCode() + "): " 
-//                    + DurationFormatter.durationToString(pr.getChipFinish())
-//                    + " O:" + pr.getOverall() + " S:" + pr.getSexPlace() 
-//                    + " AG:" + pr.getAGPlace()
-//            );
+            logger.debug("Results: " + race.getRaceName() + ": "
+                    + pr.getParticipant().fullNameProperty().getValueSafe() 
+                    + "(" + pr.getSex() + pr.getAGCode() + "): " 
+                    + DurationFormatter.durationToString(pr.getChipFinish())
+                    + " O:" + pr.getOverall() + " S:" + pr.getSexPlace() 
+                    + " AG:" + pr.getAGPlace()
+            );
             
             chars.append(System.lineSeparator());
         

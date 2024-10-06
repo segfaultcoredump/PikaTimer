@@ -37,19 +37,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
-import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -82,12 +77,10 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import static javafx.scene.control.TableView.CONSTRAINED_RESIZE_POLICY;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.CheckBoxTableCell;
-import javafx.scene.control.cell.ChoiceBoxTableCell;
 import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldListCell;
@@ -101,12 +94,13 @@ import javafx.scene.text.Font;
 import javafx.stage.Modality;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
-import javafx.util.Callback;
 import javafx.util.StringConverter;
 import org.apache.commons.lang3.StringUtils;
 import org.controlsfx.control.CheckComboBox;
 import org.controlsfx.control.PrefixSelectionComboBox;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -115,6 +109,8 @@ import org.controlsfx.control.ToggleSwitch;
  */
 
 public class FXMLTimingController {
+    private static final Logger logger = LoggerFactory.getLogger(FXMLTimingController.class);
+    
     @FXML private VBox timingVBox;
     @FXML private ListView<TimingLocation> timingLocListView;
     @FXML private Button timingLocRemoveAllButton;
@@ -199,7 +195,7 @@ public class FXMLTimingController {
                 if (t != null) {
                 return ((TimingLocation)t).toString(); 
                 } else {
-                    System.out.println("Timing StringConverter toString null object detected.");
+                    logger.debug("Timing StringConverter toString null object detected.");
                     return "";
                 }
             }
@@ -207,7 +203,7 @@ public class FXMLTimingController {
         ));		
 
         timingLocListView.setOnEditCommit((ListView.EditEvent<TimingLocation> t) -> {
-            System.out.println("setOnEditCommit " + t.getIndex());
+            logger.debug("setOnEditCommit " + t.getIndex());
             if(t.getIndex() < t.getSource().getItems().size()) {
                 TimingLocation tl = t.getSource().getItems().get(t.getIndex()); 
                 if (t.getNewValue().toString().isEmpty()) {
@@ -219,14 +215,14 @@ public class FXMLTimingController {
                     timingDAO.updateTimingLocation(tl);
                 }
             } else {
-                System.out.println("Timing setOnEditCommit event out of index: " + t.getIndex());
+                logger.debug("Timing setOnEditCommit event out of index: " + t.getIndex());
             }
             timingLocAddButton.requestFocus();
            // timingLocAddButton.setDefaultButton(true);
         });
 
         timingLocListView.setOnEditCancel((ListView.EditEvent<TimingLocation> t) ->{
-            System.out.println("setOnEditCancel " + t.getIndex());
+            logger.debug("setOnEditCancel " + t.getIndex());
             if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                 TimingLocation tl = t.getSource().getItems().get(t.getIndex());
                 if (tl.getLocationName().isEmpty()) {
@@ -234,7 +230,7 @@ public class FXMLTimingController {
                     timingDAO.removeTimingLocation(tl);
                 }
             } else {
-                System.out.println("Timing setOnEditCancel event out of index: " + t.getIndex());
+                logger.debug("Timing setOnEditCancel event out of index: " + t.getIndex());
             }
             timingLocAddButton.requestFocus();
             //timingLocAddButton.setDefaultButton(true);
@@ -259,9 +255,8 @@ public class FXMLTimingController {
         });
         searchScopeCheckComboBox.getCheckModel().getCheckedItems().addListener((ListChangeListener.Change<? extends TimingLocation> c) -> {
             
-            System.out.println("TimingPartController::searchScopeCheckComboBox(changeListener) fired...");
+            logger.debug("TimingPartController::searchScopeCheckComboBox(changeListener) fired...");
             updateFilterPredicate();
-            //System.out.println(waveComboBox.getCheckModel().getCheckedItems());
         });
         
         searchScopeCheckComboBox.getItems().setAll(timingLocationList);
@@ -334,7 +329,7 @@ public class FXMLTimingController {
             while (c.next()) {
                 if (c.wasUpdated()) {
                     timingDAO.saveCookedTime(sortedTimeList.get(c.getFrom()));
-                    System.out.println("CookedTimeData "+sortedTimeList.get(c.getFrom()).getBib()+" changed value to " +sortedTimeList.get(c.getFrom()).getIgnoreTime());
+                    logger.debug("CookedTimeData "+sortedTimeList.get(c.getFrom()).getBib()+" changed value to " +sortedTimeList.get(c.getFrom()).getIgnoreTime());
                 }
             }
         });
@@ -342,7 +337,7 @@ public class FXMLTimingController {
 //        //Need a change listener for the ignoreColumn. Find the cooked read, flag it as an ignore, reprocess the bib
 //        ignoreColumn.setOnEditCommit((CellEditEvent<CookedTimeData, Boolean> t) -> {
 //            CookedTimeData ct = t.getTableView().getItems().get(t.getTablePosition().getRow());
-//            System.out.println("Ignore flag for CookedTime for bib " + ct.getBib() + " at " + ct.getTimestamp().toString() + " is now " + ct.ignoreTimeProperty().toString());
+//            logger.debug("Ignore flag for CookedTime for bib " + ct.getBib() + " at " + ct.getTimestamp().toString() + " is now " + ct.ignoreTimeProperty().toString());
 //            timingDAO.saveCookedTime(ct);
 //        });
 
@@ -380,14 +375,14 @@ public class FXMLTimingController {
         assignToRaceToggleSwitch.managedProperty().bind(Bindings.size(RaceDAO.getInstance().listWaves()).greaterThan(1));
         
         timingLocListView.getSelectionModel().getSelectedItems().addListener((ListChangeListener.Cha‌​nge<? extends TimingLocation> c) -> { 
-            System.out.println("timingLocListView changed...");
+            logger.debug("timingLocListView changed...");
             //timingLocListView.getSelectionModel().getSelectedItems().forEach(System.out::println); 
             ObservableList<TimingLocation> selectedTimingLocations = timingLocListView.getSelectionModel().getSelectedItems();
 
             timingDetailsVBox.getChildren().clear();
 
             if ( selectedTimingLocations.isEmpty() ) {
-               System.out.println("Nothing Selected");
+               logger.debug("Nothing Selected");
                //timingLocationDetailsController.selectTimingLocation(null);
                if (selectedTimingLocation != null) {
                    timingLocationNameTextField.textProperty().unbindBidirectional(selectedTimingLocation.LocationNameProperty());
@@ -395,11 +390,11 @@ public class FXMLTimingController {
                    timingLocVBox.disableProperty().setValue(true);
                }
             } else {
-                System.out.println("We just selected " + selectedTimingLocations.get(0).getLocationName());
+                logger.debug("We just selected " + selectedTimingLocations.get(0).getLocationName());
                 //timingLocationNameTextField.textProperty().setValue(selectedTimingLocations.get(0).LocationNameProperty().getValue());
                 timingLocVBox.disableProperty().setValue(false);
                 if (selectedTimingLocation != null) {
-                    System.out.println("Unbinding timingLocationNameTextField");
+                    logger.debug("Unbinding timingLocationNameTextField");
                     timingLocationNameTextField.textProperty().unbindBidirectional(selectedTimingLocation.LocationNameProperty());
                 }
                 selectedTimingLocation=selectedTimingLocations.get(0); 
@@ -420,17 +415,17 @@ public class FXMLTimingController {
                 filterEndTextField.textProperty().setValue(DurationFormatter.durationToString(selectedTimingLocation.getFilterEndDuration(), 3, Boolean.TRUE).replace(".000", ""));
                 filterStartTextField.textProperty().setValue(DurationFormatter.durationToString(selectedTimingLocation.getFilterStartDuration(), 3, Boolean.TRUE).replace(".000", ""));
                 
-                System.out.println("Selected timing location is now " + selectedTimingLocation.getLocationName());
+                logger.debug("Selected timing location is now " + selectedTimingLocation.getLocationName());
                 //timingLocationDetailsController.setTimingLocationInput(null); // .selectTimingLocation(selectedTimingLocations.get(0));
                 if (selectedTimingLocation.inputsProperty().isEmpty() ) { // no inputs yet
                     addTimingInput(null);
                 } else { // display all of the inputs
-                    System.out.println("Starting the display of inputs for a timing location");
+                    logger.debug("Starting the display of inputs for a timing location");
                     selectedTimingLocation.getInputs().forEach(i -> {
-                        System.out.println("showing input for a timing location ");
+                        logger.debug("showing input for a timing location ");
                         showTimingInput(i);
                     });
-                    System.out.println("Done showing inputs for a timing location");
+                    logger.debug("Done showing inputs for a timing location");
                 }
             }
         });
@@ -439,7 +434,7 @@ public class FXMLTimingController {
         
         timingLocationNameTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
-            System.out.println("timingLocationNameTextField out focus");
+            logger.debug("timingLocationNameTextField out focus");
 
                 if ( timingLocationNameTextField.getText().isEmpty() ) {
                     timingLocationNameTextField.textProperty().setValue("Unnamed");
@@ -454,19 +449,19 @@ public class FXMLTimingController {
         // Use this if you whant keystroke by keystroke monitoring.... Reject any non digit attempts
 //        filterStartTextField.textProperty().addListener((observable, oldValue, newValue) -> {
 //            if ( newValue.isEmpty() || newValue.matches("([0-9]*|[0-9]*:[0-5]?)") ) {
-//                System.out.println("Possiblely good filter Time (newValue: " + newValue + ")");
+//                logger.debug("Possiblely good filter Time (newValue: " + newValue + ")");
 //            } else if(newValue.matches("[0-9]*:[0-5][0-9]") ) { // Looks like a HH:MM time, lets check
-//                System.out.println("Looks like a valid start filter Time (newValue: " + newValue + ")");
+//                logger.debug("Looks like a valid start filter Time (newValue: " + newValue + ")");
 //            } else {
 //                filterStartTextField.setText(oldValue);
-//                System.out.println("Bad filter Start Time (newValue: " + newValue + ")");
+//                logger.debug("Bad filter Start Time (newValue: " + newValue + ")");
 //            }
 //                
 //        });
         // but only update when the textfield focus changes. 
         filterStartTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
-                System.out.println("filterStartTextField out focus");
+                logger.debug("filterStartTextField out focus");
                 Duration newTime;
                 if (DurationParser.parsable(filterStartTextField.getText())){
                     newTime = DurationParser.parse(filterStartTextField.getText());
@@ -492,7 +487,7 @@ public class FXMLTimingController {
         });
         filterEndTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
-                System.out.println("filterEndTextField out focus");
+                logger.debug("filterEndTextField out focus");
                                         
                 Duration newTime;
                 if (DurationParser.parsable(filterEndTextField.getText())){
@@ -519,9 +514,9 @@ public class FXMLTimingController {
         });
         
         filterStartTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+            logger.trace("TextField Text Changed (newValue: " + newValue + ")");
             if ( newValue.isEmpty() || newValue.matches("^[0-9]+(:([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = filterStartTextField.getCaretPosition();
@@ -530,15 +525,15 @@ public class FXMLTimingController {
                     filterStartTextField.setText(oldValue);
                     filterStartTextField.positionCaret(c);
                 });
-                System.out.println("Bad End Filter Time (newValue: " + newValue + ")");
+                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
             }
                 
         });
         
         filterEndTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+            logger.trace("TextField Text Changed (newValue: " + newValue + ")");
             if ( newValue.isEmpty() || newValue.matches("^[0-9]+(:([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = filterEndTextField.getCaretPosition();
@@ -547,7 +542,7 @@ public class FXMLTimingController {
                     filterEndTextField.setText(oldValue);
                     filterEndTextField.positionCaret(c);
                 });
-                System.out.println("Bad End Filter Time (newValue: " + newValue + ")");
+                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
             }
                 
         });
@@ -564,7 +559,7 @@ public class FXMLTimingController {
                 TimingLocation tl = timingLocListView.getSelectionModel().getSelectedItems().get(0);
                 if (tl != null) {
                     if (!tl.getAutoAssignRaceID().equals(-1)) {
-                        System.out.println("Everybody at " + tl.getLocationName() + " is no longer auto-assigned");
+                        logger.debug("Everybody at " + tl.getLocationName() + " is no longer auto-assigned");
                         tl.setAutoAssignRaceID(-1);
                         timingDAO.updateTimingLocation(tl);
                         assignToRaceComboBox.getSelectionModel().clearSelection();
@@ -582,7 +577,7 @@ public class FXMLTimingController {
                 Race race = assignToRaceComboBox.getSelectionModel().getSelectedItem();
                 if (tl != null && race != null) {
                     if (!tl.getAutoAssignRaceID().equals(race.getID())) {
-                        System.out.println("Everybody at " + tl.getLocationName() + " now assigned to race " + race.getRaceName());
+                        logger.debug("Everybody at " + tl.getLocationName() + " now assigned to race " + race.getRaceName());
                         tl.setAutoAssignRaceID(race.getID());
                         timingDAO.updateTimingLocation(tl);
                         selectedTimingLocation.reprocessReads();
@@ -598,7 +593,7 @@ public class FXMLTimingController {
         //customChipBibCheckBox.selectedProperty().bind(bib2ChipMap.useCustomMapProperty());
         
         customChipBibCheckBox.setOnAction(a -> {
-            System.out.println("bib2ChipMap custom checkbox clicked!");
+            logger.debug("bib2ChipMap custom checkbox clicked!");
             if (bib2ChipMap.useCustomMapProperty().get()) {
                 bib2ChipMap.setUseCustomMap(false);
                 timingDAO.saveBib2ChipMap(bib2ChipMap);
@@ -613,7 +608,7 @@ public class FXMLTimingController {
         });    
 //        customChipBibCheckBox.selectedProperty().addListener((ObservableValue<? extends Boolean> ov, Boolean old_val, Boolean new_val) -> {
 //            if (!old_val.equals(new_val)) {
-//                System.out.println("Setting bib2ChipMap custom to " + new_val.toString());
+//                logger.debug("Setting bib2ChipMap custom to " + new_val.toString());
 //                if (new_val) setupCustomChipMap(null);
 //                //bib2ChipMap.setUseCustomMap(new_val);
 //                //timingDAO.saveBib2ChipMap(bib2ChipMap);
@@ -738,7 +733,7 @@ public class FXMLTimingController {
          timingLocationList.addListener((Change<? extends TimingLocation> change) -> {
             //waveComboBox.getItems().clear();
             //Platform.runLater(() -> {
-            System.out.println("TimingController::timingLocationList(changeListener) fired...");
+            logger.debug("TimingController::timingLocationList(changeListener) fired...");
                 
             // TODO
             //rework the popup menu for the add/delete
@@ -784,7 +779,7 @@ public class FXMLTimingController {
         
         timingDAO.addTimingLocation(t);
 
-        System.out.println("Setting the timingLocListView.edit to " + timingLocationList.size() + " " + timingLocationList.indexOf(t));
+        logger.debug("Setting the timingLocListView.edit to " + timingLocationList.size() + " " + timingLocationList.indexOf(t));
         timingLocListView.getSelectionModel().select(timingLocationList.indexOf(t));
         
         //timingLocListView.edit(timingLocationList.indexOf(t));
@@ -829,13 +824,13 @@ public class FXMLTimingController {
     }
     
     private void showTimingInput(TimingLocationInput i) {
-        System.out.println("showTimingInput called... ");
+        logger.debug("showTimingInput called... ");
         FXMLLoader tlLoader = new FXMLLoader(getClass().getResource("/com/pikatimer/timing/FXMLTimingLocationInput.fxml"));
         try {
             timingDetailsVBox.getChildren().add(tlLoader.load());
             
         } catch (IOException ex) {
-            Logger.getLogger(FXMLTimingController.class.getName()).log(Level.SEVERE, null, ex);
+            logger.error("Unable to load FXML FXMLTimingLocationInput.fxml",ex);
         }
         ((FXMLTimingLocationInputController)tlLoader.getController()).setTimingLocationInput(i); 
         //timingLocationDetailsController.selectTimingLocation(selectedTimingLocation);
@@ -885,7 +880,7 @@ public class FXMLTimingController {
             stage.setScene(new Scene(chipMapRoot));  
             stage.showAndWait();
         } catch (IOException ex) {
-            Logger.getLogger(FXMLTimingController.class.getName()).log(Level.SEVERE, null, ex);
+            logger.warn("Error in setupCustomChipMap:",ex);
         }
             
         customChipBibCheckBox.setSelected(bib2ChipMap.getUseCustomMap()); 
@@ -1008,7 +1003,7 @@ public class FXMLTimingController {
         TextField timeTextField = new TextField();
         timeTextField.setPromptText("HH:MM:SS.sss");
         timeTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                    //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+                    logger.trace("TextField Text Changed (newValue: " + newValue + ")");
             timeOK.setValue(false);
             
             if (TimeOverrideType.OVERRIDE.equals(typeComboBox.getValue())) {
@@ -1020,7 +1015,7 @@ public class FXMLTimingController {
                 else timeOK.setValue(false);
             }
             if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = timeTextField.getCaretPosition();
@@ -1029,7 +1024,7 @@ public class FXMLTimingController {
                     timeTextField.setText(oldValue);
                     timeTextField.positionCaret(c);
                 });
-                System.out.println("Bad End Filter Time (newValue: " + newValue + ")");
+                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
             }
                 
         });
@@ -1203,7 +1198,7 @@ public class FXMLTimingController {
         // Debug output
         startTimesByLocation.keySet().forEach(k -> {
             startTimesByLocation.get(k).forEach(d -> {
-                System.out.println("Found Start: TL#" + k + " -> " + DurationFormatter.durationToString(d));
+                logger.debug("Found Start: TL#" + k + " -> " + DurationFormatter.durationToString(d));
             });
         });
         
@@ -1222,7 +1217,7 @@ public class FXMLTimingController {
         Map<Integer,List<Wave>> wavesByLocation = new HashMap();
         RaceDAO.getInstance().listRaces().forEach(race -> {
             if (race.getSplits() == null || race.getSplits().isEmpty()) {
-                System.out.println(" RACE HAS NO SPLITS!!! " + race.getRaceName());
+                logger.debug(" RACE HAS NO SPLITS!!! " + race.getRaceName());
                 return;
             }
             Integer tlID = race.getSplits().get(0).getTimingLocationID();
@@ -1345,7 +1340,7 @@ public class FXMLTimingController {
                         Duration d = w.orgStartTime;
                         Long millis = null; 
                         
-                        System.out.println("Looking for a start trigger for " + w.wName.get() + " at " + DurationFormatter.durationToString(w.orgStartTime,3));
+                        logger.debug("Looking for a start trigger for " + w.wName.get() + " at " + DurationFormatter.durationToString(w.orgStartTime,3));
                         // loop through the unprocessed start times
                         for (int i = startIndex; i < maxStartIndex; i++) {
                             
@@ -1354,26 +1349,26 @@ public class FXMLTimingController {
                                 w.newStartTime.set(startTimes.get(i));
                                 w.update.set(false); // unset the update flag
                                 startIndex = i+1;
-                                System.out.println("  Exact Match at " + DurationFormatter.durationToString(w.newStartTime.get(),3));
+                                logger.debug("  Exact Match at " + DurationFormatter.durationToString(w.newStartTime.get(),3));
                                 break;
                             }
                             // otherwise, if we have not assigned a time yet 
                             // or the new time is closer than the old one... 
                             if (millis == null || startTimes.get(i).minus(d).abs().toMillis() < millis) { 
                                 millis = startTimes.get(i).minus(d).abs().toMillis();
-                                System.out.println("  Possible Match of " + DurationFormatter.durationToString(startTimes.get(i),3) + " within " + millis + " millis away");
+                                logger.debug("  Possible Match of " + DurationFormatter.durationToString(startTimes.get(i),3) + " within " + millis + " millis away");
                                 // if the new time is closer to the next wave bail
                                 if (waveIndex+1 < maxWaveIndex && 
                                         millis > waveStarts.get(waveIndex+1).orgStartTime.minus(startTimes.get(i)).abs().toMillis()) {
-                                    System.out.println("  But it is closer to the next time of " + DurationFormatter.durationToString(waveStarts.get(waveIndex+1).orgStartTime,3));
-                                    System.out.println("  which is only " + waveStarts.get(waveIndex+1).orgStartTime.minus(startTimes.get(i)).abs().toMillis() + " millis away");
+                                    logger.debug("  But it is closer to the next time of " + DurationFormatter.durationToString(waveStarts.get(waveIndex+1).orgStartTime,3));
+                                    logger.debug("  which is only " + waveStarts.get(waveIndex+1).orgStartTime.minus(startTimes.get(i)).abs().toMillis() + " millis away");
                                     break;
                                 } 
                                 w.newStartTime.set(startTimes.get(i));
                                 w.update.set(true);
                                 startIndex = i+1;
                             } else {
-                                System.out.println("  Possible Match of " + DurationFormatter.durationToString(startTimes.get(i),3) + " is " + startTimes.get(i).minus(d).abs().toMillis() + " millis away");
+                                logger.debug("  Possible Match of " + DurationFormatter.durationToString(startTimes.get(i),3) + " is " + startTimes.get(i).minus(d).abs().toMillis() + " millis away");
                                 break;
                             }
                         }
@@ -1423,11 +1418,9 @@ public class FXMLTimingController {
     private void updateFilterPredicate(){
         filteredTimesList.setPredicate(cookedRead -> {
             // If filter text is empty, display all persons.
-           // System.out.println("filteredParticpantsList.predicateProperty changing...");
-            //System.out.println("...filterField="+filterField.textProperty().getValue());
-            //System.out.println("...searchWaveComboBox=" + searchWaveComboBox.getCheckModel().getCheckedItems().size());
+           // logger.debug("filteredParticpantsList.predicateProperty changing...");
             if (searchTextBox.textProperty().getValueSafe().isEmpty() && searchScopeCheckComboBox.getCheckModel().getCheckedItems().isEmpty()) {
-                //System.out.println("...both are empty: true");
+                logger.trace("...both are empty: true");
                 return true;
             }
 
@@ -1438,16 +1431,16 @@ public class FXMLTimingController {
                         if (tl != null && tl.getID().equals(cookedRead.getTimingLocationId())) waveFilterMatch.set(true);
                     }); 
             } else {
-                //System.out.println("...searchWaveComboBox is empty: true");
+                logger.trace("...searchWaveComboBox is empty: true");
 
                 waveFilterMatch.set(true);
             }
 
             if (searchTextBox.textProperty().getValueSafe().isEmpty() && waveFilterMatch.getValue()) {
-                //System.out.println("...filterField is empty and wave matches");
+                logger.trace("...filterField is empty and wave matches");
                 return true;
             } else if (!waveFilterMatch.getValue()) {
-                //System.out.println("...filterField is empty and wave does not match");
+                logger.trace("...filterField is empty and wave does not match");
                 return false;
             } 
 

@@ -53,8 +53,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
@@ -96,6 +94,8 @@ import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import org.controlsfx.control.PrefixSelectionComboBox;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -123,6 +123,7 @@ import org.controlsfx.control.ToggleSwitch;
 
 
 public class PikaRFIDDirectReader implements TimingReader {
+    private static final Logger logger = LoggerFactory.getLogger(PikaRFIDDirectReader.class);
 
     LocalDateTime EPOC = LocalDateTime.of(LocalDate.parse("1980-01-01",DateTimeFormatter.ISO_LOCAL_DATE),LocalTime.MIDNIGHT);
     
@@ -197,27 +198,27 @@ public class PikaRFIDDirectReader implements TimingReader {
         // get any existing attributes
         ultraIP = timingListener.getAttribute("RFIDDirect:ultra_ip");
         if (ultraIP != null) {
-            System.out.println("RFIDDirect: Found existing ultra ip setting: " + ultraIP);
+            logger.debug("RFIDDirect: Found existing ultra ip setting: " + ultraIP);
         } else {
-            System.out.println("RFIDDirect: Did not find existing ip setting." );
+            logger.debug("RFIDDirect: Did not find existing ip setting." );
             ultraIP = "";
             timingListener.setAttribute("RFIDDirect:ultra_ip", ultraIP);
         }
         
         saveToFile = Boolean.valueOf(timingListener.getAttribute("RFIDDirect:saveToFile"));
         if (saveToFile != null) {
-            System.out.println("RFIDDirect: Found existing saveToFile setting: " + saveToFile);
+            logger.debug("RFIDDirect: Found existing saveToFile setting: " + saveToFile);
         } else {
-            System.out.println("RFIDDirect: Did not find existing saveToFile setting." );
+            logger.debug("RFIDDirect: Did not find existing saveToFile setting." );
             saveToFile = false;
             timingListener.setAttribute("RFIDDirect:saveToFile", saveToFile.toString());
         }
         
         backupFile = timingListener.getAttribute("RFIDDirect:backupFile");
         if (backupFile != null) {
-            System.out.println("RFIDDirect: Found existing backupFile setting: " + backupFile);
+            logger.debug("RFIDDirect: Found existing backupFile setting: " + backupFile);
         } else {
-            System.out.println("RFIDDirect: Did not find existing ip setting." );
+            logger.debug("RFIDDirect: Did not find existing ip setting." );
             backupFile = "";
             timingListener.setAttribute("RFIDDirect:backupFile", backupFile);
         }
@@ -291,25 +292,25 @@ public class PikaRFIDDirectReader implements TimingReader {
                         for(String octet: octets) {
                             try {
                                 Integer o = Integer.parseInt(octet);
-                                System.out.println("Octet : " + o);
+                                logger.debug("Octet : " + o);
                                 if (o > 255) {
                                     validIP = false;
                                     revert = true;
                                 }
                             } catch (Exception e){
-                                System.out.println("Octet Exception: " + e.getLocalizedMessage());
+                                logger.debug("Octet Exception: " + e.getLocalizedMessage());
 
                                 validIP = false;
                             }
                         }
                         if (validIP && octets.length == 4) {
-                            System.out.println("Valid IP : " + ultraIP);
+                            logger.debug("Valid IP : " + ultraIP);
                             connectToggleSwitch.disableProperty().set(false);
                             // save the ip if it is new
                             if (!ultraIP.equals(newValue)) {
                                 ultraIP = newValue;
                                 timingListener.setAttribute("RFIDDirect:ultra_ip", ultraIP);
-                                System.out.println("Valid IP : " + ultraIP);
+                                logger.debug("Valid IP : " + ultraIP);
                             }
                         }
                         else{
@@ -374,7 +375,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             reader1ModeChoiceBox.visibleProperty().bind(isJoey.not());
             
             beeperVolumeChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-                System.out.println("beeperVolumeChoiceBox listener: Existing volume: " + ultraSettings.get("21"));
+                logger.debug("beeperVolumeChoiceBox listener: Existing volume: " + ultraSettings.get("21"));
                 if (null != newVal) switch (newVal) {
                     case "Off":
                         if (!"0".equals(ultraSettings.get("21"))) updateSettingsButton.setVisible(true);
@@ -487,12 +488,12 @@ public class PikaRFIDDirectReader implements TimingReader {
             connectToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if(newValue) {
                     if (!connectToUltra) {
-                        System.out.println("PikaRFIDDirectReader: connectToggleSwitch event: calling connect()");
+                        logger.debug("PikaRFIDDirectReader: connectToggleSwitch event: calling connect()");
                         connect();
                     }
                 } else {
                     if (connectToUltra) {
-                        System.out.println("PikaRFIDDirectReader: connectToggleSwitch event: calling disconnect()");
+                        logger.debug("PikaRFIDDirectReader: connectToggleSwitch event: calling disconnect()");
                         disconnect();
                     }
                 }
@@ -501,12 +502,12 @@ public class PikaRFIDDirectReader implements TimingReader {
             readToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if(newValue) {
                     if (connectToUltra && !externalInitiated) {
-                        System.out.println("PikaRFIDDirectReader: readToggleSwitch event: calling startReading()");
+                        logger.debug("PikaRFIDDirectReader: readToggleSwitch event: calling startReading()");
                         startReading();
                     }
                 } else {
                     if (connectToUltra && !externalInitiated) {
-                        System.out.println("PikaRFIDDirectReader: readToggleSwitch event: calling stopReading()");
+                        logger.debug("PikaRFIDDirectReader: readToggleSwitch event: calling stopReading()");
                         stopReading();
                     }
                 }
@@ -517,7 +518,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             // save to file stuff
             saveToFileCheckBox.setSelected(saveToFile);
             saveToFileCheckBox.selectedProperty().addListener((ob, oldVal, newVal) -> {
-                System.out.println("saveToFileCheckBox changed: " + oldVal + " -> " + newVal);
+                logger.debug("saveToFileCheckBox changed: " + oldVal + " -> " + newVal);
                 if (!newVal.equals(saveToFile)){
                     saveToFile=newVal;
                     timingListener.setAttribute("RFIDDirect:saveToFile", saveToFile.toString());
@@ -540,7 +541,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                     }
                     
                     File newFile = new File(fileTextField.getText()).getAbsoluteFile();
-                    System.out.println("Testing file " + newFile.getAbsolutePath());
+                    logger.debug("Testing file " + newFile.getAbsolutePath());
                     Boolean goodFile=false;
                     try {
                         if (newFile.canWrite() || newFile.createNewFile()) {
@@ -576,7 +577,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                 File cwd = PikaPreferences.getInstance().getCWD();
 
 
-                System.out.println("Using initial directory of " + cwd.getAbsolutePath());
+                logger.debug("Using initial directory of " + cwd.getAbsolutePath());
                 
                 fileChooser.setInitialFileName(timingListener.getLocationName() + ".txt");
                 fileChooser.setInitialDirectory(cwd); 
@@ -617,7 +618,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                         try {
                             if (okToSend.tryAcquire(10, TimeUnit.SECONDS)){
                                 aquired=true;
-                                System.out.println("Sending command 'R'");
+                                logger.debug("Sending command 'R'");
                                 Platform.runLater(() -> {
                                     statusLabel.setText("Starting Readers...");
                                 });
@@ -631,10 +632,10 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 //getReadStatus(); 
                             } else {
                                 // timeout
-                                System.out.println("Timeout with command 'R'");
+                                logger.debug("Timeout with command 'R'");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception in starting reading on {}",ultraIP,ex);
 
                         } finally {
                             if (aquired) okToSend.release();
@@ -658,7 +659,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 Platform.runLater(() -> {
                                     statusLabel.setText("Stopping Readers...");
                                 });
-                                System.out.println("Sending command 'S\\nN\\n'");
+                                logger.debug("Sending command 'S\\nN\\n'");
                                 ultraOutput.writeBytes("S");
                                 ultraOutput.flush();
                                 ultraOutput.writeBytes("N");
@@ -667,13 +668,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 //getReadStatus();
                             } else {
                                 // timeout
-                                System.out.println("Timeout with command 'S'");
+                                logger.debug("Timeout with command 'S'");
                             }
                         } catch (InterruptedException ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.debug("Interrupted",ex);
 
                         } catch (IOException ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.debug("IOException with ultraIP",ex);
                         } finally {
                             if (aquired) okToSend.release();
                         }
@@ -692,13 +693,13 @@ public class PikaRFIDDirectReader implements TimingReader {
 //                        try {
 //                            if (okToSend.tryAcquire(10, TimeUnit.SECONDS)){
 //                                aquired = true;
-//                                System.out.println("getReadStatus(): Sending ? command");
+//                                logger.debug("getReadStatus(): Sending ? command");
 //                                ultraOutput.writeBytes("?");
 //                                //ultraOutput.writeUTF("?");
 //                                ultraOutput.flush();
 //                                String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
 //                                if (result != null) {
-//                                    System.out.println("Reading Status : " + result);
+//                                    logger.debug("Reading Status : " + result);
 //                                    Boolean currentStatus = readingStatus.getValue();
 //                                    Boolean newStatus = false;
 //                                    if (result.substring(2, 3).startsWith("1")) newStatus = true;
@@ -725,17 +726,17 @@ public class PikaRFIDDirectReader implements TimingReader {
 //                                    }
 //                                } else {
 //                                // timeout
-//                                    System.out.println("Timeout with command '?'");
+//                                    logger.debug("Timeout with command '?'");
 //                                }
 //                            } else {
 //                                // timeout
-//                                System.out.println("Timeout waiting to send command '?'");
+//                                logger.debug("Timeout waiting to send command '?'");
 //                            }
 //                        } catch (Exception ex) {
 //                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                        } finally {
-//                            if (aquired) System.out.println("Relasing transmit lock");
+//                            if (aquired) logger.debug("Relasing transmit lock");
 //                            if (aquired) okToSend.release();
 //                        }
 //                    }
@@ -789,7 +790,7 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                             } else {
                             // timeout
-                                System.out.println("Timeout with command 'r'");
+                                logger.debug("Timeout with command 'r'");
                                 return null;
                             }
 
@@ -808,7 +809,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     byte[] r = result.getBytes();
                                     if (result.length() > 2) {
                                         ultraSettings.put(String.format("%02X", r[1]), result.substring(2));
-                                        System.out.println("Settings: " + String.format("%02X", r[1]) + " -> " +result.substring(2));
+                                        logger.debug("Settings: " + String.format("%02X", r[1]) + " -> " +result.substring(2));
                                     } else if (result.equals("U2")) result= null; // 
                                 }
                             } while(result != null);
@@ -816,28 +817,28 @@ public class PikaRFIDDirectReader implements TimingReader {
                             
                             //Beeper Volume Factor
                             try{
-                                if (!ultraSettings.containsKey("21")) System.out.println("We don't know what the beeper volume is");
+                                if (!ultraSettings.containsKey("21")) logger.debug("We don't know what the beeper volume is");
                                 else {
                                     Integer volume =Integer.parseInt(ultraSettings.get("21"));
                                     Platform.runLater(() -> beeperVolumeChoiceBox.getSelectionModel().clearAndSelect(volume));
-                                    System.out.println("Setting the volume to " + volume);
+                                    logger.debug("Setting the volume to " + volume);
                                 }
                             } catch (Exception e){
                                 Platform.runLater(() -> beeperVolumeChoiceBox.getSelectionModel().selectFirst());
-                                System.out.println("Beeper volume parse error!");
+                                logger.debug("Beeper volume parse error!");
                             }
                             
                             //Gating Factor
                             try{
-                                if (!ultraSettings.containsKey("1E")) System.out.println("We don't know what the gating is");
+                                if (!ultraSettings.containsKey("1E")) logger.debug("We don't know what the gating is");
                                 else {
                                     Integer gating =Integer.parseInt(ultraSettings.get("1E"));
                                     Platform.runLater(() -> gatingIntervalSpinner.getValueFactory().setValue(gating));
-                                    System.out.println("Setting the gating factor to " + gating);
+                                    logger.debug("Setting the gating factor to " + gating);
                                 }
                             } catch (Exception e){
                                 Platform.runLater(() -> gatingIntervalSpinner.getValueFactory().setValue(5));
-                                System.out.println("Gating parse error, setting the gating factor to 5");
+                                logger.debug("Gating parse error, setting the gating factor to 5");
                             }
                             
                             // reader mode
@@ -851,30 +852,30 @@ public class PikaRFIDDirectReader implements TimingReader {
                             
                             // Do we have a Joey or Ultra?
                             if ("255.255.255.255".equals(ultraSettings.get("1A"))) {
-                                System.out.println("We have a Joey");
+                                logger.debug("We have a Joey");
                                 isSingleReader.set(true);
                                 Platform.runLater(() -> isJoey.set(true));
                             } else {
                                 Platform.runLater(() -> isJoey.set(false));
-                                System.out.println("We have an Ultra");
+                                logger.debug("We have an Ultra");
                                 // do we have an ultra-4 or ultra-8? 
                                 // ping the ip in 1A to see if it exists. 
                                 isSingleReader.set(!InetAddress.getByName(ultraSettings.get("1B")).isReachable(1000));
                                 // if we failed, try one more time just in case we lost a packet
                                 if (!isSingleReader.get()) isSingleReader.set(!InetAddress.getByName(ultraSettings.get("1B")).isReachable(1000));
-                                if (!isSingleReader.get()) System.out.println("We have an ultra 8");
-                                else System.out.println("We have an ultra 4");
+                                if (!isSingleReader.get()) logger.debug("We have an ultra 8");
+                                else logger.debug("We have an ultra 4");
                             }
                         } else {
                             // timeout
-                            System.out.println("Timeout waiting to get Ultra Settings");
+                            logger.debug("Timeout waiting to get Ultra Settings");
                             return null;
                         }
                     } catch (Exception ex) {
-                        Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                        logger.warn("Exception in retrieving the settings on {}",ultraIP,ex);
 
                     } finally {
-                        if (aquired) System.out.println("Relasing transmit lock");
+                        if (aquired) logger.debug("Relasing transmit lock");
                         if (aquired) okToSend.release();
                     }
                 } else return null;
@@ -907,7 +908,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     String newTime = adjTime.format(DateTimeFormatter.ISO_LOCAL_TIME) + " " +
                                         date[2] + "-" + date[1] + "-" + date[0]; // flip the ISO_LOCAL_DATE arouond
                                     String command = "t " + newTime;
-                                    System.out.println("setClock(): Sending t command for a time of " + newTime);
+                                    logger.debug("setClock(): Sending t command for a time of " + newTime);
 
                                     ultraOutput.writeBytes(command);
                                     //ultraOutput.writeUTF("?");
@@ -917,13 +918,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 't'");
+                                        logger.debug("Timeout with command 't'");
                                     }
                                 } else {
-                                    System.out.println("NULL time in setClock");
+                                    logger.debug("NULL time in setClock");
                                 }
                                 if (tz != null){
-                                    System.out.println("setClock(): Sending tz (0x23) command");
+                                    logger.debug("setClock(): Sending tz (0x23) command");
                                     // t[0x20]HH:MM:SS DD-MM-YYYY  
                                     ultraOutput.flush();
 
@@ -940,13 +941,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         restartInterface=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 'u0x23' timezone string");
+                                        logger.debug("Timeout with command 'u0x23' timezone string");
                                     }
                                 } else {
-                                    System.out.println("NULL TZ in setClock()");
+                                    logger.debug("NULL TZ in setClock()");
                                 }
                                 if (gps != null){
-                                    System.out.println("setClock(): Sending auto-gps (0x22) command");
+                                    logger.debug("setClock(): Sending auto-gps (0x22) command");
                                     // t[0x20]HH:MM:SS DD-MM-YYYY  
                                     ultraOutput.flush();
 
@@ -963,11 +964,11 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         ultraSettings.put("22","1");
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x22' to set the gps flag");
+                                        logger.debug("Timeout with command '0x22' to set the gps flag");
                                     }
                                 }
                                 if (commit){
-                                    System.out.println("setClock(): Sending commit (u 0xFF 0xFF) command");
+                                    logger.debug("setClock(): Sending commit (u 0xFF 0xFF) command");
                                     // t[0x20]HH:MM:SS DD-MM-YYYY  
                                     ultraOutput.flush();
 
@@ -980,11 +981,11 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 't'");
+                                        logger.debug("Timeout with command 't'");
                                     }
                                 }
                                 if (restartInterface){ // This will result in a disconnect
-                                    System.out.println("setClock(): Sending reset interface (0x2D) command");
+                                    logger.debug("setClock(): Sending reset interface (0x2D) command");
                                     
                                     ultraOutput.flush();
 
@@ -996,13 +997,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 }
                             } else {
                                 // timeout
-                                System.out.println("Timeout waiting to send command '?'");
+                                logger.debug("Timeout waiting to send command '?'");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception setting the clock on {}",ultraIP,ex);
 
                         } finally {
-                            if (aquired) System.out.println("Relasing transmit lock");
+                            if (aquired) logger.debug("Relasing transmit lock");
                             if (aquired) okToSend.release();
                         }
                     }
@@ -1056,9 +1057,9 @@ public class PikaRFIDDirectReader implements TimingReader {
                             String line = "";
                             while (read != 10) { // 1,Connected,<stuff>\n is sent on initial connect. 10 == \n
                                 read = input.read();
-                                System.out.println("Read: " + Character.toString ((char) read) + "  " + Integer.toHexString(0x100 | read).substring(1));
+                                logger.debug("Read: " + Character.toString ((char) read) + "  " + Integer.toHexString(0x100 | read).substring(1));
                             } 
-                            System.out.println("Read connect string");
+                            logger.debug("Read connect string");
                             
                             
                             
@@ -1087,7 +1088,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         readRetry = false;
                                         if (read == -1) {
                                             connectToUltra = false;
-                                            System.out.println("End of stream!" + Integer.toHexString(read));
+                                            logger.debug("End of stream!" + Integer.toHexString(read));
                                         } if (read != 10) {
                                             line = line +  Character.toString ((char) read);
                                             //logger.trace("Read: " + Character.toString ((char) read) + "  " + Integer.toHexString(0x100 | read).substring(1));
@@ -1108,28 +1109,28 @@ public class PikaRFIDDirectReader implements TimingReader {
                                                 }
                                                 processLine(line);
                                             }
-                                        //    System.out.println("Read: " + Character.toString ((char) read) + "  " + Integer.toHexString(0x100 | read).substring(1));
+                                        //    logger.debug("Read: " + Character.toString ((char) read) + "  " + Integer.toHexString(0x100 | read).substring(1));
                                         } else {
                                             processLine(line);
                                         }
                                     }
                                 } catch(java.net.SocketTimeoutException e){
-                                    System.out.println("Socket Timeout Exception...");
+                                    logger.debug("Socket Timeout Exception...");
                                     if (readRetry) {
-                                        System.out.println("...2nd One in a row so we will bail");
+                                        logger.debug("...2nd One in a row so we will bail");
                                         throw e;
                                     } else {
-                                        System.out.println("...First one so let's ask for status");
+                                        logger.debug("...First one so let's ask for status");
                                         readRetry=true;
                                         //getReadStatus();
                                     }
                                 }
                             }
                         } catch (Exception e) {
-                            System.out.println(e);
+                            logger.debug("Exception communicating with {}",ultraIP,e);
                             if (connectToUltra){ 
                                 socketError = true;
-                                System.out.println("RFIDDirectReader Connection Exception: " + e.getMessage());
+                                logger.debug("RFIDDirectReader Connection Exception: " + e.getMessage());
                                 Platform.runLater(() -> {
                                     if (! success) { connectToUltra = false; connectedStatus.setValue(false);}
                                     statusLabel.setText("Error: " + e.getLocalizedMessage());
@@ -1137,7 +1138,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 if (success) try {
                                     Thread.sleep(2000);
                                 } catch (InterruptedException ex) {
-                                    Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                                    logger.debug("Exception communicating with {}",ultraIP,e);
                                 } 
                             }
                         } finally {
@@ -1166,7 +1167,7 @@ public class PikaRFIDDirectReader implements TimingReader {
     }
     
     private void processLine(String line) {
-        //System.out.println("Read Line: " + line);
+        logger.trace("Read Line: " + line);
         
         String type = "unknown";
         if (line.startsWith("0,")) type="chip";
@@ -1177,39 +1178,39 @@ public class PikaRFIDDirectReader implements TimingReader {
         else if (line.startsWith("u")) type="command"; // general command
         else if (line.startsWith(Character.toString ((char) 3))) type ="extStatus";
         else if (line.substring(0,8).matches("^\\d+:\\d+:\\d+.*")) type = "time"; //time ends with a special char
-        else System.out.println("Unknown line: \"" + line + "\"");
+        else logger.debug("Unknown line: \"" + line + "\"");
 
         switch(type){
             case "chip": // chip time
                 processRead(line);
                 break;
             case "status": // status 
-                System.out.println("Status: " + line);
+                logger.debug("Status: " + line);
                 commandResultQueue.offer(line);
                 break;
             case "voltage": // voltage
-                System.out.println("Voltage: " + line);
+                logger.debug("Voltage: " + line);
                 //getReadStatus();
                 break;
             case "time": // command response
-                System.out.println("Time: " + line.substring(0,19));
+                logger.debug("Time: " + line.substring(0,19));
                 commandResultQueue.offer(line.substring(0,19));
                 break;
             case "command": // command response
-                System.out.println("Command response recieved");
+                logger.debug("Command response recieved");
                 commandResultQueue.offer(line);
                 break;
             case "extStatus":
-                System.out.println(" Extended status received: " + stringToHex(line));
+                logger.debug(" Extended status received: " + stringToHex(line));
                 processExtStatus(line.toCharArray());
                 break;
             default: // unknown command response
-                System.out.println("Unknown: \"" + line.substring(0, 1) + "\" " + line);
+                logger.debug("Unknown: \"" + line.substring(0, 1) + "\" " + line);
                 break;
         }
     }
     private void processRead(String r){
-        System.out.println("Chip Read: " + r);
+        logger.debug("Chip Read: " + r);
         String[] tokens = r.split(",", -1);
         // 0,11055,1170518701,698,1,-71,0,2,1,0000000000000000,0,29319
         // 0 -- junk
@@ -1225,7 +1226,7 @@ public class PikaRFIDDirectReader implements TimingReader {
         // 10 -- LogID
         
         if (tokens.length < 12 ) {
-            System.out.println("  Chip read is missing data: " + r);
+            logger.debug("  Chip read is missing data: " + r);
             return;
         }
         
@@ -1240,25 +1241,25 @@ public class PikaRFIDDirectReader implements TimingReader {
         if (rewind.equals("0")) {
             int currentRead=Integer.parseInt(logNo);
             if (lastRead + 1 == currentRead || lastRead < 0 ) {
-                //System.out.println("No missing reads: Last " + lastRead + " Current: " + logNo);
+                logger.trace("No missing reads: Last " + lastRead + " Current: " + logNo);
                 lastRead = currentRead;
             }
             else {
-                //System.out.println("Missing a read: Last " + lastRead + " Current: " + logNo);
+                logger.trace("Missing a read: Last " + lastRead + " Current: " + logNo);
                 // auto-rewind
                 rewind(lastRead,currentRead);
                 lastRead = currentRead;
             }
         }
         
-        System.out.println("  Chip: " + chip + " logNo: " + logNo);
+        logger.debug("  Chip: " + chip + " logNo: " + logNo);
         
         // make sure we have what we need...
         if (port.equals("0") && ! chip.equals("0")) { // invalid combo
-            System.out.println("Non Start time: " + chip);
+            logger.debug("Non Start time: " + chip);
             return;
         } else if (!port.matches("[1234]") && !chip.equals("0")){
-            System.out.println("Invalid Port: " + port);
+            logger.debug("Invalid Port: " + port);
             return;
         }
         
@@ -1278,7 +1279,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             Platform.runLater(() -> {
                 lastReadLabel.textProperty().setValue(status);
             });
-            System.out.println(status);
+            logger.debug(status);
         } else {
             RawTimeData rawTime = new RawTimeData();
             rawTime.setChip(chip);
@@ -1311,7 +1312,7 @@ public class PikaRFIDDirectReader implements TimingReader {
 
         if (outputFile == null){
             File newFile = new File(backupFile).getAbsoluteFile();
-            System.out.println("PikaRFIDDirectReader::saveToFile: opening " + newFile.getAbsolutePath());
+            logger.debug("PikaRFIDDirectReader::saveToFile: opening " + newFile.getAbsolutePath());
             Boolean goodFile=false;
             try {
                 // Not a directory and we can write to it _or_ we can create it
@@ -1325,9 +1326,9 @@ public class PikaRFIDDirectReader implements TimingReader {
         
         if (outputFile != null) {
             outputFile.println(line);
-            if (outputFile.checkError()) System.out.println("PikaRFIDDirectReader::saveToFile: error writing to " + backupFile);
+            if (outputFile.checkError()) logger.debug("PikaRFIDDirectReader::saveToFile: error writing to " + backupFile);
         }
-        else System.out.println("PikaRFIDDirectReader::saveToFile: error opening file " + backupFile);
+        else logger.debug("PikaRFIDDirectReader::saveToFile: error opening file " + backupFile);
 
 
     }
@@ -1342,7 +1343,7 @@ public class PikaRFIDDirectReader implements TimingReader {
 }
 
     private void discover() {
-        System.out.println("Starting discover...");
+        logger.debug("Starting discover...");
         ObservableList<Ultra> ultras = FXCollections.observableArrayList(); 
         BooleanProperty scanCompleted = new SimpleBooleanProperty(false);
         BooleanProperty dialogClosed = new SimpleBooleanProperty(false);
@@ -1370,7 +1371,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                             DatagramPacket probeDatagramPacket = new DatagramPacket(packetData, packetData.length, InetAddress.getByName("255.255.255.255"), 2000);
                             broadcastSocket.send(probeDatagramPacket);
                             
-                            System.out.println("Sent UDP Broadcast to 255.255.255.255");
+                            logger.debug("Sent UDP Broadcast to 255.255.255.255");
                             // Broadcast the message over all the network interfaces
                             
                             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
@@ -1390,7 +1391,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 try {
                                   DatagramPacket sendPacket = new DatagramPacket(packetData, packetData.length, broadcast, 8888);
                                   broadcastSocket.send(sendPacket);
-                                  System.out.println("Sent UDP Broadcast to " + broadcast.getHostAddress());
+                                  logger.debug("Sent UDP Broadcast to " + broadcast.getHostAddress());
                                 } catch (Exception e) {
                                 }
                               }
@@ -1407,7 +1408,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     
                                     String message = new String(receivePacket.getData()).trim();
                                     
-                                    System.out.println("Ultra Finder Response: " + receivePacket.getAddress().getHostAddress() + " " + message);
+                                    logger.debug("Ultra Finder Response: " + receivePacket.getAddress().getHostAddress() + " " + message);
                                     
                                     // parse the response string
                                     
@@ -1431,14 +1432,14 @@ public class PikaRFIDDirectReader implements TimingReader {
                                                  
                         } catch (IOException ex) {
                           //Logger.getLogger(this.class.getName()).log(Level.SEVERE, null, ex);
-                          System.out.println("oops...");
+                          logger.debug("oops...");
                         }
                     }
-                    System.out.println("Done scanning for Ultras");
+                    logger.debug("Done scanning for Ultras");
                     //Platform.runLater(() -> {scanCompleted.set(true);});
                                        
 
-                    ultras.forEach(u -> {System.out.println("Found " + u.IP.getValueSafe());});
+                    ultras.forEach(u -> {logger.debug("Found " + u.IP.getValueSafe());});
                     return null;
                 }
         };
@@ -1602,7 +1603,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             startTimeOK.setValue(false);
             if (DurationParser.parsable(newValue)) startTimeOK.setValue(Boolean.TRUE);
             if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = startTime.getCaretPosition();
@@ -1611,14 +1612,14 @@ public class PikaRFIDDirectReader implements TimingReader {
                     startTime.setText(oldValue);
                     startTime.positionCaret(c);
                 });
-                System.out.println("Bad start time (newValue: " + newValue + ")");
+                logger.debug("Bad start time (newValue: " + newValue + ")");
             }
         });
         endTime.textProperty().addListener((observable, oldValue, newValue) -> {
             endTimeOK.setValue(false);
             if (DurationParser.parsable(newValue)) endTimeOK.setValue(Boolean.TRUE);
             if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = endTime.getCaretPosition();
@@ -1627,7 +1628,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                     endTime.setText(oldValue);
                     endTime.positionCaret(c);
                 });
-                System.out.println("Bad end time (newValue: " + newValue + ")");
+                logger.debug("Bad end time (newValue: " + newValue + ")");
             }
         });
         
@@ -1663,7 +1664,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             Long startTimestamp = Duration.between(EPOC, LocalDateTime.of(rwd.startDate, LocalTime.ofSecondOfDay(rwd.startTime.getSeconds()))).getSeconds();
             Long endTimestamp = Duration.between(EPOC, LocalDateTime.of(rwd.endDate, LocalTime.ofSecondOfDay(rwd.endTime.getSeconds()))).getSeconds();
             
-            System.out.println("Rewind from " + startTimestamp + " to " + endTimestamp);
+            logger.debug("Rewind from " + startTimestamp + " to " + endTimestamp);
             // issue the rewind command via a background thread
             
             Task ultraCommand = new Task<Void>() {
@@ -1677,7 +1678,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         rwd.startDate.format(DateTimeFormatter.ISO_LOCAL_DATE) + " " + startTime.getText() + " to " +
                                         rwd.endDate.format(DateTimeFormatter.ISO_LOCAL_DATE) + " " + endTime.getText();
                                 
-                                System.out.println(status);
+                                logger.debug(status);
                                 Platform.runLater(() -> {
                                     statusLabel.setText(status);
                                 });
@@ -1697,10 +1698,10 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                             } else {
                                 // timeout
-                                System.out.println("Timeout with AutoRewind command");
+                                logger.debug("Timeout with AutoRewind command");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception in auto-rewind of {}",ultraIP,ex);
 
                         } finally {
                             if (aquired) okToSend.release();
@@ -1727,7 +1728,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                         try {
                             if (okToSend.tryAcquire(10, TimeUnit.SECONDS)){
                                 aquired=true;
-                                System.out.println("AutoRewind from " + lastRead + " to " + currentRead);
+                                logger.debug("AutoRewind from " + lastRead + " to " + currentRead);
 
                                 Platform.runLater(() -> {
                                     statusLabel.setText("AutoRewind from " + lastRead + " to " + currentRead);
@@ -1749,10 +1750,10 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                             } else {
                                 // timeout
-                                System.out.println("Timeout with AutoRewind command");
+                                logger.debug("Timeout with AutoRewind command");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception in rewind of {}",ultraIP,ex);
 
                         } finally {
                             if (aquired) okToSend.release();
@@ -1799,7 +1800,7 @@ public class PikaRFIDDirectReader implements TimingReader {
         // Reader 'A'
         for(int port = 1; port < 5; port++){
             antennaMap.put("A" + port,new CheckBox());
-            System.out.println("Requesting ultraSetting " + String.format("%02x", 11 + port).toUpperCase());
+            logger.debug("Requesting ultraSetting " + String.format("%02x", 11 + port).toUpperCase());
             if (ultraSettings.containsKey(String.format("%02x", 11 + port).toUpperCase())) {
                 if ("1".equals(ultraSettings.get(String.format("%02x", 11 + port).toUpperCase()))) antennaMap.get("A" + port).setSelected(true);
                 else antennaMap.get("A" + port).setSelected(false);
@@ -1811,7 +1812,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             antennaGridPane.add(new Label("Power"), 5,1);
             antennaGridPane.add(readerAPower, 5,2);
             if (ultraSettings.containsKey("18")){
-                System.out.println("Reader A power set to " + ultraSettings.get("18"));
+                logger.debug("Reader A power set to " + ultraSettings.get("18"));
                 readerAPower.getSelectionModel().select(ultraSettings.get("18"));
             } else readerAPower.getSelectionModel().selectFirst();
             
@@ -1835,7 +1836,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             antennaGridPane.add(readerBLabel, 0, 3);
             for(int port = 1; port < 5; port++){
                 antennaMap.put("B" + port,new CheckBox());
-                System.out.println("Requesting ultraSetting " + Integer.toHexString(15 + port));
+                logger.debug("Requesting ultraSetting " + Integer.toHexString(15 + port));
                 if (ultraSettings.containsKey(Integer.toHexString(15 + port))) {
                     if ("1".equals(ultraSettings.get(Integer.toHexString(15 + port)))) antennaMap.get("B" + port).setSelected(true);
                     else antennaMap.get("B" + port).setSelected(false);
@@ -1846,7 +1847,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             antennaGridPane.add(readerBPower, 5,3);
             if (ultraSettings.containsKey("19")){
                 readerBPower.getSelectionModel().select(ultraSettings.get("19"));
-                System.out.println("Reader B power set to " + ultraSettings.get("19"));
+                logger.debug("Reader B power set to " + ultraSettings.get("19"));
             } else readerBPower.getSelectionModel().selectFirst();
             
             antennaMap.put("BBackup",new CheckBox());
@@ -1902,7 +1903,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     if (!ultraSettings.containsKey(p) || 
                                         (antennaMap.get("A" + port).selectedProperty().get() && "0".equals(ultraSettings.get(p))) ||
                                         (!antennaMap.get("A" + port).selectedProperty().get() && "1".equals(ultraSettings.get(p)))){
-                                        System.out.println("AntennaDialog(): Setting " + p + " to " + antennaMap.get("A" + port).selectedProperty().get());
+                                        logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("A" + port).selectedProperty().get());
                                         ultraOutput.flush();
                                         ultraOutput.writeBytes("u");
                                         ultraOutput.writeByte(11 + port);  // 0x0C -> 0x0F
@@ -1915,7 +1916,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             commit=true;
                                         } else {
                                         // timeout
-                                            System.out.println("Timeout with command '" + p + "' to enable/disable the antenna");
+                                            logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
                                         }
                                     }
                                 } 
@@ -1923,7 +1924,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     // Power Setting
                                     if (!ultraSettings.containsKey("18") || 
                                             !ultraSettings.get("18").equals(readerAPower.getSelectionModel().getSelectedItem()) ){
-                                        System.out.println("AntennaDialog(): Sending Reader A power (0x18) command to " + readerAPower.getSelectionModel().getSelectedItem());
+                                        logger.debug("AntennaDialog(): Sending Reader A power (0x18) command to " + readerAPower.getSelectionModel().getSelectedItem());
                                         ultraOutput.flush();
                                         ultraOutput.writeBytes("u");
                                         ultraOutput.writeByte(24);  // 0x18
@@ -1935,7 +1936,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             commit=true;
                                         } else {
                                         // timeout
-                                            System.out.println("Timeout with command '0x18' to set the Reader A port 4 backupflag");
+                                            logger.debug("Timeout with command '0x18' to set the Reader A port 4 backupflag");
                                         }
                                     }
 
@@ -1944,7 +1945,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             (antennaMap.get("ABackup").selectedProperty().get() && "0".equals(ultraSettings.get("26"))) ||
                                             (!antennaMap.get("ABackup").selectedProperty().get() && "1".equals(ultraSettings.get("26")))
                                         ){
-                                        System.out.println("remoteDialog(): Sending Reader A port 4 backup (0x26) command");
+                                        logger.debug("remoteDialog(): Sending Reader A port 4 backup (0x26) command");
                                         ultraOutput.flush();
                                         ultraOutput.writeBytes("u");
                                         ultraOutput.writeByte(38);  // 0x26
@@ -1957,7 +1958,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             commit=true;
                                         } else {
                                         // timeout
-                                            System.out.println("Timeout with command '0x18' to set the Reader A Power Command");
+                                            logger.debug("Timeout with command '0x18' to set the Reader A Power Command");
                                         }
                                     }
                                 }
@@ -1974,7 +1975,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         if (!ultraSettings.containsKey(p) || 
                                             (antennaMap.get("B" + port).selectedProperty().get() && "0".equals(ultraSettings.get(p))) ||
                                             (!antennaMap.get("B" + port).selectedProperty().get() && "1".equals(ultraSettings.get(p)))){
-                                            System.out.println("AntennaDialog(): Setting " + p + " to " + antennaMap.get("B" + port).selectedProperty().get());
+                                            logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("B" + port).selectedProperty().get());
                                             ultraOutput.flush();
                                             ultraOutput.writeBytes("u");
                                             ultraOutput.writeByte(15 + port);  // 0x0C -> 0x0F
@@ -1987,14 +1988,14 @@ public class PikaRFIDDirectReader implements TimingReader {
                                                 commit=true;
                                             } else {
                                             // timeout
-                                                System.out.println("Timeout with command '" + p + "' to enable/disable the antenna");
+                                                logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
                                             }
                                         }
 
                                     } 
                                     if (!ultraSettings.containsKey("19") || 
                                         !ultraSettings.get("19").equals(readerBPower.getSelectionModel().getSelectedItem()) ){
-                                        System.out.println("remoteDialog(): Sending Reader B power (0x19) command to " + readerBPower.getSelectionModel().getSelectedItem());
+                                        logger.debug("remoteDialog(): Sending Reader B power (0x19) command to " + readerBPower.getSelectionModel().getSelectedItem());
                                         ultraOutput.flush();
                                         ultraOutput.writeBytes("u");
                                         ultraOutput.writeByte(25);  // 0x19
@@ -2006,7 +2007,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             commit=true;
                                         } else {
                                         // timeout
-                                            System.out.println("Timeout with command '0x19' to set the Reader B Power Command");
+                                            logger.debug("Timeout with command '0x19' to set the Reader B Power Command");
                                         }
                                     }
 
@@ -2015,7 +2016,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                             (antennaMap.get("BBackup").selectedProperty().get() && "0".equals(ultraSettings.get("27"))) ||
                                             (!antennaMap.get("BBackup").selectedProperty().get() && "1".equals(ultraSettings.get("27")))
                                         ){
-                                        System.out.println("remoteDialog(): Sending Reader B port 4 backup (0x27) command");
+                                        logger.debug("remoteDialog(): Sending Reader B port 4 backup (0x27) command");
                                         ultraOutput.flush();
                                         ultraOutput.writeBytes("u");
                                         ultraOutput.writeByte(39);  // 0x27
@@ -2029,13 +2030,13 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                                         } else {
                                         // timeout
-                                            System.out.println("Timeout with command '0x27' to set the Reader B port 4 backup flag");
+                                            logger.debug("Timeout with command '0x27' to set the Reader B port 4 backup flag");
                                         }
                                     }
                                 }
                                 
                                 if (commit){
-                                    System.out.println("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
+                                    logger.debug("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
                                     ultraOutput.flush();
 
                                     ultraOutput.writeBytes("u");
@@ -2071,11 +2072,11 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 'u[0xFF][0xFF]'");
+                                        logger.debug("Timeout with command 'u[0xFF][0xFF]'");
                                     }
                                 }
                                 if (restartInterface){ // This will result in a disconnect
-                                    System.out.println("Sending reset interface (0x2D) command");
+                                    logger.debug("Sending reset interface (0x2D) command");
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(45);
@@ -2085,13 +2086,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 }
                             } else {
                                 // timeout
-                                System.out.println("Timeout waiting to send command '?'");
+                                logger.debug("Timeout waiting to send command '?'");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception in rewind of {}",ultraIP,ex);
 
                         } finally {
-                            if (aquired) System.out.println("Relasing transmit lock");
+                            if (aquired) logger.debug("Relasing transmit lock");
                             if (aquired) okToSend.release();
                         }
                     }
@@ -2213,7 +2214,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             serverChoiceBox.getSelectionModel().selectFirst();
             currentIP = "173.192.106.122";
         }
-        System.out.println("Current IP: \"" + currentIP + "\"");
+        logger.debug("Current IP: \"" + currentIP + "\"");
         if ("173.192.106.122".equals(currentIP)) serverChoiceBox.getSelectionModel().select(0);
         else if ("82.113.145.195".equals(currentIP)) serverChoiceBox.getSelectionModel().select(1);
         else {
@@ -2241,19 +2242,19 @@ public class PikaRFIDDirectReader implements TimingReader {
                     for(String octet: octets) {
                         try {
                             Integer o = Integer.parseInt(octet);
-                            System.out.println("Octet : " + o);
+                            logger.debug("Octet : " + o);
                             if (o > 255) {
                                 validIP = false;
                                 revert = true;
                             }
                         } catch (Exception e){
-                            System.out.println("Octet Exception: " + e.getLocalizedMessage());
+                            logger.debug("Octet Exception: " + e.getLocalizedMessage());
 
                             validIP = false;
                         }
                     }
                     if (validIP && octets.length == 4) {
-                        System.out.println("Valid IP : " + customIP);
+                        logger.debug("Valid IP : " + customIP);
                         saveButton.disableProperty().set(false);
                     }
                     else{
@@ -2412,7 +2413,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         (enableRemoteToggleSwitch.selectedProperty().get() && "0".equals(ultraSettings.get("2E"))) ||
                                         (!enableRemoteToggleSwitch.selectedProperty().get() && "1".equals(ultraSettings.get("2E")))
                                     ){
-                                    System.out.println("remoteDialog(): Sending enable/disable (0x2E) command");
+                                    logger.debug("remoteDialog(): Sending enable/disable (0x2E) command");
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(46);  // 0x2E
@@ -2427,7 +2428,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x2E' to set the send to remote flag");
+                                        logger.debug("Timeout with command '0x2E' to set the send to remote flag");
                                     }
                                 }
                                 
@@ -2435,7 +2436,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 if (!ultraSettings.containsKey("01") || 
                                         !Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()).equals(ultraSettings.get("01"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote Type (0x01) command to " + Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()));
+                                    logger.debug("remoteDialog(): Sending Remote Type (0x01) command to " + Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()));
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(1);  // 0x01
@@ -2449,7 +2450,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x01' to set the remote type flag");
+                                        logger.debug("Timeout with command '0x01' to set the remote type flag");
                                     }
                                 }
                                 
@@ -2457,7 +2458,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 if (!ultraSettings.containsKey("03") || 
                                         !portTextField.getText().equals(ultraSettings.get("03"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote Port (0x03) command to " + portTextField.getText());
+                                    logger.debug("remoteDialog(): Sending Remote Port (0x03) command to " + portTextField.getText());
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(3);  // 0x03
@@ -2469,7 +2470,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x03' to set the remote type flag");
+                                        logger.debug("Timeout with command '0x03' to set the remote type flag");
                                     }
                                 }
 
@@ -2477,7 +2478,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 if (!ultraSettings.containsKey("04") || 
                                         !apnNameTextField.getText().equals(ultraSettings.get("04"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote Port (0x04) command to " + apnNameTextField.getText());
+                                    logger.debug("remoteDialog(): Sending Remote Port (0x04) command to " + apnNameTextField.getText());
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(4);  // 0x03
@@ -2489,7 +2490,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x04' to set the rapn name");
+                                        logger.debug("Timeout with command '0x04' to set the rapn name");
                                     }
                                 }
                                 
@@ -2497,7 +2498,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 if (!ultraSettings.containsKey("05") || 
                                         !apnUserNameTextField.getText().equals(ultraSettings.get("05"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending apn UserName (0x05) command to " + apnUserNameTextField.getText());
+                                    logger.debug("remoteDialog(): Sending apn UserName (0x05) command to " + apnUserNameTextField.getText());
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(5);  // 0x03
@@ -2509,14 +2510,14 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x05' to set the rapn name");
+                                        logger.debug("Timeout with command '0x05' to set the rapn name");
                                     }
                                 }
                                 // 0x06: APN password
                                 if (!ultraSettings.containsKey("06") || 
                                         !apnPasswordTextField.getText().equals(ultraSettings.get("06"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending apnPassword (0x06) command to " + apnPasswordTextField.getText());
+                                    logger.debug("remoteDialog(): Sending apnPassword (0x06) command to " + apnPasswordTextField.getText());
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(6);  // 0x03
@@ -2528,7 +2529,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x06' to set the rapn name");
+                                        logger.debug("Timeout with command '0x06' to set the rapn name");
                                     }
                                 }
                                 
@@ -2556,7 +2557,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         !newIP.equals(ultraSettings.get("02")) ) && 
                                         newIP.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote IP (0x02) command to " + newIP);
+                                    logger.debug("remoteDialog(): Sending Remote IP (0x02) command to " + newIP);
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(2);  // 0x02
@@ -2571,14 +2572,14 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x02' to set the remote server");
+                                        logger.debug("Timeout with command '0x02' to set the remote server");
                                     }
                                 }
                                 // 0x29: URL for http uploading (er, IP)
                                 if (!ultraSettings.containsKey("29") || 
                                         !newIP.equals(ultraSettings.get("29"))
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote IP (0x29) command to " + newIP);
+                                    logger.debug("remoteDialog(): Sending Remote IP (0x29) command to " + newIP);
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(41);  // 0x29
@@ -2590,7 +2591,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x29' to set the rapn name");
+                                        logger.debug("Timeout with command '0x29' to set the rapn name");
                                     }
                                 }
                                         
@@ -2599,7 +2600,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         !gatewayTextField.getText().equals(ultraSettings.get("2A")) ) && 
                                         gatewayTextField.getText().matches("\\d+\\.\\d+\\.\\d+\\.\\d+")
                                     ){
-                                    System.out.println("remoteDialog(): Sending Remote IP (0x2A) command to " + gatewayTextField.getText());
+                                    logger.debug("remoteDialog(): Sending Remote IP (0x2A) command to " + gatewayTextField.getText());
                                     ultraOutput.flush();
                                     ultraOutput.writeBytes("u");
                                     ultraOutput.writeByte(2);  // 0x02
@@ -2614,11 +2615,11 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command '0x02' to set the remote server");
+                                        logger.debug("Timeout with command '0x02' to set the remote server");
                                     }
                                 }
                                 if (commit){
-                                    System.out.println("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
+                                    logger.debug("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
                                     ultraOutput.flush();
 
                                     ultraOutput.writeBytes("u");
@@ -2654,11 +2655,11 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 't'");
+                                        logger.debug("Timeout with command 't'");
                                     }
                                 }
                                 if (restartInterface){ // This will result in a disconnect
-                                    System.out.println("setClock(): Sending reset interface (0x2D) command");
+                                    logger.debug("setClock(): Sending reset interface (0x2D) command");
                                     
                                     ultraOutput.flush();
 
@@ -2670,13 +2671,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 }
                             } else {
                                 // timeout
-                                System.out.println("Timeout waiting to send command '?'");
+                                logger.debug("Timeout waiting to send command '?'");
                             }
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception in rewind of {}",ultraIP,ex);
 
                         } finally {
-                            if (aquired) System.out.println("Relasing transmit lock");
+                            if (aquired) logger.debug("Relasing transmit lock");
                             if (aquired) okToSend.release();
                         }
                     }
@@ -2743,7 +2744,7 @@ public class PikaRFIDDirectReader implements TimingReader {
             timeOK.setValue(false);
             if (DurationParser.parsable(newValue)) timeOK.setValue(Boolean.TRUE);
             if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = ultraTime.getCaretPosition();
@@ -2752,7 +2753,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                     ultraTime.setText(oldValue);
                     ultraTime.positionCaret(c);
                 });
-                System.out.println("Bad clock time (newValue: " + newValue + ")");
+                logger.debug("Bad clock time (newValue: " + newValue + ")");
             }
         });
         
@@ -2774,7 +2775,7 @@ public class PikaRFIDDirectReader implements TimingReader {
 
         if (result.isPresent()) {
             if (useComputer.selectedProperty().get()) {
-                System.out.println("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
+                logger.debug("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
                 if (localTZ.equals(ultraTZ)) setClock(LocalDateTime.now(),null,autoGPS.selectedProperty().get());
                 else setClock(LocalDateTime.now(),localTZ,autoGPS.selectedProperty().get());
             } else {
@@ -2803,7 +2804,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                             // TZ check
                             Integer localTZ = TimeZone.getDefault().getOffset(System.currentTimeMillis())/3600000;
                             Integer ultraTZ = Integer.parseInt(ultraSettings.get("23"));
-                            System.out.println("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
+                            logger.debug("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
                             String issues = "";
                             if (!localTZ.equals(ultraTZ))  {
                                 timeOK=false;
@@ -2816,17 +2817,17 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 timeOK=false;
                                 issues += "Clock Date Mismatch: Local: "+ LocalDate.now() + " ultra: " + ultraClock.date+"\n";
                             }
-                            System.out.println("Date check: Local :" + LocalDate.now() + " ultra: " + ultraClock.date);
+                            logger.debug("Date check: Local :" + LocalDate.now() + " ultra: " + ultraClock.date);
 
                             if (Duration.between(ultraClock.time, ultraClock.takenAt).abs().getSeconds() > 5) {
                                 timeOK=false;
                                 issues += "Clock Time Mismatch: Local: "+ ultraClock.takenAt + " ultra: " + ultraClock.time+"\n";
                             }
-                             System.out.println("Time check: Local :" + ultraClock.takenAt + " ultra: " + ultraClock.time);
+                             logger.debug("Time check: Local :" + ultraClock.takenAt + " ultra: " + ultraClock.time);
                              
                             if (!timeOK) {
                                 
-                                System.out.println("Time issues!!!");
+                                logger.debug("Time issues!!!");
                                 
                                 if (readingStatus.get()) {
                                     issues += "\nThese cannot be fixed when the Ultra is in 'Read' mode. \n" +
@@ -2869,10 +2870,10 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     });
                                 }
                             }
-                            else System.out.println("Time loogs good");
+                            else logger.debug("Time loogs good");
                             // now let's populate the settings box
                         } catch (Exception ex) {
-                            Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("Exception checking the clock on {}",ultraIP,ex);
                         } finally {
                             if (aquired) okToSend.release();
                         }
@@ -2891,7 +2892,7 @@ public class PikaRFIDDirectReader implements TimingReader {
  
             Integer battery = (int) status[42]; // old tricks are still good
             Boolean reading = (char) 00 != status[45];
-            System.out.println("Reading: " + status[45]);
+            logger.debug("Reading: " + status[45]);
             
             // update the reading status and status label 
             Boolean currentStatus = readingStatus.getValue();
@@ -2947,7 +2948,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                 else if (volume.equals("Soft")) val = 1;
                                 else if (volume.equals("Loud")) val = 2;
 
-                                System.out.println("updateReaderSettings(): Setting beeper volume (0x21) " + volume + "(" + Byte.toString(val) + ")");
+                                logger.debug("updateReaderSettings(): Setting beeper volume (0x21) " + volume + "(" + Byte.toString(val) + ")");
 
                                 if (val != 3) {
                                     ultraOutput.flush();
@@ -2964,16 +2965,16 @@ public class PikaRFIDDirectReader implements TimingReader {
                                         commit=true;
                                     } else {
                                     // timeout
-                                        System.out.println("Timeout with command 'u0x21'");
+                                        logger.debug("Timeout with command 'u0x21'");
                                     }
                                 }
                             } else {
-                               System.out.println("updateReaderSettings(): Beeper volume is NULL!");
+                               logger.debug("updateReaderSettings(): Beeper volume is NULL!");
                             }
                             // Mode
                             String mode = reader1ModeChoiceBox.getSelectionModel().getSelectedItem();
                             if (! isJoey.get() && mode != null){
-                                System.out.println("updateReaderSettings(): Sending reader mode (0x14/0x15) command");
+                                logger.debug("updateReaderSettings(): Sending reader mode (0x14/0x15) command");
                                 byte val = 0;
                                 if (mode.equals("Start")) val = 0;
                                 if (mode.equals("Finish")) val = 3;
@@ -2993,7 +2994,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     restartInterface=true;
                                 } else {
                                 // timeout
-                                    System.out.println("Timeout with command 'u0x20'");
+                                    logger.debug("Timeout with command 'u0x20'");
                                 }
                                 ultraOutput.writeBytes("u");
                                 ultraOutput.writeByte(21);  // 0x15, Reader 2 mode
@@ -3009,13 +3010,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     restartInterface=true;
                                 } else {
                                 // timeout
-                                    System.out.println("Timeout with command 'u0x21'");
+                                    logger.debug("Timeout with command 'u0x21'");
                                 }
                             }
 
                             Integer gf = gatingIntervalSpinner.getValue();
                             if (gf != null && "Finish".equals(mode)){
-                                System.out.println("updateReaderSettings(): Sending gating interval (0x1E) command");
+                                logger.debug("updateReaderSettings(): Sending gating interval (0x1E) command");
 
                                 ultraOutput.flush();
 
@@ -3032,7 +3033,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                                     restartInterface=true;
                                 } else {
                                 // timeout
-                                    System.out.println("Timeout with command 'u0x1E'");
+                                    logger.debug("Timeout with command 'u0x1E'");
                                 }
                             } else if ("Start".equals(mode)){
                                 ultraSettings.put("30","1");
@@ -3040,7 +3041,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                             }
 
                             if (commit){
-                                System.out.println("updateReaderSettings(): Sending commit (u 0xFF 0xFF) command");
+                                logger.debug("updateReaderSettings(): Sending commit (u 0xFF 0xFF) command");
                                 // t[0x20]HH:MM:SS DD-MM-YYYY  
                                 ultraOutput.flush();
 
@@ -3053,11 +3054,11 @@ public class PikaRFIDDirectReader implements TimingReader {
 
                                 } else {
                                 // timeout
-                                    System.out.println("Timeout with command 'u0xFF'");
+                                    logger.debug("Timeout with command 'u0xFF'");
                                 }
                             }
                             if (restartInterface){ // This will result in a disconnect
-                                System.out.println("updateReaderSettings(): Sending reset interface (0x2D) command");
+                                logger.debug("updateReaderSettings(): Sending reset interface (0x2D) command");
 
                                 ultraOutput.flush();
 
@@ -3069,13 +3070,13 @@ public class PikaRFIDDirectReader implements TimingReader {
                             }
                         } else {
                             // timeout
-                            System.out.println("Timeout waiting to update the reader settings");
+                            logger.debug("Timeout waiting to update the reader settings");
                         }
                     } catch (Exception ex) {
-                        Logger.getLogger(PikaRFIDDirectReader.class.getName()).log(Level.SEVERE, null, ex);
+                        logger.warn("Exception in updating settings on {}",ultraIP,ex);
 
                     } finally {
-                        if (aquired) System.out.println("Relasing transmit lock");
+                        if (aquired) logger.debug("Relasing transmit lock");
                         if (aquired) okToSend.release();
                     }
                 }

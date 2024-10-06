@@ -62,7 +62,6 @@ import org.slf4j.LoggerFactory;
  * @author jcgarner
  */
 public class FXMLEventController {
-
     private static final Logger logger = LoggerFactory.getLogger(FXMLEventController.class);
     
     private final Event event = Event.getInstance();
@@ -126,7 +125,7 @@ public class FXMLEventController {
 
         // Use this if you whant keystroke by keystroke monitoring.... 
         //        eventTitle.textProperty().addListener((observable, oldValue, newValue) -> {
-        //            //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+        //            //logger.debug("TextField Text Changed (newValue: " + newValue + ")");
         //            event.setEventName(newValue);
         //            updateEvent();
         //        });
@@ -188,7 +187,7 @@ public class FXMLEventController {
         ));        
         
         timingLocListView.setOnEditCommit((ListView.EditEvent<TimingLocation> t) -> {
-            System.out.println("setOnEditCommit " + t.getIndex());
+            logger.debug("setOnEditCommit " + t.getIndex());
             if (t.getIndex() < t.getSource().getItems().size()) {
                 TimingLocation tl = t.getSource().getItems().get(t.getIndex());                
                 if (t.getNewValue().toString().isEmpty()) {
@@ -207,7 +206,7 @@ public class FXMLEventController {
         });
         
         timingLocListView.setOnEditCancel((ListView.EditEvent<TimingLocation> t) -> {
-            System.out.println("setOnEditCancel " + t.getIndex());
+            logger.debug("setOnEditCancel " + t.getIndex());
             if (t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                 TimingLocation tl = t.getSource().getItems().get(t.getIndex());
                 if (tl.getLocationName().isEmpty()) {
@@ -340,7 +339,7 @@ public class FXMLEventController {
 //    protected void toggleSingleRaceCheckBox(ActionEvent fxevent) {
 //        // are we enabled or disabled?
 //        if ( singleRaceCheckBox.isSelected() ) {
-//            System.out.println("Only one race...");
+//            logger.debug("Only one race...");
 //            
 //            // load the single race fxml into the singleRacePane; 
 //            
@@ -354,7 +353,7 @@ public class FXMLEventController {
 //            }
 //        } else {
 //            // More than one race. Show a placeholder text and open the Races Tab
-//            System.out.println("More than one race...");
+//            logger.debug("More than one race...");
 //            singleRacePane.getChildren().clear();
 //            singleRacePane.getChildren().add(new Label("Multiple Races"));
 //            Tab raceTab = new Tab("Races");
@@ -505,7 +504,7 @@ public class FXMLEventController {
             x.getWaveIDs().forEach(w -> {
                 if (RaceDAO.getInstance().getWaveByID(w).getRace().equals(r)) {
                     assignedRunners.setValue(Boolean.TRUE);
-                    //System.out.println("Race " + RaceDAO.getInstance().getWaveByID(w).getRace().getRaceName() + " is in use by " + x.fullNameProperty().getValueSafe());
+                    //logger.debug("Race " + RaceDAO.getInstance().getWaveByID(w).getRace().getRaceName() + " is in use by " + x.fullNameProperty().getValueSafe());
                 }
             });
         });

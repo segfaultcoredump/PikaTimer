@@ -36,6 +36,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -44,6 +46,8 @@ import javafx.scene.layout.VBox;
  */
 // Rename this to TiminglocationInput and ditch the fxml/controller crap. 
 public class FXMLTimingLocationInputController{
+    private static final Logger logger = LoggerFactory.getLogger(FXMLTimingLocationInputController.class);
+    
     @FXML private TextField locationNameTextField; 
     @FXML private GridPane baseGridPane; 
     //@FXML private Pane readerPane;
@@ -69,7 +73,7 @@ public class FXMLTimingLocationInputController{
         
         inputTypeChoiceBox.getSelectionModel().selectedItemProperty().addListener((ov, o, n) -> {
             if (o == null || ! o.equals(n)) {
-                System.out.println("inputTypeChoiceBox event");
+                logger.debug("inputTypeChoiceBox event");
                 timingLocationInput.setTimingInputType(n);
                 timingLocationInput.initializeReader(readerVBox);
                 timingLocationDAO.updateTimingLocationInput(timingLocationInput);
@@ -78,7 +82,7 @@ public class FXMLTimingLocationInputController{
     }    
     
     public void setTimingLocationInput(TimingLocationInput ti) {
-        System.out.println("setTimingLocationInput called...");
+        logger.debug("setTimingLocationInput called...");
         
         if(ti != null) {
             // Initialize everything.
@@ -89,13 +93,13 @@ public class FXMLTimingLocationInputController{
             //Watch for text changes... Because setOnInputMethodTextChanged does not work :-( 
             locationNameTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
                 if (!newPropertyValue) {
-                    System.out.println("locationNameTextfield out focus");
+                    logger.debug("locationNameTextfield out focus");
                     if ( ! locationNameTextField.getText().equals(timingLocationInput.getLocationName()) ) {
-                        System.out.println("Name changed from " + timingLocationInput.getLocationName()+ " to " + locationNameTextField.getText());
+                        logger.debug("Name changed from " + timingLocationInput.getLocationName()+ " to " + locationNameTextField.getText());
                         timingLocationInput.setLocationName(locationNameTextField.getText());
                         timingLocationDAO.updateTimingLocationInput(timingLocationInput);
                     } else {
-                        System.out.println("No change in name");
+                        logger.debug("No change in name");
                     }
                 }
             });
@@ -152,7 +156,7 @@ public class FXMLTimingLocationInputController{
             skewTextField.textProperty().setValue(timingLocationInput.getSkewString());
             
             skewTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                    //System.out.println("TextField Text Changed (newValue: " + newValue + ")");
+                    logger.trace("TextField Text Changed (newValue: " + newValue + ")");
                 if (newValue.isEmpty()) return; 
                 if (newValue.matches("^-?\\.\\d+$")) {
                     Platform.runLater(() -> {
@@ -161,7 +165,7 @@ public class FXMLTimingLocationInputController{
                         skewTextField.positionCaret(caret+1);
                     });
                 } else if (newValue.matches("^-?(\\d*:)?(\\d*:)?\\d*\\.?\\d*$")){
-                    System.out.println("Good skew time: " + newValue);
+                    logger.debug("Good skew time: " + newValue);
                 } else {
                     Platform.runLater(() -> {
                         int caret = skewTextField.getCaretPosition();
@@ -173,9 +177,9 @@ public class FXMLTimingLocationInputController{
             
             skewTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
                 if (!newPropertyValue) {
-                    System.out.println("skewTextField out focus");
+                    logger.debug("skewTextField out focus");
                     if ( ! skewTextField.getText().equals(timingLocationInput.getSkewString()) ) {
-                        System.out.println("Skew changed from " + timingLocationInput.getSkewString()+ " to " + skewTextField.getText());
+                        logger.debug("Skew changed from " + timingLocationInput.getSkewString()+ " to " + skewTextField.getText());
                         Duration oldSkew = timingLocationInput.getSkew();
                         //timingLocationInput.setSkewString(skewTextField.getText());
                         Duration newSkew = DurationParser.parse(skewTextField.getText(), false);
@@ -190,7 +194,7 @@ public class FXMLTimingLocationInputController{
                             Platform.runLater(() -> {skewTextField.setText("");});
                         } else Platform.runLater(() -> {skewTextField.setText(timingLocationInput.getSkewString());});
                     } else {
-                        System.out.println("No change in skew time");
+                        logger.debug("No change in skew time");
                     }
                 }
             });

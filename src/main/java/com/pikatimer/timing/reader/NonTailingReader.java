@@ -28,8 +28,7 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+
 import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -50,12 +49,15 @@ import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import org.apache.commons.io.input.Tailer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public abstract class NonTailingReader implements TimingReader{
+    private static final Logger logger = LoggerFactory.getLogger(NonTailingReader.class);
     
     protected TimingListener timingListener;
     protected File sourceFile; 
@@ -181,7 +183,7 @@ public abstract class NonTailingReader implements TimingReader{
                     }
                         
                 } else {
-                    System.out.println("No change in file name");
+                    logger.debug("No change in file name");
                 }
             });
             
@@ -222,11 +224,11 @@ public abstract class NonTailingReader implements TimingReader{
                           List<Wave> waves = new ArrayList(RaceDAO.getInstance().listWaves());
                           waves.sort((w1,w2) -> w1.waveStartProperty().compareTo(w2.waveStartProperty()));
                           offset = Duration.between(LocalTime.MIDNIGHT, waves.get(0).waveStartProperty());
-                          System.out.println("NonTailingReader Offset now " + offset);
+                          logger.debug("NonTailingReader Offset now " + offset);
                       } else {
                           timingListener.setAttribute("NonTailingReader:offset",new_value);
                           offset = Duration.ZERO;
-                          System.out.println("NonTailingReader Offset now " + offset);
+                          logger.debug("NonTailingReader Offset now " + offset);
 
                       }
                       
@@ -265,7 +267,7 @@ public abstract class NonTailingReader implements TimingReader{
             return;
         }
         
-        System.out.println("NonTailingReader.readOnce called. Current file is: " + sourceFile.getAbsolutePath());
+        logger.debug("NonTailingReader.readOnce called. Current file is: " + sourceFile.getAbsolutePath());
         timingListener.clearReads();
         // Run this in a thread.... 
         Task task;
@@ -273,7 +275,7 @@ public abstract class NonTailingReader implements TimingReader{
             @Override public Void call() {
                 try (Stream<String> s = Files.lines(sourceFile.toPath())) {
                     s.map(line -> line.trim()).filter(line -> !line.isEmpty()).forEach(line -> {
-                        //System.out.println("readOnce read " + s); 
+                        logger.trace("readOnce read " + s); 
                         process(line); 
                     });
                     s.close();
@@ -297,7 +299,7 @@ public abstract class NonTailingReader implements TimingReader{
         // get any existing attributes
         String filename = timingListener.getAttribute("NonTailingReader:filename");
         if (filename != null) {
-            System.out.println("NonTailingReader: Found existing file setting: " + filename);
+            logger.debug("NonTailingReader: Found existing file setting: " + filename);
             sourceFile = new File(filename).getAbsoluteFile();
             fileName.setValue(filename);
             if (!sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile()){
@@ -306,7 +308,7 @@ public abstract class NonTailingReader implements TimingReader{
             } else fileValid = true;
             
         } else {
-            System.out.println("NonTailingReader: Did not find existing file setting." );
+            logger.debug("NonTailingReader: Did not find existing file setting." );
         }
         
         

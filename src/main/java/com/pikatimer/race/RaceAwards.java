@@ -47,6 +47,8 @@ import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.Parameter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -57,6 +59,8 @@ import org.hibernate.annotations.Parameter;
 @DynamicUpdate
 @Table(name="race_awards")
 public class RaceAwards {
+    private static final Logger logger = LoggerFactory.getLogger(RaceAwards.class);
+    
     private Integer raceID;
     private Map<String,String> attributes = new HashMap();
     private final Map<String,Integer> intAttributes = new HashMap();
@@ -104,7 +108,7 @@ public class RaceAwards {
         return awardCategories;
     }
     public void setAwardCategories(List<AwardCategory> a){
-        System.out.println("RaceAwards::setAwardCategories called ");
+        logger.debug("RaceAwards::setAwardCategories called ");
         awardCategories = a;
         if (awardCategoriesList.isEmpty() && a != null) {
             awardCategoriesList.addAll(a);
@@ -162,7 +166,7 @@ public class RaceAwards {
     }
      
     public void createDefaultCategories(){
-        System.out.println("RaceAwards:createDefaultCategories() Called...");
+        logger.debug("RaceAwards:createDefaultCategories() Called...");
 
         // Overall
         AwardCategory o = new AwardCategory();
@@ -238,7 +242,7 @@ public class RaceAwards {
             if (attributes.containsKey(key)) {
                 intAttributes.put(key,Integer.parseUnsignedInt(attributes.get(key)));
             } else {
-                System.out.println("RaceAwards.getIntegerAtrribute key of " + key + " is NULL!");
+                logger.debug("RaceAwards.getIntegerAtrribute key of " + key + " is NULL!");
                 return null;
             }
         }
@@ -256,7 +260,7 @@ public class RaceAwards {
             if (attributes.containsKey(key)) {
                 boolAttributes.put(key,Boolean.parseBoolean(attributes.get(key)));
             } else {
-                System.out.println("RaceAwards.getBooleanAtrribute key of " + key + " is NULL!");
+                logger.debug("RaceAwards.getBooleanAtrribute key of " + key + " is NULL!");
                 return null;
             }
         }

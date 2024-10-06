@@ -96,6 +96,8 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -119,6 +121,7 @@ import org.json.JSONObject;
  *
  */
 public class PikaReaderDirectReader implements TimingReader {
+    private static final Logger logger = LoggerFactory.getLogger(PikaReaderDirectReader.class);
 
     private static final DateTimeFormatter tagReadFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd' 'HH:mm:ss.SSS");
 
@@ -190,27 +193,27 @@ public class PikaReaderDirectReader implements TimingReader {
         pikaReaderPort = timingListener.getAttribute("PikaReaderDirect:pika_port");
 
         if (pikaReaderIP != null) {
-            System.out.println("PikaReaderDirect: Found existing pika reader ip setting: " + pikaReaderIP);
+            logger.debug("PikaReaderDirect: Found existing pika reader ip setting: " + pikaReaderIP);
         } else {
-            System.out.println("PikaReaderDirect: Did not find existing ip setting.");
+            logger.debug("PikaReaderDirect: Did not find existing ip setting.");
             pikaReaderIP = "";
             timingListener.setAttribute("PikaReaderDirect:ultra_ip", pikaReaderIP);
         }
 
         saveToFile = Boolean.valueOf(timingListener.getAttribute("PikaReaderDirect:saveToFile"));
         if (saveToFile != null) {
-            System.out.println("PikaReaderDirect: Found existing saveToFile setting: " + saveToFile);
+            logger.debug("PikaReaderDirect: Found existing saveToFile setting: " + saveToFile);
         } else {
-            System.out.println("PikaReaderDirect: Did not find existing saveToFile setting.");
+            logger.debug("PikaReaderDirect: Did not find existing saveToFile setting.");
             saveToFile = false;
             timingListener.setAttribute("PikaReaderDirect:saveToFile", saveToFile.toString());
         }
 
         backupFile = timingListener.getAttribute("PikaReaderDirect:backupFile");
         if (backupFile != null) {
-            System.out.println("PikaReaderDirect: Found existing backupFile setting: " + backupFile);
+            logger.debug("PikaReaderDirect: Found existing backupFile setting: " + backupFile);
         } else {
-            System.out.println("PikaReaderDirect: Did not find existing ip setting.");
+            logger.debug("PikaReaderDirect: Did not find existing ip setting.");
             backupFile = "";
             timingListener.setAttribute("PikaReaderDirect:backupFile", backupFile);
         }
@@ -286,25 +289,25 @@ public class PikaReaderDirectReader implements TimingReader {
                         for (String octet : octets) {
                             try {
                                 Integer o = Integer.parseInt(octet);
-                                System.out.println("Octet : " + o);
+                                logger.debug("Octet : " + o);
                                 if (o > 255) {
                                     validIP = false;
                                     revert = true;
                                 }
                             } catch (Exception e) {
-                                System.out.println("Octet Exception: " + e.getLocalizedMessage());
+                                logger.debug("Octet Exception: " + e.getLocalizedMessage());
 
                                 validIP = false;
                             }
                         }
                         if (validIP && octets.length == 4) {
-                            System.out.println("Valid IP : " + pikaReaderIP);
+                            logger.debug("Valid IP : " + pikaReaderIP);
                             connectToggleSwitch.disableProperty().set(false);
                             // save the ip if it is new
                             if (!pikaReaderIP.equals(newValue)) {
                                 pikaReaderIP = newValue;
                                 timingListener.setAttribute("PikaReaderDirect:pika_ip", pikaReaderIP);
-                                System.out.println("Valid IP : " + pikaReaderIP);
+                                logger.debug("Valid IP : " + pikaReaderIP);
                             }
                         } else {
                             connectToggleSwitch.disableProperty().set(true);
@@ -366,7 +369,7 @@ public class PikaReaderDirectReader implements TimingReader {
             });
 
             beeperVolumeChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-                System.out.println("beeperVolumeChoiceBox listener: Existing volume: " + readerSettings.get("21"));
+                logger.debug("beeperVolumeChoiceBox listener: Existing volume: " + readerSettings.get("21"));
                 if (null != newVal) {
                     switch (newVal) {
                         case "Off":
@@ -487,12 +490,12 @@ public class PikaReaderDirectReader implements TimingReader {
             connectToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if (newValue) {
                     if (!connectToReader) {
-                        System.out.println("PikaPikaReaderDirectReader: connectToggleSwitch event: calling connect()");
+                        logger.debug("PikaPikaReaderDirectReader: connectToggleSwitch event: calling connect()");
                         connect();
                     }
                 } else {
                     if (connectToReader) {
-                        System.out.println("PikaPikaReaderDirectReader: connectToggleSwitch event: calling disconnect()");
+                        logger.debug("PikaPikaReaderDirectReader: connectToggleSwitch event: calling disconnect()");
                         disconnect();
                     }
                 }
@@ -501,12 +504,12 @@ public class PikaReaderDirectReader implements TimingReader {
             readToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if (newValue) {
                     if (connectToReader && !externalInitiated) {
-                        System.out.println("PikaPikaReaderDirectReader: readToggleSwitch event: calling startReading()");
+                        logger.debug("PikaPikaReaderDirectReader: readToggleSwitch event: calling startReading()");
                         startReading();
                     }
                 } else {
                     if (connectToReader && !externalInitiated) {
-                        System.out.println("PikaPikaReaderDirectReader: readToggleSwitch event: calling stopReading()");
+                        logger.debug("PikaPikaReaderDirectReader: readToggleSwitch event: calling stopReading()");
                         stopReading();
                     }
                 }
@@ -517,7 +520,7 @@ public class PikaReaderDirectReader implements TimingReader {
             // save to file stuff
             saveToFileCheckBox.setSelected(saveToFile);
             saveToFileCheckBox.selectedProperty().addListener((ob, oldVal, newVal) -> {
-                System.out.println("saveToFileCheckBox changed: " + oldVal + " -> " + newVal);
+                logger.debug("saveToFileCheckBox changed: " + oldVal + " -> " + newVal);
                 if (!newVal.equals(saveToFile)) {
                     saveToFile = newVal;
                     timingListener.setAttribute("PikaReaderDirect:saveToFile", saveToFile.toString());
@@ -540,7 +543,7 @@ public class PikaReaderDirectReader implements TimingReader {
                     }
 
                     File newFile = new File(fileTextField.getText()).getAbsoluteFile();
-                    System.out.println("Testing file " + newFile.getAbsolutePath());
+                    logger.debug("Testing file " + newFile.getAbsolutePath());
                     Boolean goodFile = false;
                     try {
                         if (newFile.canWrite() || newFile.createNewFile()) {
@@ -574,7 +577,7 @@ public class PikaReaderDirectReader implements TimingReader {
 
                 File cwd = PikaPreferences.getInstance().getCWD();
 
-                System.out.println("Using initial directory of " + cwd.getAbsolutePath());
+                logger.debug("Using initial directory of " + cwd.getAbsolutePath());
 
                 fileChooser.setInitialFileName(timingListener.getLocationName() + ".txt");
                 fileChooser.setInitialDirectory(cwd);
@@ -628,7 +631,7 @@ public class PikaReaderDirectReader implements TimingReader {
                         String output;
                         String fullResponse="";
                         while ((output = br.readLine()) != null) {
-                            System.out.println(output);
+                            logger.debug(output);
                             fullResponse +=output;
                         }
                         conn.disconnect();
@@ -638,7 +641,7 @@ public class PikaReaderDirectReader implements TimingReader {
                         Platform.runLater(() -> readingStatus.setValue(Boolean.TRUE) );
                     
                     } catch(Exception ex){
-                        System.out.println("Exception in PikaReaderDirect::StartReading() ");
+                        logger.debug("Exception in PikaReaderDirect::StartReading() ");
                         ex.printStackTrace(System.out);
                     }
                 }
@@ -677,7 +680,7 @@ public class PikaReaderDirectReader implements TimingReader {
                     Platform.runLater(() -> readingStatus.setValue(Boolean.FALSE) );
                     
                     } catch(Exception ex){
-                        System.out.println("Exception in PikaReaderDirect::StopReading() ");
+                        logger.debug("Exception in PikaReaderDirect::StopReading() ");
                         ex.printStackTrace(System.out);
                     }
                 }
@@ -731,7 +734,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //                            } else {
 //                            // timeout
-//                                System.out.println("Timeout with command 'r'");
+//                                logger.debug("Timeout with command 'r'");
 //                                return null;
 //                            }
 //
@@ -750,7 +753,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    byte[] r = result.getBytes();
 //                                    if (result.length() > 2) {
 //                                        readerSettings.put(String.format("%02X", r[1]), result.substring(2));
-//                                        System.out.println("Settings: " + String.format("%02X", r[1]) + " -> " +result.substring(2));
+//                                        logger.debug("Settings: " + String.format("%02X", r[1]) + " -> " +result.substring(2));
 //                                    } else if (result.equals("U2")) result= null; // 
 //                                }
 //                            } while(result != null);
@@ -758,28 +761,28 @@ public class PikaReaderDirectReader implements TimingReader {
 //                            
 //                            //Beeper Volume Factor
 //                            try{
-//                                if (!readerSettings.containsKey("21")) System.out.println("We don't know what the beeper volume is");
+//                                if (!readerSettings.containsKey("21")) logger.debug("We don't know what the beeper volume is");
 //                                else {
 //                                    Integer volume =Integer.parseInt(readerSettings.get("21"));
 //                                    Platform.runLater(() -> beeperVolumeChoiceBox.getSelectionModel().clearAndSelect(volume));
-//                                    System.out.println("Setting the volume to " + volume);
+//                                    logger.debug("Setting the volume to " + volume);
 //                                }
 //                            } catch (Exception e){
 //                                Platform.runLater(() -> beeperVolumeChoiceBox.getSelectionModel().selectFirst());
-//                                System.out.println("Beeper volume parse error!");
+//                                logger.debug("Beeper volume parse error!");
 //                            }
 //                            
 //                            //Gating Factor
 //                            try{
-//                                if (!readerSettings.containsKey("1E")) System.out.println("We don't know what the gating is");
+//                                if (!readerSettings.containsKey("1E")) logger.debug("We don't know what the gating is");
 //                                else {
 //                                    Integer gating =Integer.parseInt(readerSettings.get("1E"));
 //                                    Platform.runLater(() -> gatingIntervalSpinner.getValueFactory().setValue(gating));
-//                                    System.out.println("Setting the gating factor to " + gating);
+//                                    logger.debug("Setting the gating factor to " + gating);
 //                                }
 //                            } catch (Exception e){
 //                                Platform.runLater(() -> gatingIntervalSpinner.getValueFactory().setValue(5));
-//                                System.out.println("Gating parse error, setting the gating factor to 5");
+//                                logger.debug("Gating parse error, setting the gating factor to 5");
 //                            }
 //                            
 //                            // reader mode
@@ -794,14 +797,14 @@ public class PikaReaderDirectReader implements TimingReader {
 //                            
 //                        } else {
 //                            // timeout
-//                            System.out.println("Timeout waiting to get Ultra Settings");
+//                            logger.debug("Timeout waiting to get Ultra Settings");
 //                            return null;
 //                        }
 //                    } catch (Exception ex) {
 //                        Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                    } finally {
-//                        if (aquired) System.out.println("Relasing transmit lock");
+//                        if (aquired) logger.debug("Relasing transmit lock");
 //                        if (aquired) okToSend.release();
 //                    }
 //                } else return null;
@@ -833,7 +836,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    String newTime = adjTime.format(DateTimeFormatter.ISO_LOCAL_TIME) + " " +
 //                                        date[2] + "-" + date[1] + "-" + date[0]; // flip the ISO_LOCAL_DATE arouond
 //                                    String command = "t " + newTime;
-//                                    System.out.println("setClock(): Sending t command for a time of " + newTime);
+//                                    logger.debug("setClock(): Sending t command for a time of " + newTime);
 //
 //                                    ultraOutput.writeBytes(command);
 //                                    //ultraOutput.writeUTF("?");
@@ -843,13 +846,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 't'");
+//                                        logger.debug("Timeout with command 't'");
 //                                    }
 //                                } else {
-//                                    System.out.println("NULL time in setClock");
+//                                    logger.debug("NULL time in setClock");
 //                                }
 //                                if (tz != null){
-//                                    System.out.println("setClock(): Sending tz (0x23) command");
+//                                    logger.debug("setClock(): Sending tz (0x23) command");
 //                                    // t[0x20]HH:MM:SS DD-MM-YYYY  
 //                                    ultraOutput.flush();
 //
@@ -866,13 +869,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        restartInterface=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 'u0x23' timezone string");
+//                                        logger.debug("Timeout with command 'u0x23' timezone string");
 //                                    }
 //                                } else {
-//                                    System.out.println("NULL TZ in setClock()");
+//                                    logger.debug("NULL TZ in setClock()");
 //                                }
 //                                if (gps != null){
-//                                    System.out.println("setClock(): Sending auto-gps (0x22) command");
+//                                    logger.debug("setClock(): Sending auto-gps (0x22) command");
 //                                    // t[0x20]HH:MM:SS DD-MM-YYYY  
 //                                    ultraOutput.flush();
 //
@@ -889,11 +892,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        readerSettings.put("22","1");
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x22' to set the gps flag");
+//                                        logger.debug("Timeout with command '0x22' to set the gps flag");
 //                                    }
 //                                }
 //                                if (commit){
-//                                    System.out.println("setClock(): Sending commit (u 0xFF 0xFF) command");
+//                                    logger.debug("setClock(): Sending commit (u 0xFF 0xFF) command");
 //                                    // t[0x20]HH:MM:SS DD-MM-YYYY  
 //                                    ultraOutput.flush();
 //
@@ -906,11 +909,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 't'");
+//                                        logger.debug("Timeout with command 't'");
 //                                    }
 //                                }
 //                                if (restartInterface){ // This will result in a disconnect
-//                                    System.out.println("setClock(): Sending reset interface (0x2D) command");
+//                                    logger.debug("setClock(): Sending reset interface (0x2D) command");
 //                                    
 //                                    ultraOutput.flush();
 //
@@ -922,13 +925,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                }
 //                            } else {
 //                                // timeout
-//                                System.out.println("Timeout waiting to send command '?'");
+//                                logger.debug("Timeout waiting to send command '?'");
 //                            }
 //                        } catch (Exception ex) {
 //                            Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                        } finally {
-//                            if (aquired) System.out.println("Relasing transmit lock");
+//                            if (aquired) logger.debug("Relasing transmit lock");
 //                            if (aquired) okToSend.release();
 //                        }
 //                    }
@@ -959,7 +962,7 @@ public class PikaReaderDirectReader implements TimingReader {
                 try {
                     // Start listening for events....
                     String wsPikaURL = "ws://" + pikaReaderIP + ":" + pikaReaderPort + "/events";
-                    System.out.println("Connecting to wsPikaURL: " + wsPikaURL);
+                    logger.debug("Connecting to wsPikaURL: " + wsPikaURL);
                     webSocketClient = new EventWebSocketClient(wsPikaURL, reader);
                     webSocketClient.connectBlocking(60, TimeUnit.SECONDS);
 
@@ -1002,7 +1005,7 @@ public class PikaReaderDirectReader implements TimingReader {
                 processStatus(message);
                 break;
             default: // unknown command response
-                System.out.println("Unknown: \"" + line.substring(0, 1) + "\" " + line);
+                logger.debug("Unknown: \"" + line.substring(0, 1) + "\" " + line);
                 break;
         }
     }
@@ -1020,10 +1023,10 @@ public class PikaReaderDirectReader implements TimingReader {
 
         // make sure we have what we need...
         if (port.equals("0") && !chip.equals("0")) { // invalid combo
-            System.out.println("Non Start time: " + chip);
+            logger.debug("Non Start time: " + chip);
             return;
         } else if (!port.matches("[1234]") && !chip.equals("0")) {
-            System.out.println("Invalid Port: " + port);
+            logger.debug("Invalid Port: " + port);
             return;
         }
 
@@ -1040,7 +1043,7 @@ public class PikaReaderDirectReader implements TimingReader {
             Platform.runLater(() -> {
                 lastReadLabel.textProperty().setValue(status);
             });
-            System.out.println(status);
+            logger.debug(status);
         } else {
             RawTimeData rawTime = new RawTimeData();
             rawTime.setChip(chip);
@@ -1076,7 +1079,7 @@ public class PikaReaderDirectReader implements TimingReader {
 
         if (outputFile == null) {
             File newFile = new File(backupFile).getAbsoluteFile();
-            System.out.println("PikaPikaReaderDirectReader::saveToFile: opening " + newFile.getAbsolutePath());
+            logger.debug("PikaPikaReaderDirectReader::saveToFile: opening " + newFile.getAbsolutePath());
             Boolean goodFile = false;
             try {
                 // Not a directory and we can write to it _or_ we can create it
@@ -1091,10 +1094,10 @@ public class PikaReaderDirectReader implements TimingReader {
         if (outputFile != null) {
             outputFile.println(line);
             if (outputFile.checkError()) {
-                System.out.println("PikaPikaReaderDirectReader::saveToFile: error writing to " + backupFile);
+                logger.debug("PikaPikaReaderDirectReader::saveToFile: error writing to " + backupFile);
             }
         } else {
-            System.out.println("PikaPikaReaderDirectReader::saveToFile: error opening file " + backupFile);
+            logger.debug("PikaPikaReaderDirectReader::saveToFile: error opening file " + backupFile);
         }
 
     }
@@ -1108,7 +1111,7 @@ public class PikaReaderDirectReader implements TimingReader {
     }
 
     private void discover() {
-        System.out.println("Starting discover...");
+        logger.debug("Starting discover...");
         ObservableList<PikaReader> readers = FXCollections.observableArrayList();
         BooleanProperty scanCompleted = new SimpleBooleanProperty(false);
         BooleanProperty dialogClosed = new SimpleBooleanProperty(false);
@@ -1137,7 +1140,7 @@ public class PikaReaderDirectReader implements TimingReader {
                         DatagramPacket probeDatagramPacket = new DatagramPacket(packetData, packetData.length, InetAddress.getByName("255.255.255.255"), 8888);
                         broadcastSocket.send(probeDatagramPacket);
 
-                        System.out.println("Sent UDP Broadcast to 255.255.255.255");
+                        logger.debug("Sent UDP Broadcast to 255.255.255.255");
                         // Broadcast the message over all the network interfaces
 
                         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
@@ -1157,7 +1160,7 @@ public class PikaReaderDirectReader implements TimingReader {
                                 try {
                                     DatagramPacket sendPacket = new DatagramPacket(packetData, packetData.length, broadcast, 8888);
                                     broadcastSocket.send(sendPacket);
-                                    System.out.println("Sent UDP Broadcast to " + broadcast.getHostAddress());
+                                    logger.debug("Sent UDP Broadcast to " + broadcast.getHostAddress());
                                 } catch (Exception e) {
                                 }
                             }
@@ -1172,7 +1175,7 @@ public class PikaReaderDirectReader implements TimingReader {
 
                                 String message = new String(receivePacket.getData()).trim();
 
-                                System.out.println("PikaReader Discover Response: " + receivePacket.getAddress().getHostAddress() + " \"" + message + "\"");
+                                logger.debug("PikaReader Discover Response: " + receivePacket.getAddress().getHostAddress() + " \"" + message + "\"");
 
                                 String[] msg = message.split(" ");
 
@@ -1195,14 +1198,14 @@ public class PikaReaderDirectReader implements TimingReader {
 
                     } catch (IOException ex) {
                         //Logger.getLogger(this.class.getName()).log(Level.SEVERE, null, ex);
-                        System.out.println("oops...");
+                        logger.debug("oops...");
                     }
                 }
-                System.out.println("Done scanning for PikaReader units.");
+                logger.debug("Done scanning for PikaReader units.");
                 //Platform.runLater(() -> {scanCompleted.set(true);});
 
                 readers.forEach(u -> {
-                    System.out.println("Found " + u.IP.getValueSafe());
+                    logger.debug("Found " + u.IP.getValueSafe());
                 });
                 return null;
             }
@@ -1351,7 +1354,7 @@ public class PikaReaderDirectReader implements TimingReader {
                 startTimeOK.setValue(Boolean.TRUE);
             }
             if (newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?")) {
-                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = startTime.getCaretPosition();
@@ -1363,7 +1366,7 @@ public class PikaReaderDirectReader implements TimingReader {
                     startTime.setText(oldValue);
                     startTime.positionCaret(c);
                 });
-                System.out.println("Bad start time (newValue: " + newValue + ")");
+                logger.debug("Bad start time (newValue: " + newValue + ")");
             }
         });
         endTime.textProperty().addListener((observable, oldValue, newValue) -> {
@@ -1372,7 +1375,7 @@ public class PikaReaderDirectReader implements TimingReader {
                 endTimeOK.setValue(Boolean.TRUE);
             }
             if (newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?")) {
-                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
             } else {
                 Platform.runLater(() -> {
                     int c = endTime.getCaretPosition();
@@ -1384,7 +1387,7 @@ public class PikaReaderDirectReader implements TimingReader {
                     endTime.setText(oldValue);
                     endTime.positionCaret(c);
                 });
-                System.out.println("Bad end time (newValue: " + newValue + ")");
+                logger.debug("Bad end time (newValue: " + newValue + ")");
             }
         });
 
@@ -1419,7 +1422,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            Long endTimestamp = Duration.between(EPOC, LocalDateTime.of(rwd.endDate, LocalTime.ofSecondOfDay(rwd.endTime.getSeconds()))).getSeconds();
             LocalDateTime from = LocalDateTime.of(rwd.startDate, LocalTime.ofSecondOfDay(rwd.startTime.getSeconds()));
             LocalDateTime to = LocalDateTime.of(rwd.endDate, LocalTime.ofSecondOfDay(rwd.endTime.getSeconds()));
-            System.out.println("Rewind from " + from.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + " to " + to.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            logger.debug("Rewind from " + from.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + " to " + to.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             // issue the rewind command via a background thread
             
             Task pikaCommand = new Task<Void>() {
@@ -1441,7 +1444,7 @@ public class PikaReaderDirectReader implements TimingReader {
                             String output;
                             String fullResponse="";
                             while ((output = br.readLine()) != null) {
-                                //System.out.println(output);
+                                logger.trace(output);
                                 fullResponse +=output;
                             }
                             conn.disconnect();
@@ -1452,7 +1455,7 @@ public class PikaReaderDirectReader implements TimingReader {
                             });
 
                         } catch(Exception ex){
-                            System.out.println("Exception in PikaReaderDirect::StartReading() ");
+                            logger.debug("Exception in PikaReaderDirect::StartReading() ");
                             ex.printStackTrace(System.out);
                         }
                         
@@ -1499,7 +1502,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //        // Reader 'A'
 //        for(int port = 1; port < 5; port++){
 //            antennaMap.put("A" + port,new CheckBox());
-//            System.out.println("Requesting ultraSetting " + String.format("%02x", 11 + port).toUpperCase());
+//            logger.debug("Requesting ultraSetting " + String.format("%02x", 11 + port).toUpperCase());
 //            if (readerSettings.containsKey(String.format("%02x", 11 + port).toUpperCase())) {
 //                if ("1".equals(readerSettings.get(String.format("%02x", 11 + port).toUpperCase()))) antennaMap.get("A" + port).setSelected(true);
 //                else antennaMap.get("A" + port).setSelected(false);
@@ -1511,7 +1514,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            antennaGridPane.add(new Label("Power"), 5,1);
 //            antennaGridPane.add(readerAPower, 5,2);
 //            if (readerSettings.containsKey("18")){
-//                System.out.println("Reader A power set to " + readerSettings.get("18"));
+//                logger.debug("Reader A power set to " + readerSettings.get("18"));
 //                readerAPower.getSelectionModel().select(readerSettings.get("18"));
 //            } else readerAPower.getSelectionModel().selectFirst();
 //            
@@ -1535,7 +1538,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            antennaGridPane.add(readerBLabel, 0, 3);
 //            for(int port = 1; port < 5; port++){
 //                antennaMap.put("B" + port,new CheckBox());
-//                System.out.println("Requesting ultraSetting " + Integer.toHexString(15 + port));
+//                logger.debug("Requesting ultraSetting " + Integer.toHexString(15 + port));
 //                if (readerSettings.containsKey(Integer.toHexString(15 + port))) {
 //                    if ("1".equals(readerSettings.get(Integer.toHexString(15 + port)))) antennaMap.get("B" + port).setSelected(true);
 //                    else antennaMap.get("B" + port).setSelected(false);
@@ -1546,7 +1549,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            antennaGridPane.add(readerBPower, 5,3);
 //            if (readerSettings.containsKey("19")){
 //                readerBPower.getSelectionModel().select(readerSettings.get("19"));
-//                System.out.println("Reader B power set to " + readerSettings.get("19"));
+//                logger.debug("Reader B power set to " + readerSettings.get("19"));
 //            } else readerBPower.getSelectionModel().selectFirst();
 //            
 //            antennaMap.put("BBackup",new CheckBox());
@@ -1602,7 +1605,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    if (!readerSettings.containsKey(p) || 
 //                                        (antennaMap.get("A" + port).selectedProperty().get() && "0".equals(readerSettings.get(p))) ||
 //                                        (!antennaMap.get("A" + port).selectedProperty().get() && "1".equals(readerSettings.get(p)))){
-//                                        System.out.println("AntennaDialog(): Setting " + p + " to " + antennaMap.get("A" + port).selectedProperty().get());
+//                                        logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("A" + port).selectedProperty().get());
 //                                        ultraOutput.flush();
 //                                        ultraOutput.writeBytes("u");
 //                                        ultraOutput.writeByte(11 + port);  // 0x0C -> 0x0F
@@ -1615,7 +1618,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            commit=true;
 //                                        } else {
 //                                        // timeout
-//                                            System.out.println("Timeout with command '" + p + "' to enable/disable the antenna");
+//                                            logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
 //                                        }
 //                                    }
 //                                } 
@@ -1623,7 +1626,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    // Power Setting
 //                                    if (!readerSettings.containsKey("18") || 
 //                                            !readerSettings.get("18").equals(readerAPower.getSelectionModel().getSelectedItem()) ){
-//                                        System.out.println("AntennaDialog(): Sending Reader A power (0x18) command to " + readerAPower.getSelectionModel().getSelectedItem());
+//                                        logger.debug("AntennaDialog(): Sending Reader A power (0x18) command to " + readerAPower.getSelectionModel().getSelectedItem());
 //                                        ultraOutput.flush();
 //                                        ultraOutput.writeBytes("u");
 //                                        ultraOutput.writeByte(24);  // 0x18
@@ -1635,7 +1638,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            commit=true;
 //                                        } else {
 //                                        // timeout
-//                                            System.out.println("Timeout with command '0x18' to set the Reader A port 4 backupflag");
+//                                            logger.debug("Timeout with command '0x18' to set the Reader A port 4 backupflag");
 //                                        }
 //                                    }
 //
@@ -1644,7 +1647,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            (antennaMap.get("ABackup").selectedProperty().get() && "0".equals(readerSettings.get("26"))) ||
 //                                            (!antennaMap.get("ABackup").selectedProperty().get() && "1".equals(readerSettings.get("26")))
 //                                        ){
-//                                        System.out.println("remoteDialog(): Sending Reader A port 4 backup (0x26) command");
+//                                        logger.debug("remoteDialog(): Sending Reader A port 4 backup (0x26) command");
 //                                        ultraOutput.flush();
 //                                        ultraOutput.writeBytes("u");
 //                                        ultraOutput.writeByte(38);  // 0x26
@@ -1657,7 +1660,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            commit=true;
 //                                        } else {
 //                                        // timeout
-//                                            System.out.println("Timeout with command '0x18' to set the Reader A Power Command");
+//                                            logger.debug("Timeout with command '0x18' to set the Reader A Power Command");
 //                                        }
 //                                    }
 //                                }
@@ -1674,7 +1677,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        if (!readerSettings.containsKey(p) || 
 //                                            (antennaMap.get("B" + port).selectedProperty().get() && "0".equals(readerSettings.get(p))) ||
 //                                            (!antennaMap.get("B" + port).selectedProperty().get() && "1".equals(readerSettings.get(p)))){
-//                                            System.out.println("AntennaDialog(): Setting " + p + " to " + antennaMap.get("B" + port).selectedProperty().get());
+//                                            logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("B" + port).selectedProperty().get());
 //                                            ultraOutput.flush();
 //                                            ultraOutput.writeBytes("u");
 //                                            ultraOutput.writeByte(15 + port);  // 0x0C -> 0x0F
@@ -1687,14 +1690,14 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                                commit=true;
 //                                            } else {
 //                                            // timeout
-//                                                System.out.println("Timeout with command '" + p + "' to enable/disable the antenna");
+//                                                logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
 //                                            }
 //                                        }
 //
 //                                    } 
 //                                    if (!readerSettings.containsKey("19") || 
 //                                        !readerSettings.get("19").equals(readerBPower.getSelectionModel().getSelectedItem()) ){
-//                                        System.out.println("remoteDialog(): Sending Reader B power (0x19) command to " + readerBPower.getSelectionModel().getSelectedItem());
+//                                        logger.debug("remoteDialog(): Sending Reader B power (0x19) command to " + readerBPower.getSelectionModel().getSelectedItem());
 //                                        ultraOutput.flush();
 //                                        ultraOutput.writeBytes("u");
 //                                        ultraOutput.writeByte(25);  // 0x19
@@ -1706,7 +1709,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            commit=true;
 //                                        } else {
 //                                        // timeout
-//                                            System.out.println("Timeout with command '0x19' to set the Reader B Power Command");
+//                                            logger.debug("Timeout with command '0x19' to set the Reader B Power Command");
 //                                        }
 //                                    }
 //
@@ -1715,7 +1718,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                            (antennaMap.get("BBackup").selectedProperty().get() && "0".equals(readerSettings.get("27"))) ||
 //                                            (!antennaMap.get("BBackup").selectedProperty().get() && "1".equals(readerSettings.get("27")))
 //                                        ){
-//                                        System.out.println("remoteDialog(): Sending Reader B port 4 backup (0x27) command");
+//                                        logger.debug("remoteDialog(): Sending Reader B port 4 backup (0x27) command");
 //                                        ultraOutput.flush();
 //                                        ultraOutput.writeBytes("u");
 //                                        ultraOutput.writeByte(39);  // 0x27
@@ -1729,13 +1732,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //                                        } else {
 //                                        // timeout
-//                                            System.out.println("Timeout with command '0x27' to set the Reader B port 4 backup flag");
+//                                            logger.debug("Timeout with command '0x27' to set the Reader B port 4 backup flag");
 //                                        }
 //                                    }
 //                                }
 //                                
 //                                if (commit){
-//                                    System.out.println("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
+//                                    logger.debug("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
 //                                    ultraOutput.flush();
 //
 //                                    ultraOutput.writeBytes("u");
@@ -1771,11 +1774,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 'u[0xFF][0xFF]'");
+//                                        logger.debug("Timeout with command 'u[0xFF][0xFF]'");
 //                                    }
 //                                }
 //                                if (restartInterface){ // This will result in a disconnect
-//                                    System.out.println("Sending reset interface (0x2D) command");
+//                                    logger.debug("Sending reset interface (0x2D) command");
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(45);
@@ -1785,13 +1788,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                }
 //                            } else {
 //                                // timeout
-//                                System.out.println("Timeout waiting to send command '?'");
+//                                logger.debug("Timeout waiting to send command '?'");
 //                            }
 //                        } catch (Exception ex) {
 //                            Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                        } finally {
-//                            if (aquired) System.out.println("Relasing transmit lock");
+//                            if (aquired) logger.debug("Relasing transmit lock");
 //                            if (aquired) okToSend.release();
 //                        }
 //                    }
@@ -1913,7 +1916,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            serverChoiceBox.getSelectionModel().selectFirst();
 //            currentIP = "173.192.106.122";
 //        }
-//        System.out.println("Current IP: \"" + currentIP + "\"");
+//        logger.debug("Current IP: \"" + currentIP + "\"");
 //        if ("173.192.106.122".equals(currentIP)) serverChoiceBox.getSelectionModel().select(0);
 //        else if ("82.113.145.195".equals(currentIP)) serverChoiceBox.getSelectionModel().select(1);
 //        else {
@@ -1941,19 +1944,19 @@ public class PikaReaderDirectReader implements TimingReader {
 //                    for(String octet: octets) {
 //                        try {
 //                            Integer o = Integer.parseInt(octet);
-//                            System.out.println("Octet : " + o);
+//                            logger.debug("Octet : " + o);
 //                            if (o > 255) {
 //                                validIP = false;
 //                                revert = true;
 //                            }
 //                        } catch (Exception e){
-//                            System.out.println("Octet Exception: " + e.getLocalizedMessage());
+//                            logger.debug("Octet Exception: " + e.getLocalizedMessage());
 //
 //                            validIP = false;
 //                        }
 //                    }
 //                    if (validIP && octets.length == 4) {
-//                        System.out.println("Valid IP : " + customIP);
+//                        logger.debug("Valid IP : " + customIP);
 //                        saveButton.disableProperty().set(false);
 //                    }
 //                    else{
@@ -2112,7 +2115,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        (enableRemoteToggleSwitch.selectedProperty().get() && "0".equals(readerSettings.get("2E"))) ||
 //                                        (!enableRemoteToggleSwitch.selectedProperty().get() && "1".equals(readerSettings.get("2E")))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending enable/disable (0x2E) command");
+//                                    logger.debug("remoteDialog(): Sending enable/disable (0x2E) command");
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(46);  // 0x2E
@@ -2127,7 +2130,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x2E' to set the send to remote flag");
+//                                        logger.debug("Timeout with command '0x2E' to set the send to remote flag");
 //                                    }
 //                                }
 //                                
@@ -2135,7 +2138,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                if (!readerSettings.containsKey("01") || 
 //                                        !Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()).equals(readerSettings.get("01"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote Type (0x01) command to " + Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()));
+//                                    logger.debug("remoteDialog(): Sending Remote Type (0x01) command to " + Integer.toString(gprsChoiceBox.getSelectionModel().getSelectedIndex()));
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(1);  // 0x01
@@ -2149,7 +2152,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x01' to set the remote type flag");
+//                                        logger.debug("Timeout with command '0x01' to set the remote type flag");
 //                                    }
 //                                }
 //                                
@@ -2157,7 +2160,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                if (!readerSettings.containsKey("03") || 
 //                                        !portTextField.getText().equals(readerSettings.get("03"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote Port (0x03) command to " + portTextField.getText());
+//                                    logger.debug("remoteDialog(): Sending Remote Port (0x03) command to " + portTextField.getText());
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(3);  // 0x03
@@ -2169,7 +2172,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x03' to set the remote type flag");
+//                                        logger.debug("Timeout with command '0x03' to set the remote type flag");
 //                                    }
 //                                }
 //
@@ -2177,7 +2180,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                if (!readerSettings.containsKey("04") || 
 //                                        !apnNameTextField.getText().equals(readerSettings.get("04"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote Port (0x04) command to " + apnNameTextField.getText());
+//                                    logger.debug("remoteDialog(): Sending Remote Port (0x04) command to " + apnNameTextField.getText());
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(4);  // 0x03
@@ -2189,7 +2192,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x04' to set the rapn name");
+//                                        logger.debug("Timeout with command '0x04' to set the rapn name");
 //                                    }
 //                                }
 //                                
@@ -2197,7 +2200,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                if (!readerSettings.containsKey("05") || 
 //                                        !apnUserNameTextField.getText().equals(readerSettings.get("05"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending apn UserName (0x05) command to " + apnUserNameTextField.getText());
+//                                    logger.debug("remoteDialog(): Sending apn UserName (0x05) command to " + apnUserNameTextField.getText());
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(5);  // 0x03
@@ -2209,14 +2212,14 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x05' to set the rapn name");
+//                                        logger.debug("Timeout with command '0x05' to set the rapn name");
 //                                    }
 //                                }
 //                                // 0x06: APN password
 //                                if (!readerSettings.containsKey("06") || 
 //                                        !apnPasswordTextField.getText().equals(readerSettings.get("06"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending apnPassword (0x06) command to " + apnPasswordTextField.getText());
+//                                    logger.debug("remoteDialog(): Sending apnPassword (0x06) command to " + apnPasswordTextField.getText());
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(6);  // 0x03
@@ -2228,7 +2231,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x06' to set the rapn name");
+//                                        logger.debug("Timeout with command '0x06' to set the rapn name");
 //                                    }
 //                                }
 //                                
@@ -2256,7 +2259,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        !newIP.equals(readerSettings.get("02")) ) && 
 //                                        newIP.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote IP (0x02) command to " + newIP);
+//                                    logger.debug("remoteDialog(): Sending Remote IP (0x02) command to " + newIP);
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(2);  // 0x02
@@ -2271,14 +2274,14 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x02' to set the remote server");
+//                                        logger.debug("Timeout with command '0x02' to set the remote server");
 //                                    }
 //                                }
 //                                // 0x29: URL for http uploading (er, IP)
 //                                if (!readerSettings.containsKey("29") || 
 //                                        !newIP.equals(readerSettings.get("29"))
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote IP (0x29) command to " + newIP);
+//                                    logger.debug("remoteDialog(): Sending Remote IP (0x29) command to " + newIP);
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(41);  // 0x29
@@ -2290,7 +2293,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x29' to set the rapn name");
+//                                        logger.debug("Timeout with command '0x29' to set the rapn name");
 //                                    }
 //                                }
 //                                        
@@ -2299,7 +2302,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        !gatewayTextField.getText().equals(readerSettings.get("2A")) ) && 
 //                                        gatewayTextField.getText().matches("\\d+\\.\\d+\\.\\d+\\.\\d+")
 //                                    ){
-//                                    System.out.println("remoteDialog(): Sending Remote IP (0x2A) command to " + gatewayTextField.getText());
+//                                    logger.debug("remoteDialog(): Sending Remote IP (0x2A) command to " + gatewayTextField.getText());
 //                                    ultraOutput.flush();
 //                                    ultraOutput.writeBytes("u");
 //                                    ultraOutput.writeByte(2);  // 0x02
@@ -2314,11 +2317,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command '0x02' to set the remote server");
+//                                        logger.debug("Timeout with command '0x02' to set the remote server");
 //                                    }
 //                                }
 //                                if (commit){
-//                                    System.out.println("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
+//                                    logger.debug("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
 //                                    ultraOutput.flush();
 //
 //                                    ultraOutput.writeBytes("u");
@@ -2354,11 +2357,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 't'");
+//                                        logger.debug("Timeout with command 't'");
 //                                    }
 //                                }
 //                                if (restartInterface){ // This will result in a disconnect
-//                                    System.out.println("setClock(): Sending reset interface (0x2D) command");
+//                                    logger.debug("setClock(): Sending reset interface (0x2D) command");
 //                                    
 //                                    ultraOutput.flush();
 //
@@ -2370,13 +2373,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                }
 //                            } else {
 //                                // timeout
-//                                System.out.println("Timeout waiting to send command '?'");
+//                                logger.debug("Timeout waiting to send command '?'");
 //                            }
 //                        } catch (Exception ex) {
 //                            Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                        } finally {
-//                            if (aquired) System.out.println("Relasing transmit lock");
+//                            if (aquired) logger.debug("Relasing transmit lock");
 //                            if (aquired) okToSend.release();
 //                        }
 //                    }
@@ -2443,7 +2446,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //            timeOK.setValue(false);
 //            if (DurationParser.parsable(newValue)) timeOK.setValue(Boolean.TRUE);
 //            if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-//                System.out.println("Possiblely good start Time (newValue: " + newValue + ")");
+//                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
 //            } else {
 //                Platform.runLater(() -> {
 //                    int c = ultraTime.getCaretPosition();
@@ -2452,7 +2455,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                    ultraTime.setText(oldValue);
 //                    ultraTime.positionCaret(c);
 //                });
-//                System.out.println("Bad clock time (newValue: " + newValue + ")");
+//                logger.debug("Bad clock time (newValue: " + newValue + ")");
 //            }
 //        });
 //        
@@ -2474,7 +2477,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //        if (result.isPresent()) {
 //            if (useComputer.selectedProperty().get()) {
-//                System.out.println("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
+//                logger.debug("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
 //                if (localTZ.equals(ultraTZ)) setClock(LocalDateTime.now(),null,autoGPS.selectedProperty().get());
 //                else setClock(LocalDateTime.now(),localTZ,autoGPS.selectedProperty().get());
 //            } else {
@@ -2503,7 +2506,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                            // TZ check
 //                            Integer localTZ = TimeZone.getDefault().getOffset(System.currentTimeMillis())/3600000;
 //                            Integer ultraTZ = Integer.parseInt(readerSettings.get("23"));
-//                            System.out.println("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
+//                            logger.debug("Timezone check: Local :" + localTZ + " ultra: " + ultraTZ);
 //                            String issues = "";
 //                            if (!localTZ.equals(ultraTZ))  {
 //                                timeOK=false;
@@ -2516,17 +2519,17 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                timeOK=false;
 //                                issues += "Clock Date Mismatch: Local: "+ LocalDate.now() + " ultra: " + ultraClock.date+"\n";
 //                            }
-//                            System.out.println("Date check: Local :" + LocalDate.now() + " ultra: " + ultraClock.date);
+//                            logger.debug("Date check: Local :" + LocalDate.now() + " ultra: " + ultraClock.date);
 //
 //                            if (Duration.between(ultraClock.time, ultraClock.takenAt).abs().getSeconds() > 5) {
 //                                timeOK=false;
 //                                issues += "Clock Time Mismatch: Local: "+ ultraClock.takenAt + " ultra: " + ultraClock.time+"\n";
 //                            }
-//                             System.out.println("Time check: Local :" + ultraClock.takenAt + " ultra: " + ultraClock.time);
+//                             logger.debug("Time check: Local :" + ultraClock.takenAt + " ultra: " + ultraClock.time);
 //                             
 //                            if (!timeOK) {
 //                                
-//                                System.out.println("Time issues!!!");
+//                                logger.debug("Time issues!!!");
 //                                
 //                                if (readingStatus.get()) {
 //                                    issues += "\nThese cannot be fixed when the Ultra is in 'Read' mode. \n" +
@@ -2569,7 +2572,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    });
 //                                }
 //                            }
-//                            else System.out.println("Time loogs good");
+//                            else logger.debug("Time loogs good");
 //                            // now let's populate the settings box
 //                        } catch (Exception ex) {
 //                            Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
@@ -2591,7 +2594,7 @@ public class PikaReaderDirectReader implements TimingReader {
 
             Integer battery = (int) status[42]; // old tricks are still good
             Boolean reading = (char) 00 != status[45];
-            System.out.println("Reading: " + status[45]);
+            logger.debug("Reading: " + status[45]);
 
             // update the reading status and status label 
             Boolean currentStatus = readingStatus.getValue();
@@ -2654,7 +2657,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                else if (volume.equals("Soft")) val = 1;
 //                                else if (volume.equals("Loud")) val = 2;
 //
-//                                System.out.println("updateReaderSettings(): Setting beeper volume (0x21) " + volume + "(" + Byte.toString(val) + ")");
+//                                logger.debug("updateReaderSettings(): Setting beeper volume (0x21) " + volume + "(" + Byte.toString(val) + ")");
 //
 //                                if (val != 3) {
 //                                    ultraOutput.flush();
@@ -2671,16 +2674,16 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                        commit=true;
 //                                    } else {
 //                                    // timeout
-//                                        System.out.println("Timeout with command 'u0x21'");
+//                                        logger.debug("Timeout with command 'u0x21'");
 //                                    }
 //                                }
 //                            } else {
-//                               System.out.println("updateReaderSettings(): Beeper volume is NULL!");
+//                               logger.debug("updateReaderSettings(): Beeper volume is NULL!");
 //                            }
 //                            // Mode
 //                            String mode = reader1ModeChoiceBox.getSelectionModel().getSelectedItem();
 //                            if (mode != null){
-//                                System.out.println("updateReaderSettings(): Sending reader mode (0x14/0x15) command");
+//                                logger.debug("updateReaderSettings(): Sending reader mode (0x14/0x15) command");
 //                                byte val = 0;
 //                                if (mode.equals("Start")) val = 0;
 //                                if (mode.equals("Finish")) val = 3;
@@ -2700,7 +2703,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    restartInterface=true;
 //                                } else {
 //                                // timeout
-//                                    System.out.println("Timeout with command 'u0x20'");
+//                                    logger.debug("Timeout with command 'u0x20'");
 //                                }
 //                                ultraOutput.writeBytes("u");
 //                                ultraOutput.writeByte(21);  // 0x15, Reader 2 mode
@@ -2716,13 +2719,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    restartInterface=true;
 //                                } else {
 //                                // timeout
-//                                    System.out.println("Timeout with command 'u0x21'");
+//                                    logger.debug("Timeout with command 'u0x21'");
 //                                }
 //                            }
 //
 //                            Integer gf = gatingIntervalSpinner.getValue();
 //                            if (gf != null && "Finish".equals(mode)){
-//                                System.out.println("updateReaderSettings(): Sending gating interval (0x1E) command");
+//                                logger.debug("updateReaderSettings(): Sending gating interval (0x1E) command");
 //
 //                                ultraOutput.flush();
 //
@@ -2739,7 +2742,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                                    restartInterface=true;
 //                                } else {
 //                                // timeout
-//                                    System.out.println("Timeout with command 'u0x1E'");
+//                                    logger.debug("Timeout with command 'u0x1E'");
 //                                }
 //                            } else if ("Start".equals(mode)){
 //                                readerSettings.put("30","1");
@@ -2747,7 +2750,7 @@ public class PikaReaderDirectReader implements TimingReader {
 //                            }
 //
 //                            if (commit){
-//                                System.out.println("updateReaderSettings(): Sending commit (u 0xFF 0xFF) command");
+//                                logger.debug("updateReaderSettings(): Sending commit (u 0xFF 0xFF) command");
 //                                // t[0x20]HH:MM:SS DD-MM-YYYY  
 //                                ultraOutput.flush();
 //
@@ -2760,11 +2763,11 @@ public class PikaReaderDirectReader implements TimingReader {
 //
 //                                } else {
 //                                // timeout
-//                                    System.out.println("Timeout with command 'u0xFF'");
+//                                    logger.debug("Timeout with command 'u0xFF'");
 //                                }
 //                            }
 //                            if (restartInterface){ // This will result in a disconnect
-//                                System.out.println("updateReaderSettings(): Sending reset interface (0x2D) command");
+//                                logger.debug("updateReaderSettings(): Sending reset interface (0x2D) command");
 //
 //                                ultraOutput.flush();
 //
@@ -2776,13 +2779,13 @@ public class PikaReaderDirectReader implements TimingReader {
 //                            }
 //                        } else {
 //                            // timeout
-//                            System.out.println("Timeout waiting to update the reader settings");
+//                            logger.debug("Timeout waiting to update the reader settings");
 //                        }
 //                    } catch (Exception ex) {
 //                        Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
 //
 //                    } finally {
-//                        if (aquired) System.out.println("Relasing transmit lock");
+//                        if (aquired) logger.debug("Relasing transmit lock");
 //                        if (aquired) okToSend.release();
 //                    }
 //                }
@@ -2903,24 +2906,24 @@ public class PikaReaderDirectReader implements TimingReader {
 
         @Override
         public void onOpen(ServerHandshake handshakedata) {
-            System.out.println("new connection opened");
+            logger.debug("new connection opened");
         }
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            System.out.println("closed with exit code " + code + " additional info: " + reason);
+            logger.debug("closed with exit code " + code + " additional info: " + reason);
 
         }
 
         @Override
         public void onMessage(String message) {
-            //System.out.println("Received message #" + messageCounter++ + ": " + message + " Thread: " + Thread.currentThread().getName());
+            logger.trace("Received message #" + messageCounter++ + ": " + message + " Thread: " + Thread.currentThread().getName());
             reader.processLine(message);
         }
 
         @Override
         public void onMessage(ByteBuffer message) {
-            System.out.println("received ByteBuffer");
+            logger.debug("received ByteBuffer");
         }
 
         @Override

@@ -38,12 +38,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringEscapeUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class OverallCSV implements RaceReportType{
+   private static final Logger logger = LoggerFactory.getLogger(OverallCSV.class);
    
     Race race;
     
@@ -95,7 +98,7 @@ public class OverallCSV implements RaceReportType{
     
     @Override
     public String process(List<ProcessedResult> prList, RaceReport rr) {
-        System.out.println("OverallCSV.process() Called... ");
+        logger.debug("OverallCSV.process() Called... ");
         String report = new String();
         
         race = rr.getRace();

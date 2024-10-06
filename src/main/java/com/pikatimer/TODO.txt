@@ -59,7 +59,7 @@ General:
     --Switch to json.org via com.guicedee.services rather than the current roll your own mess
 
 Logging 
-  --switch to slf4j or something better than System.out.println()
+  DONE --switch to slf4j or something better than System.out.println()
   --enable debug output log viewing
   --enable saving debug output log to file
   --enable toggle to set debug level to Normal/Debug/Trace

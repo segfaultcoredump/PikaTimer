@@ -34,6 +34,8 @@ import javax.persistence.MapKeyColumn;
 import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -43,6 +45,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="bib2chip")
 public class Bib2ChipMap {
+    private static final Logger logger = LoggerFactory.getLogger(Bib2ChipMap.class);
+    
     private final IntegerProperty IDProperty = new SimpleIntegerProperty(); // bib2chip_id
     private Map<String,String> chip2bibMap;
     private final BooleanProperty customMapProperty = new SimpleBooleanProperty(false);
@@ -82,7 +86,7 @@ public class Bib2ChipMap {
     @Column(name="bib")
     @CollectionTable(name="bib2chipmap", joinColumns=@JoinColumn(name="bib2chip_id"))
     public Map<String, String> getChip2BibMap() {
-        //System.out.println("TLI.getAttributes called, returning " + attributes.size() + " attributes");
+        logger.trace("getChip2BibMap() called. Returning " + chip2bibMap.size() + " mappings.");
         return chip2bibMap;
     }
     public void setChip2BibMap(Map<String,String> chip2bib) {
@@ -93,20 +97,20 @@ public class Bib2ChipMap {
         } else {
             chip2bibMap = new HashMap();
         }
-        //System.out.println("setChip2bibMap called with " + chip2bibMap.size() + " mappings");
+        logger.trace("setChip2bibMap called with " + chip2bibMap.size() + " mappings");
     } 
     
     public String getBibFromChip(String Chip) {
-        //System.out.println("getBibFromChip called for \"" + Chip +"\"");
+        logger.trace("getBibFromChip called for \"" + Chip +"\"");
 
         if(customMapProperty.getValue() && chip2bibMap.size() > 0 ) {
-            //System.out.println("Using a mapping");
+            logger.trace("Using a mapping");
 
             if (chip2bibMap.containsKey(Chip)) return chip2bibMap.get(Chip);
             else if ("0".equals(Chip)) return Chip; // special chip of "0" 
             return "Unmapped " + Chip;
         } else {
-            //System.out.println("Not using a mapping" + customMapProperty.getValue().toString());
+            logger.trace("Not using a mapping" + customMapProperty.getValue().toString());
 
             return Chip;
         }

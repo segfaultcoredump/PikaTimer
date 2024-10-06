@@ -25,12 +25,16 @@ import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 class ImportWizardData {
+    private static final Logger logger = LoggerFactory.getLogger(ImportWizardData.class);
+
     private final StringProperty filename = new SimpleStringProperty();
     private final BooleanProperty waveAssignByBib = new SimpleBooleanProperty();
     private final BooleanProperty waveAssignByAttribute = new SimpleBooleanProperty();
@@ -53,7 +57,7 @@ class ImportWizardData {
         return filename.getValueSafe();
     }
     public void setFileName(String fName) {
-        System.out.println("setFileName: from " + filename.getValueSafe() + " to " + fName);
+        logger.debug("setFileName: from " + filename.getValueSafe() + " to " + fName);
         filename.setValue(fName);
     }
     public StringProperty fileNameProperty() {
@@ -100,7 +104,7 @@ class ImportWizardData {
     
     public void mapAttrib(String k, String v) {
         attributeMap.put(k, v); 
-        System.out.println("ImportWizardData: Setting " + k + " to " + v);
+        logger.debug("ImportWizardData: Setting " + k + " to " + v);
     }
     public Map getAttributeMap() {
         return attributeMap;

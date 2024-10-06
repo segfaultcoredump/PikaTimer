@@ -26,8 +26,6 @@ import static java.lang.Boolean.TRUE;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
@@ -54,9 +52,12 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class FXMLAwardDetailsController {
+    private static final Logger logger = LoggerFactory.getLogger(FXMLAwardDetailsController.class);
     
     @FXML ComboBox<Race> raceComboBox; 
     @FXML Label selectedRaceLabel;
@@ -149,7 +150,7 @@ public class FXMLAwardDetailsController {
     }    
     
     private void populateAgeGroupSettings(Race r) {
-        System.out.println("populateRaceAGSettings() called...");
+        logger.debug("populateRaceAGSettings() called...");
         
         AgeGroups ag;
         if (r.getAgeGroups() == null) {
@@ -226,7 +227,7 @@ public class FXMLAwardDetailsController {
         //@FXML ChoiceBox agIncrementChoiceBox;
         //@FXML TextField agStartTextField;
         //@FXML TextField agMastersStartTextField;
-        System.out.println("initizlizeRaceAGSettings() called...");
+        logger.debug("initizlizeRaceAGSettings() called...");
         
         agGridPane.visibleProperty().bind(agCustomToggleSwitch.selectedProperty().not());
         agGridPane.managedProperty().bind(agCustomToggleSwitch.selectedProperty().not());
@@ -250,7 +251,7 @@ public class FXMLAwardDetailsController {
             Race r = activeRace; 
 
             if (!newPropertyValue) {
-                //System.out.println("agStart out of focus...");
+                logger.trace("agStart out of focus...");
                 
                 if (agStartTextField.getText().isEmpty()) 
                     agStartTextField.setText(r.getAgeGroups().getAGStart().toString());
@@ -319,7 +320,7 @@ public class FXMLAwardDetailsController {
                 e.getRowValue().startAgeProperty().setValue(e.getNewValue());
                 activeRace.getAgeGroups().recalcCustomAGs();
             } catch (Exception ex) {
-                System.out.println("startAGTableColumn.setOnEditCommit Oops....");
+                logger.debug("startAGTableColumn.setOnEditCommit Oops....");
                 e.getRowValue().startAgeProperty().setValue(e.getOldValue());
             }
             Race r = activeRace; 
@@ -367,7 +368,7 @@ public class FXMLAwardDetailsController {
             r.getSexGroups().setHandling(SexHandling.OFI);
         }
         if (r.getSexGroups().sexCodeListProperty().isEmpty() ) {
-            System.out.println("Empty SexCodeList. Adding defaults");
+            logger.debug("Empty SexCodeList. Adding defaults");
             r.getSexGroups().addSexCode(new SexCode("F","Female"));
             r.getSexGroups().addSexCode(new SexCode("M","Male"));
             r.getSexGroups().addSexCode(new SexCode("X","Non-Binary"));
@@ -390,13 +391,13 @@ public class FXMLAwardDetailsController {
     }
 
     private void populateAwardsSettings(Race r) {
-        System.out.println("populateAwardSettings() Called...");
+        logger.debug("populateAwardSettings() Called...");
         populateAwardSettingsInProgress.setValue(TRUE);
         RaceAwards a;
         
         // If null, create one and save it
         if (r.getAwards() == null) {
-            System.out.println("NULL RaceAwards... Creating one...");
+            logger.debug("NULL RaceAwards... Creating one...");
             a = new RaceAwards();
             r.setAwards(a);
             raceDAO.updateRace(r);
@@ -418,7 +419,7 @@ public class FXMLAwardDetailsController {
             // No? then let's build this 
             VBox raceAwardVBox = new VBox();
             raceAwardUIMap.put(r.getUUID(), raceAwardVBox);
-            System.out.println("Populating raceAwardUIMap() for race  " + r.getUUID() + " with "+ a.awardCategoriesProperty().size() + " awards" );
+            logger.debug("Populating raceAwardUIMap() for race  " + r.getUUID() + " with "+ a.awardCategoriesProperty().size() + " awards" );
             
             rebuildAwardDisplay(r);
             
@@ -438,27 +439,27 @@ public class FXMLAwardDetailsController {
     }
     
     private void rebuildAwardDisplay(Race r){
-        System.out.println("rebuildAwardDisplay called for race w/ uuid of " + r.getUUID());
+        logger.debug("rebuildAwardDisplay called for race w/ uuid of " + r.getUUID());
         RaceAwards a = r.getAwards();
         VBox raceAwardVBox = raceAwardUIMap.get(r.getUUID());
         
         raceAwardVBox.getChildren().clear();
         a.awardCategoriesProperty().forEach(ac -> {
-            System.out.println("Looking for award category with UUID of " + ac.getUUID());
+            logger.debug("Looking for award category with UUID of " + ac.getUUID());
             if (raceAwardNodeUIMap.containsKey(ac.getUUID())){
-                System.out.println("Found an existing on in the UI map...");
+                logger.debug("Found an existing on in the UI map...");
                 raceAwardVBox.getChildren().add(raceAwardNodeUIMap.get(ac.getUUID()));
             } else {
-                System.out.println("Award not found, building UI for " + ac.getName() + "(" + ac.getUUID() + ")" );
+                logger.debug("Award not found, building UI for " + ac.getName() + "(" + ac.getUUID() + ")" );
                 FXMLLoader tlLoader = new FXMLLoader(getClass().getResource("/com/pikatimer/race/FXMLAwardCategory.fxml"));
                 try {
                     raceAwardNodeUIMap.put(ac.getUUID(),tlLoader.load());
                     raceAwardVBox.getChildren().add(raceAwardNodeUIMap.get(ac.getUUID()));
-                    System.out.println("Showing Award of type " + ac.getType().toString());
+                    logger.debug("Showing Award of type " + ac.getType().toString());
                 } catch (IOException ex) {
-                    System.out.println("Loader Exception for race reports!");
-                    ex.printStackTrace();
-                    Logger.getLogger(FXMLAwardCategoryController.class.getName()).log(Level.SEVERE, null, ex);
+                    logger.debug("Loader Exception for race reports!",ex);
+                    //ex.printStackTrace();
+                    
                 }
                 ((FXMLAwardCategoryController)tlLoader.getController()).setAwardCategory(ac);
             }

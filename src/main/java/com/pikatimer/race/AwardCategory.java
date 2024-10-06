@@ -61,6 +61,8 @@ import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.LazyCollection;
 import org.hibernate.annotations.LazyCollectionOption;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -71,6 +73,8 @@ import org.hibernate.annotations.LazyCollectionOption;
 @Table(name="race_award_categories")
 public class AwardCategory {
     private RaceAwards raceAward;
+    
+    private static final Logger logger = LoggerFactory.getLogger(AwardCategory.class);
 
     @Override
     public String toString() {
@@ -133,12 +137,12 @@ public class AwardCategory {
     //    uuid varchar,
     @Column(name="uuid")
     public String getUUID() {
-       // System.out.println("RaceReport UUID is " + uuidProperty.get());
+       // logger.debug("RaceReport UUID is " + uuidProperty.get());
         return uuidProperty.getValue(); 
     }
     public void setUUID(String  uuid) {
         uuidProperty.setValue(uuid);
-        //System.out.println("RaceReport UUID is now " + uuidProperty.get());
+        logger.trace("RaceReport UUID is now " + uuidProperty.get());
     }
     public StringProperty uuidProperty() {
         return uuidProperty; 
@@ -155,7 +159,7 @@ public class AwardCategory {
     
     @Column(name="category_name")
     public String getName() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getName() returning " + nameProperty.getValueSafe());
         return nameProperty.getValueSafe(); 
     }
     public void setName(String i) {
@@ -167,7 +171,7 @@ public class AwardCategory {
     
     @Column(name="category_priority")
     public Integer getPriority() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getPriority returning " + priorityProperty.getValue());
         return priorityProperty.getValue();
     }
     public void setPriority(Integer i) {
@@ -243,7 +247,7 @@ public class AwardCategory {
     //timing_point_type varchar,
     @Column(name="timing_point_type")
     public String getTimingPointType() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getTimingPointType() returning " + timingPointTypeProperty.getValueSafe());
         return timingPointTypeProperty.getValueSafe(); 
     }
     public void setTimingPointType(String i) {
@@ -255,7 +259,7 @@ public class AwardCategory {
     //timing_point_value int,
     @Column(name="timing_point_value")
     public Integer getTimingPointID() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getTimingPointID returning " + timingPointIDProperty.getValue());
         return timingPointIDProperty.getValue();
     }
     public void setTimingPointID(Integer i) {
@@ -280,11 +284,11 @@ public class AwardCategory {
     
     @Column(name="category_depth")
     public Integer getDepth() {
-        System.out.println("AwardCategory.getDepth(): returning " + depthProperty.getValue());
+        logger.debug("AwardCategory.getDepth(): returning " + depthProperty.getValue());
         return depthProperty.getValue();
     }
     public void setDepth(Integer i) {
-        System.out.println("AwardCategory.setDepth(): " + i);
+        logger.debug("AwardCategory.setDepth(): " + i);
         depthProperty.setValue(i);
     }
     public IntegerProperty depthProperty() {
@@ -293,11 +297,11 @@ public class AwardCategory {
     
     @Column(name="masters_age")
     public Integer getMastersAge() {
-        System.out.println("AwardCategory.mastersAge(): returning " + mastersAgeProperty.getValue());
+        logger.debug("AwardCategory.mastersAge(): returning " + mastersAgeProperty.getValue());
         return mastersAgeProperty.getValue();
     }
     public void setMastersAge(Integer i) {
-        System.out.println("AwardCategory.setDepth(): " + i);
+        logger.debug("AwardCategory.setDepth(): " + i);
         mastersAgeProperty.setValue(i);
     }
     public IntegerProperty mastersAgeProperty() {
@@ -326,7 +330,7 @@ public class AwardCategory {
     }
     
     public void addCustomDepth(AwardDepth i){
-        System.out.println("addCustomDepth called");
+        logger.debug("addCustomDepth called");
         customDepthObservableList.add(i);
         recalcCustomDepths();
         customDepthList = customDepthObservableList;
@@ -420,7 +424,7 @@ public class AwardCategory {
     public void updateSubdivideList(){
         splitBy = new HashSet();
         splitBy.addAll(subdivideListProperty);
-        splitBy.forEach(s -> {System.out.println("AwardCategory subdivide category: " + s);});
+        splitBy.forEach(s -> {logger.debug("AwardCategory subdivide category: " + s);});
     }
     
     @Column(name="skew")
@@ -437,7 +441,7 @@ public class AwardCategory {
     
     @Column(name="skew_type")
     public String getSkewType() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getSkewType() returning " + skewOpProperty.getValueSafe());
         return skewOpProperty.getValueSafe(); 
     }
     public void setSkewType(String i) {
@@ -467,7 +471,7 @@ public class AwardCategory {
         Race race = raceAward.getRace();
         
     
-        System.out.println("Processing " + typeProperty.toString() + " " + nameProperty.getValueSafe());
+        logger.debug("Processing " + typeProperty.toString() + " " + nameProperty.getValueSafe());
         // What is going on here...
         
         // The "pr" list is the contenders for the award
@@ -478,28 +482,28 @@ public class AwardCategory {
         // if we are not a Custom award type, setup some default
         // filters and splitBy arrays.
         switch (typeProperty.get()) {
-            case OVERALL:
+            case OVERALL -> {
                 // no Filter
                 processFilters = new ArrayList();
                 processFilters.add(new AwardFilter().sexGroup());
                 processSplitBy = Arrays.asList("sex");
                 timingPointTypeProperty.setValue("FINISH");
-                break;
-            case MASTERS:
+            }
+            case MASTERS -> {
                 processFilters= new ArrayList();
                 processFilters.add(new AwardFilter().sexGroup());
                 processFilters.add(new AwardFilter("age",">=",mastersAgeProperty.getValue().toString()));
                 processSplitBy = Arrays.asList("sex");
                 timingPointTypeProperty.setValue("FINISH");
-                break;
-            case AGEGROUP:
+            }
+            case AGEGROUP -> {
                 processFilters= new ArrayList();
                 processFilters.add(new AwardFilter().sexGroup());
                 processSplitBy = Arrays.asList("sex","AG");
                 timingPointTypeProperty.setValue("FINISH");
-                break;
-            default:
-                System.out.println("Custom Award: " + typeProperty.getName());
+            }
+            default -> {
+                logger.debug("Custom Award: " + typeProperty.getName());
                 if (filters == null || customFilteredProperty.equals(FALSE)) processFilters = new ArrayList();
                 else processFilters = filters;
                 if (splitBy == null || customSubdivideProperty.equals(FALSE)) processSplitBy = new ArrayList();
@@ -511,8 +515,8 @@ public class AwardCategory {
                     });
                 } else if (timingPointTypeProperty.getValueSafe().equals("SEGMENT")) {
                     timeID.setValue(timingPointIDProperty.get());
-                } 
-                break;
+                }
+            }
         }
             
         // Step 1: filter
@@ -726,7 +730,7 @@ public class AwardCategory {
             contendersMap.keySet().forEach(k -> {
                 Integer count = 0;
                 if (!subMap.containsKey(k)) {
-                    System.out.println("Odd, we have a contender with a sub-type of k but no registered or starting participants");
+                    logger.debug("Odd, we have a contender with a sub-type of k but no registered or starting participants");
                 } else {
                     count = subMap.get(k);
                 }
@@ -735,7 +739,7 @@ public class AwardCategory {
                 for(AwardDepth d: customDepthList){
                     if(count >= d.getStartCount()) depth = d.getDepth();
                 }
-                System.out.println("AwardDepth: for " + k + " we have " + count + " and will go " + depth);
+                logger.debug("AwardDepth: for " + k + " we have " + count + " and will go " + depth);
 
                 depthMap.put(k, depth);
             });
@@ -778,7 +782,7 @@ public class AwardCategory {
                 
                 currentTime = DurationFormatter.durationToString(a.awardTime, dispFormat, roundMode);
             
-                //System.out.println("Award::printWinners: Comparing previous " + lastTime + " to " + currentTime);
+                logger.trace("Award::printWinners: Comparing previous " + lastTime + " to " + currentTime);
                 if (ties && !lastTime.equals(currentTime)) currentPlace = i+1;
                 else if (lastTime.equals(currentTime)) { prevAW.tie = true; a.tie = true;}
                 else if (!ties) currentPlace++;

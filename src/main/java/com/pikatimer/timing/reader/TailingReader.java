@@ -23,8 +23,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -46,13 +44,16 @@ import javafx.stage.FileChooser;
 import org.apache.commons.io.input.Tailer;
 import org.apache.commons.io.input.TailerListenerAdapter;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public abstract class TailingReader implements TimingReader{
-        
+    private static final Logger logger = LoggerFactory.getLogger(TailingReader.class);
+    
     protected TimingListener timingListener;
     protected File sourceFile; 
     protected final StringProperty fileName; 
@@ -116,7 +117,7 @@ public abstract class TailingReader implements TimingReader{
 
     @Override
     public void startReading() {
-        System.out.println("TailingReader:StartReading() called");
+        logger.debug("TailingReader:StartReading() called");
         if (tailingThread != null && tailingThread.isAlive()) return;
         if (readingThread != null && readingThread.isAlive()) return;
         Task readingTask = new Task<Void>() {
@@ -127,7 +128,7 @@ public abstract class TailingReader implements TimingReader{
                         
                         while (readingStatus.getValue() && (sourceFile == null || !sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile())){
                             Thread.sleep(1000);
-                            System.out.println("Waiting for " + sourceFile.getPath());
+                            logger.debug("Waiting for " + sourceFile.getPath());
                             Platform.runLater(() ->{
                                 statusLabel.setText("Waiting for " + sourceFile.getPath());
                             });
@@ -143,7 +144,7 @@ public abstract class TailingReader implements TimingReader{
                             readingStatus.setValue(Boolean.TRUE);
                         }
                     } catch (InterruptedException ex) {
-                        Logger.getLogger(TailingReader.class.getName()).log(Level.SEVERE, null, ex);
+                        logger.debug("Interrupted",ex);
                     }
                     return null;
                 }
@@ -199,7 +200,7 @@ public abstract class TailingReader implements TimingReader{
                     } else readOnce();
                         
                 } else {
-                    System.out.println("No change in file name");
+                    logger.debug("No change in file name");
                 }
             });
             
@@ -221,10 +222,10 @@ public abstract class TailingReader implements TimingReader{
             watchProgressIndicator.setMaxHeight(30.0);
             autoImportToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
                 if(newValue) {
-                    System.out.println("TailingReader: autoImportToggleSwitch event: calling startReading()");
+                    logger.debug("TailingReader: autoImportToggleSwitch event: calling startReading()");
                     startReading();
                 } else {
-                    System.out.println("TailingReader: autoImportToggleSwitch event: calling stopReading()");
+                    logger.debug("TailingReader: autoImportToggleSwitch event: calling stopReading()");
                     stopReading();
                 }
             });
@@ -254,7 +255,7 @@ public abstract class TailingReader implements TimingReader{
     private class MyHandler extends TailerListenerAdapter {
         @Override
         public void handle(String line) {
-            System.out.println("handle: " + line);
+            logger.debug("handle: " + line);
             process(line);
         }
     }
@@ -265,14 +266,14 @@ public abstract class TailingReader implements TimingReader{
     @Override
     public void readOnce() {
         // get the event date, just in case we need it
-        System.out.println("TailingReader.readOnce called.");
+        logger.debug("TailingReader.readOnce called.");
         stopReading();
         
         if (sourceFile == null || !sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile()) {
             statusLabel.setText("Unable to open file: " + fileName.getValueSafe());
             return;
         }
-        System.out.println("  Current file is: \"" + sourceFile.getAbsolutePath() + "\"");
+        logger.debug("  Current file is: \"" + sourceFile.getAbsolutePath() + "\"");
         // Run this in a tailingThread....
         Task task;
         task = new Task<Void>() {
@@ -281,7 +282,7 @@ public abstract class TailingReader implements TimingReader{
                     reading.acquire();
                     try (Stream<String> s = Files.lines(sourceFile.toPath())) {
                         s.map(line -> line.trim()).filter(line -> !line.isEmpty()).forEach(line -> {
-                            //System.out.println("readOnce read " + s);
+                            logger.trace("readOnce read " + s);
                             process(line);
                         });
                         s.close();
@@ -309,12 +310,12 @@ public abstract class TailingReader implements TimingReader{
         // get any existing attributes
         String filename = timingListener.getAttribute("TailingReader:filename");
         if (filename != null) {
-            System.out.println("TailingReader: Found existing file setting: " + filename);
+            logger.debug("TailingReader: Found existing file setting: " + filename);
             sourceFile = new File(filename).getAbsoluteFile();
             fileName.setValue(filename);
             
         } else {
-            System.out.println("TailingReader: Did not find existing file setting." );
+            logger.debug("TailingReader: Did not find existing file setting." );
         }
         
         

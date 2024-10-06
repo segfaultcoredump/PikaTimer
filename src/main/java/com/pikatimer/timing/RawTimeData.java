@@ -26,6 +26,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -35,6 +37,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="raw_timing_data")
 public class RawTimeData {
+    private static final Logger logger = LoggerFactory.getLogger(RawTimeData.class);
+    
     private Duration timestamp;
     private String chip;
     private Integer timingLocationInputId;
@@ -84,11 +88,11 @@ public class RawTimeData {
     
     @Column(name="timing_loc_input_id") 
     public Integer getTimingLocationInputId() {
-        //System.out.println("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
+        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return timingLocationInputId;
     }
     public void setTimingLocationInputId(Integer i) {
-        //System.out.println("RawTimeData: Setting timingLocationInputId to " + i);
+        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.timingLocationInputId = i;
     }
 

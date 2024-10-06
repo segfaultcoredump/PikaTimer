@@ -33,8 +33,7 @@ import org.slf4j.LoggerFactory;
  * and such. We will use some hand tuned sql to get/set/retrieve the single line
  * from the db and use that to setup/create/rehydrate the Event object.
  */
-public class EventDAO {
-    
+public class EventDAO {    
     private static final Logger logger = LoggerFactory.getLogger(EventDAO.class);
     private final Event event = Event.getInstance();
     /**
@@ -103,14 +102,14 @@ public class EventDAO {
 
         if (results.isEmpty()) {
             // nothing in the db, lets create an entry
-            System.out.println("No event in DB, creating one...");
+            logger.debug("No event in DB, creating one...");
             createEvent();
         } else {
             // woot, we have data. :-) 
             for (Object[] row : results) {
                 event.setEventName(row[1].toString());
                 event.setEventDate(row[2].toString());
-                System.out.println("Results: " + row[1].toString() + " Date:" + row[2].toString());
+                logger.debug("Results: " + row[1].toString() + " Date:" + row[2].toString());
             }
         }
 
@@ -122,12 +121,12 @@ public class EventDAO {
         List<EventOptions> list = new ArrayList<>();
         Session s = HibernateUtil.getSessionFactory().getCurrentSession();
         s.beginTransaction();
-        //System.out.println("RacedAO.refreshRaceList() Starting the query");
+        //logger.debug("RacedAO.refreshRaceList() Starting the query");
 
         try {
             list = s.createQuery("from EventOptions").list();
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            logger.debug(e.getMessage());
         }
         s.getTransaction().commit();
 

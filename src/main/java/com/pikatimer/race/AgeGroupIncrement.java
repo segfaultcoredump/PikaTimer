@@ -24,6 +24,8 @@ import javafx.beans.property.StringProperty;
 import javafx.util.Callback;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -31,6 +33,7 @@ import javax.persistence.Embeddable;
  */    
 @Embeddable 
 public class AgeGroupIncrement {
+    private static final Logger logger = LoggerFactory.getLogger(AgeGroupIncrement.class);
 
     private final IntegerProperty startAgeProperty = new SimpleIntegerProperty();
     private final StringProperty endAgeProperty = new SimpleStringProperty(); 
@@ -45,7 +48,7 @@ public class AgeGroupIncrement {
     
     @Column(name="increment_start")
     public Integer getStartAge() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getStartAge() returning " + startAgeProperty.getValue());
         return startAgeProperty.getValue(); 
     }
     public void setStartAge(Integer i) {
@@ -61,11 +64,11 @@ public class AgeGroupIncrement {
     
     @Column(name="increment_name")
     public String getName() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getName() returning " + nameProperty.getValueSafe());
         return nameProperty.getValueSafe(); 
     }
     public void setName(String i) {
-        System.out.println("AgeGroups.setAGIncrement() with " + i);
+        logger.debug("AgeGroups.setAGIncrement() with " + i);
         nameProperty.setValue(i);
     }
     public StringProperty nameProperty() {

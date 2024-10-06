@@ -40,7 +40,6 @@ public class FXMLpikaController   {
     @FXML
     protected void initialize() {
         // TODO
-        //System.out.println("FXMLpikaController initialized!");
         eventName.textProperty().bind(Bindings.concat("PikaTimer: ").concat(event.eventNameProperty()));
         eventDate.textProperty().bind(event.eventDateStringProperty());
         event.setMainTabPane(mainTabPane);

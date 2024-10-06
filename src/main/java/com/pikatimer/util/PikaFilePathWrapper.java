@@ -18,6 +18,8 @@ package com.pikatimer.util;
 
 import org.h2.store.fs.FilePath;
 import org.h2.store.fs.FilePathWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -32,28 +34,29 @@ import org.h2.store.fs.FilePathWrapper;
  *  the performance of the substring routines shown in Andryey's example linked to above 
  */
 public class PikaFilePathWrapper extends FilePathWrapper {
-
+    private static final Logger logger = LoggerFactory.getLogger(PikaFilePathWrapper.class);
+    
     @Override
     public String getScheme() {
         return "pika";
     }
     @Override
     public FilePathWrapper wrap(FilePath base) {
-        //System.out.println("\nPikaFilePathWrapper:wrap() called with " + base.toString());
+        logger.trace("\nPikaFilePathWrapper:wrap() called with " + base.toString());
         PikaFilePathWrapper wrapper = (PikaFilePathWrapper) super.wrap(base);
         wrapper.name = getPrefix() + base.toString().replaceAll(".pika$", ".mv.db");
-        //System.out.println("PikaFilePathWrapper:wrap() returning " + wrapper.name);
+        logger.trace("PikaFilePathWrapper:wrap() returning " + wrapper.name);
         return wrapper;
     }
 
     @Override
     protected FilePath unwrap(String path) {
-        //System.out.println("\nPikaFilePathWrapper:unwrap() called with " + path);
+        logger.trace("\nPikaFilePathWrapper:unwrap() called with " + path);
         String newName = path.substring(getScheme().length() + 1);
-        //System.out.println("PikaFilePathWrapper:unwrap() newName is now " + newName);
+        logger.trace("PikaFilePathWrapper:unwrap() newName is now " + newName);
 
         newName = newName.replaceAll(".mv.db$", ".pika");
-        //System.out.println("PikaFilePathWrapper:unwrap() returning " + newName);
+        logger.trace("PikaFilePathWrapper:unwrap() returning " + newName);
         return FilePath.get(newName);
     }
 

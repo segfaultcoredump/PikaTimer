@@ -24,6 +24,8 @@ import javafx.beans.property.StringProperty;
 import javafx.util.Callback;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -31,7 +33,7 @@ import javax.persistence.Embeddable;
  */
 @Embeddable
 public class AwardDepth {
-
+    private static final Logger logger = LoggerFactory.getLogger(AwardDepth.class);
     private final IntegerProperty startCountProperty = new SimpleIntegerProperty();
     private final StringProperty endCountProperty = new SimpleStringProperty(); 
     private final IntegerProperty depthProperty = new SimpleIntegerProperty();
@@ -42,7 +44,7 @@ public class AwardDepth {
     
     @Column(name="start")
     public Integer getStartCount() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getStartCount() returning " + startCountProperty.getValue());
         return startCountProperty.getValue(); 
     }
     public void setStartCount(Integer i) {
@@ -58,11 +60,11 @@ public class AwardDepth {
     
     @Column(name="depth")
     public Integer getDepth() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getDepth() returning " + depthProperty.getValue());
         return depthProperty.getValue();
     }
     public void setDepth(Integer i) {
-        System.out.println("AwardDepth.setAGIncrement() with " + i);
+        logger.debug("AwardDepth.setAGIncrement() with " + i);
         depthProperty.setValue(i);
     }
     public IntegerProperty depthProperty() {

@@ -40,6 +40,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -47,6 +49,7 @@ import org.apache.commons.lang3.StringUtils;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class OverallJSON implements RaceReportType{
+   private static final Logger logger = LoggerFactory.getLogger(OverallJSON.class);
    
     Race race;
     
@@ -109,7 +112,7 @@ public class OverallJSON implements RaceReportType{
     
     @Override
     public String process(List<ProcessedResult> prList, RaceReport rr) {
-        System.out.println("OverallJSON.process() Called... ");
+        logger.debug("OverallJSON.process() Called... ");
         String report = new String();
         
         race = rr.getRace();

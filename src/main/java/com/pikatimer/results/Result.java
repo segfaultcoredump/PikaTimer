@@ -46,6 +46,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -55,6 +57,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="results")
 public class Result {
+    private static final Logger logger = LoggerFactory.getLogger(Result.class);
+    
     private final StringProperty bib = new SimpleStringProperty();
     private Integer id;
     private Integer raceID ; 
@@ -268,7 +272,7 @@ public class Result {
     
     public ObjectProperty<Duration> splitTimeByIDProperty(Integer splitID) {
         if (!splitPropertyMap.containsKey(splitID)) {
-            //System.out.println("Split id " + splitID + " not found, adding one in...");
+            logger.trace("Split id " + splitID + " not found, adding one in...");
             splitPropertyMap.put(splitID, new SimpleObjectProperty(Duration.ofNanos(Long.MAX_VALUE)));
         } 
         return splitPropertyMap.get(splitID);
@@ -277,10 +281,10 @@ public class Result {
     public void recalcTimeProperties(){
         if (pendingRecalc){
             
-            //System.out.println("Result::recalcTimeProperties for bib " + bib.get());
-//            System.out.println(" StartDuration: " + startDuration.toString());
-//            System.out.println(" waveStartDuration: " + waveStartDuration.toString());
-//            System.out.println(" finishDuration: " + finishDuration.toString());
+            logger.trace("Result::recalcTimeProperties for bib " + bib.get());
+            logger.trace(" StartDuration: " + startDuration.toString());
+            logger.trace(" waveStartDuration: " + waveStartDuration.toString());
+            logger.trace(" finishDuration: " + finishDuration.toString());
 
             if (!startDuration.equals(startDurationProperty.get())) startDurationProperty.set(startDuration);
             if (!waveStartDuration.equals(waveStartDurationProperty.get())) waveStartDurationProperty.set(waveStartDuration);
@@ -308,8 +312,8 @@ public class Result {
             
             
 //            
-//            System.out.println(" chipTime: " + finishDurationProperty.get().toString());
-//            System.out.println(" gunTime: " + finishGunDurationProperty.get().toString());
+//            logger.debug(" chipTime: " + finishDurationProperty.get().toString());
+//            logger.debug(" gunTime: " + finishGunDurationProperty.get().toString());
             
             // now loop through and fix the splits...
             // missing splits are set to MAX_VALUE
@@ -331,7 +335,7 @@ public class Result {
             });
             
             revision.set(revision.get() + 1);
-            //System.out.println("Result revision is now " + revision.getValue().toString());
+            logger.trace("Result revision is now " + revision.getValue().toString());
             pendingRecalc = false;
         }
     }

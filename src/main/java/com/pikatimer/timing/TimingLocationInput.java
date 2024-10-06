@@ -29,8 +29,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.Observable;
 import javafx.beans.property.BooleanProperty;
@@ -62,6 +60,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -71,6 +71,8 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="timing_location_input")
 public class TimingLocationInput implements TimingListener{
+    private static final Logger logger = LoggerFactory.getLogger(TimingLocationInput.class);
+    
     private final IntegerProperty IDProperty;
     private final StringProperty timingLocationInputName;
     private TimingLocation timingLocation; // timing_loc_id
@@ -144,13 +146,13 @@ public class TimingLocationInput implements TimingListener{
     }
     public void setTimingLocation(TimingLocation l) {
         if (l != null && (timingLocation == null || !timingLocation.equals(l))) {
-            System.out.println("TimingLocationInput.setTimingLocation: id=" + l.getID());
+            logger.debug("TimingLocationInput.setTimingLocation: id=" + l.getID());
             timingLocation=l;
             timingInputString.unbind();
             timingInputString.bind(l.LocationNameProperty()); 
-            //System.out.println("TimingLocationInput.setTimingLocation: name=" + timingInputString.getValueSafe()); 
+            logger.trace("TimingLocationInput.setTimingLocation: name=" + timingInputString.getValueSafe()); 
         } else {
-            System.out.println("TimingLocationInput.setTimingLocation: null or unchanged"); 
+            logger.debug("TimingLocationInput.setTimingLocation: null or unchanged"); 
         }
     }
     public StringProperty timingLocationProperty() {
@@ -163,7 +165,7 @@ public class TimingLocationInput implements TimingListener{
         return timingInputType;
     }
     public void setTimingInputType(TimingInputTypes t) {
-        System.out.println("TimingLocationInput::setTimingInputType now " + t);
+        logger.debug("TimingLocationInput::setTimingInputType now " + t);
         if (t != null && (timingInputType == null || ! timingInputType.equals(t)) ){
             
             // If we already have a reader
@@ -201,7 +203,7 @@ public class TimingLocationInput implements TimingListener{
                 rawTimeSet = Collections.newSetFromMap(new ConcurrentHashMap<>()); 
                 
                 rawTimeSet.addAll(timingDAO.getRawTimes(this));
-                System.out.println("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
+                logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
                 readCountProperty.set(rawTimeSet.size());
             } 
         }
@@ -217,32 +219,32 @@ public class TimingLocationInput implements TimingListener{
     @CollectionTable(name="timing_location_input_attributes", joinColumns=@JoinColumn(name="tli_id"))
     @OrderColumn(name = "index_id")
     public Map<String, String> getAttributes() {
-        //System.out.println("TLI.getAttributes called, returning " + attributes.size() + " attributes");
+        logger.trace("TLI.getAttributes called, returning " + attributes.size() + " attributes");
         return attributes;
     }
     public void setAttributes(Map<String,String> tli_attributes) {
-        //System.out.println("TLI.setAttributes called, adding " + tli_attributes.size() + " attributes");
-        //System.out.println("TLI.setAttributes called, we already have " + attributes.size() + " attributes");
+        logger.trace("TLI.setAttributes called, adding " + tli_attributes.size() + " attributes");
+        logger.trace("TLI.setAttributes called, we already have " + attributes.size() + " attributes");
         // This really screws things up for some reason, I don't know why. 
         //attributes.clear();  
         attributes = tli_attributes;
         //attributes.putAll(tli_attributes);
-        //System.out.println("TLI.setAttributes called, adding " + tli_attributes.size() + " attributes");
-        //System.out.println("TLI.setAttributes called, we now have " + attributes.size() + " attributes");
+        logger.trace("TLI.setAttributes called, adding " + tli_attributes.size() + " attributes");
+        logger.trace("TLI.setAttributes called, we now have " + attributes.size() + " attributes");
     } 
     
     
     @Override
     public String getAttribute(String key) {
-        //System.out.println("TLI.getAttribute called for " + key);
+        logger.trace("TLI.getAttribute called for " + key);
         return attributes.get(key); 
     }
     @Override
     public void setAttribute(String key, String value) {
-        //System.out.println("Setting Attribute " + key + " to " + value);
+        logger.trace("Setting Attribute " + key + " to " + value);
         attributes.put(key, value); 
         
-        //System.out.println("TLI.setAttribute called, we now have " + attributes.size() + " attributes");
+        logger.trace("TLI.setAttribute called, we now have " + attributes.size() + " attributes");
         timingDAO.updateTimingLocationInput(this);
     }
     
@@ -323,10 +325,10 @@ public class TimingLocationInput implements TimingListener{
     @Override
     public void processRead(RawTimeData r) {
         try {
-            //System.out.println("TimingLocationInput.processRead called" );
-            //System.out.println("processRead() ProcessRead.aquire()");
+            logger.trace("TimingLocationInput.processRead called" );
+            logger.trace("processRead() ProcessRead.aquire()");
             processRead.acquire();
-            //System.out.println("Got it... ");
+            logger.trace("Got it... ");
 
             // Mark it as our own
             r.setTimingLocationInputId(IDProperty.getValue());
@@ -336,7 +338,7 @@ public class TimingLocationInput implements TimingListener{
 
             // if so, just return
             if (rawTimeSet.contains(r)) {
-                //System.out.println("TimingLocationInput.processRead: Duplicate " + r.getChip() + " " + r.getTimestamp().toString()); 
+                logger.trace("TimingLocationInput.processRead: Duplicate " + r.getChip() + " " + r.getTimestamp().toString()); 
                 processRead.release();
                 return;
             }
@@ -352,7 +354,7 @@ public class TimingLocationInput implements TimingListener{
 
             processReadStage2(r);
         } catch (InterruptedException ex) {
-            Logger.getLogger(TimingLocationInput.class.getName()).log(Level.SEVERE, null, ex);
+            logger.warn("Interrupted: ",ex);
         }
         
         
@@ -361,7 +363,7 @@ public class TimingLocationInput implements TimingListener{
     
     public void processReadStage2(RawTimeData r){
         // Create a cooked time
-        //System.out.println("Stage 2 processing of raw id " + r.getID()); 
+        logger.trace("Stage 2 processing of raw id " + r.getID()); 
         CookedTimeData c = new CookedTimeData();
                 
         // mark it as our own
@@ -376,7 +378,7 @@ public class TimingLocationInput implements TimingListener{
         // skew it
         if(skewInput.getValue()) {
             c.setTimestamp(r.getTimestamp().plus(skewDuration)); 
-            //System.out.println("Skewing input from " + r.getTimestamp() + " to " + c.getTimestamp());
+            logger.trace("Skewing input from " + r.getTimestamp() + " to " + c.getTimestamp());
         } else {
             c.setTimestamp(r.getTimestamp());
         }
@@ -393,7 +395,7 @@ public class TimingLocationInput implements TimingListener{
         if (isAnnouncer.get()) HTTPServices.getInstance().publishEvent("ANNOUNCER", c.getBib());
         
         // Send it up to the TimingLocation for further processing...
-        //System.out.println("Cooking time " + c.getBib() + " " + c.getTimestamp()); 
+        logger.trace("Cooking time " + c.getBib() + " " + c.getTimestamp()); 
         timingLocation.cookTime(c);
     }
     
@@ -427,7 +429,7 @@ public class TimingLocationInput implements TimingListener{
     }
     
     public void reprocessReads() {
-        System.out.println("TimingLocationInput::reprocessReads() for " + this.getLocationName());
+        logger.debug("TimingLocationInput::reprocessReads() for " + this.getLocationName());
         TimingLocationInput tli = this; 
         
 
@@ -438,16 +440,16 @@ public class TimingLocationInput implements TimingListener{
             @Override public Void call() {
                 try {
                     // set the processReadSemaphore to pause the processRead()
-                    System.out.println("TimingLocationInput::reprocessReads() Task started for " + tli.getLocationName());
+                    logger.debug("TimingLocationInput::reprocessReads() Task started for " + tli.getLocationName());
                     processRead.acquire();
 
                     // clear out all cooked times for our location
                     
-                    System.out.println("TimingLocationInput::reprocessReads() Task deleting times for " + tli.getLocationName());
+                    logger.debug("TimingLocationInput::reprocessReads() Task deleting times for " + tli.getLocationName());
 
                     timingDAO.blockingClearCookedTimes(tli);
                     
-                    System.out.println("TimingLocationInput::reprocessReads() Task reprocessing " + getRawTimeSet().size() + " reads at " + tli.getLocationName() + ".");
+                    logger.debug("TimingLocationInput::reprocessReads() Task reprocessing " + getRawTimeSet().size() + " reads at " + tli.getLocationName() + ".");
 
                     getRawTimeSet().stream().forEach( r -> {
                         // for everything in our rawTimeSet, reprocess the read 
@@ -458,13 +460,12 @@ public class TimingLocationInput implements TimingListener{
                     });
 
                     //resume processing of new times. 
-                    System.out.println("TimingLocationInput::reprocessReads() Task done for " + tli.getLocationName() + ".");
+                    logger.debug("TimingLocationInput::reprocessReads() Task done for " + tli.getLocationName() + ".");
 
                     processRead.release();
                 } catch (Exception ex) {
-                    System.out.println("TimingLocationInput::reprocessReads() exception for " + tli.getLocationName());
-                    ex.printStackTrace();
-                    Logger.getLogger(TimingLocationInput.class.getName()).log(Level.SEVERE, null, ex);
+                    logger.debug("TimingLocationInput::reprocessReads() exception for {}",tli.getLocationName(),ex);
+
                 }
                 //when done, resume processRead()
                 return null;
@@ -482,7 +483,7 @@ public class TimingLocationInput implements TimingListener{
 
     @Column(name="announcer")
     public Boolean getIsAnnouncer() {
-        //System.out.println("returning isBackup()");
+        logger.trace("returning isBackup()");
         return isAnnouncer.getValue();
     }
     public void setIsAnnouncer(Boolean i) {
@@ -497,7 +498,7 @@ public class TimingLocationInput implements TimingListener{
     
     @Column(name="backup")
     public Boolean getIsBackup() {
-        //System.out.println("returning isBackup()");
+        logger.trace("returning isBackup()");
         return isBackup.getValue();
     }
     public void setIsBackup(Boolean i) {
@@ -512,7 +513,7 @@ public class TimingLocationInput implements TimingListener{
     
     @Column(name="skew")
     public Boolean getSkewLocationTime() {
-        //System.out.println("returning SkewLocation()");
+        logger.trace("returning SkewLocation()");
         return skewInput.getValue();
     }
     public void setSkewLocationTime(Boolean i) {
@@ -532,14 +533,14 @@ public class TimingLocationInput implements TimingListener{
     public void setSkewNanos(Long s) {
         if (s != null) {
             skewDuration = Duration.ofNanos(s);     
-            System.out.println("Skew duration is now " + skewDuration);
+            logger.debug("Skew duration is now " + skewDuration);
         } 
     }
     @Transient
     public String getSkewString() {
         //String durationString = new BigDecimalStringConverter().toString(BigDecimal.valueOf(skewDuration.toNanos()).divide(BigDecimal.valueOf(1000000000L)));
         String skewDurationString = DurationFormatter.durationToString(skewDuration, 3, false);
-        System.out.println("Returning skew duration string of " + skewDurationString + " for " + skewDuration);
+        logger.debug("Returning skew duration string of " + skewDurationString + " for " + skewDuration);
         return skewDurationString; 
     }
 //    public void setSkewString(String text) {
@@ -549,7 +550,7 @@ public class TimingLocationInput implements TimingListener{
 //            skewDuration = Duration.ZERO;
 //        } else {
 //            skewDuration = Duration.ofNanos(new BigDecimalStringConverter().fromString(text).multiply(new BigDecimal(1000000000L)).longValue());
-//            System.out.println("Skew duration is now " + skewDuration);
+//            logger.debug("Skew duration is now " + skewDuration);
 //        }
 //    }
     @Transient
@@ -567,7 +568,7 @@ public class TimingLocationInput implements TimingListener{
             rawTimeSet = Collections.newSetFromMap(new ConcurrentHashMap<>()); 
 
             rawTimeSet.addAll(timingDAO.getRawTimes(this));
-            System.out.println("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
+            logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
             readCountProperty.set(rawTimeSet.size());
         } 
         

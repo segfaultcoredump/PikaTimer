@@ -39,6 +39,8 @@ import javafx.scene.input.InputEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.web.HTMLEditor;
 import javafx.stage.WindowEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -48,6 +50,8 @@ import javafx.stage.WindowEvent;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class FXMLSetupHeadersController {
+    private static final Logger logger = LoggerFactory.getLogger(FXMLSetupHeadersController.class);
+    
     Race race;
     
     @FXML Label raceLabel;
@@ -272,7 +276,7 @@ public class FXMLSetupHeadersController {
         
         copyFromChoiceBox.getSelectionModel().selectedItemProperty().addListener((ob, oldR, newR) -> {
             if (newR == null || newR == oldR) {
-                System.out.println("copyFromChoiceBox Listener: newR is null or equal to oldR");
+                logger.debug("copyFromChoiceBox Listener: newR is null or equal to oldR");
                 return;
             }
             
@@ -285,7 +289,7 @@ public class FXMLSetupHeadersController {
                 copyConfirmation.setHeaderText("Overwrite all...");
                 Optional<ButtonType> closeResponse = copyConfirmation.showAndWait();
                 if (ButtonType.OK.equals(closeResponse.get())) {
-                    System.out.println("copyFromChoiceBox Listener: copying from " + newR.getRaceName());
+                    logger.debug("copyFromChoiceBox Listener: copying from " + newR.getRaceName());
 
                     
                     if (newR.getStringAttribute("GACode") == null) newR.setStringAttribute("GACode","");

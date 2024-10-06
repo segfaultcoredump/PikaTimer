@@ -22,6 +22,8 @@ import javafx.beans.property.StringProperty;
 import javafx.util.Callback;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -30,6 +32,8 @@ import javax.persistence.Embeddable;
 @Embeddable 
 public class SexCode {
 
+    private static final Logger logger = LoggerFactory.getLogger(SexCode.class);
+    
     private final StringProperty codeProperty = new SimpleStringProperty(); 
     private final StringProperty labelProperty = new SimpleStringProperty();
 
@@ -44,7 +48,7 @@ public class SexCode {
     
     @Column(name="code")
     public String getCode() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getCode() returning " + codeProperty.getValue());
         return codeProperty.getValue(); 
     }
     public void setCode(String i) {
@@ -58,7 +62,7 @@ public class SexCode {
     
     @Column(name="display")
     public String getLabel() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getLabel() returning " + labelProperty.getValueSafe());
         return labelProperty.getValueSafe(); 
     }
     public void setLabel(String i) {

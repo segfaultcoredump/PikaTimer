@@ -30,8 +30,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -43,12 +41,15 @@ import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPReply;
 import org.apache.commons.net.ftp.FTPSClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 public class FTPSTransport implements FileTransport{
+    private static final Logger logger = LoggerFactory.getLogger(FTPSTransport.class);
     
     String basePath;
     ReportDestination parent;
@@ -83,15 +84,15 @@ public class FTPSTransport implements FileTransport{
                 public Void call() {
                    
 
-                    System.out.println("FTPSTransport: new result processing thread started");
+                    logger.debug("FTPSTransport: new result processing thread started");
                     String filename = null;
                     while(true) {
                         try {
-                            System.out.println("FTPSTransport Thread: Waiting for the first file...");
+                            logger.debug("FTPSTransport Thread: Waiting for the first file...");
                             if (filename == null) filename = transferQueue.take();
                             
                             while(true) {
-                                System.out.println("FTPSTransport Thread: Waiting for a file...");
+                                logger.debug("FTPSTransport Thread: Waiting for a file...");
                                 //filename = transferQueue.poll(60, TimeUnit.SECONDS);
                                 if (ftpClient == null || !ftpClient.isConnected()) Platform.runLater(() -> {transferStatus.set("Idle");});
                                 else {
@@ -110,13 +111,13 @@ public class FTPSTransport implements FileTransport{
                                     else continue;
                                 }
 
-                                System.out.println("FTPSTransport Thread: Transfering " + filename);
+                                logger.debug("FTPSTransport Thread: Transfering " + filename);
                                 String contents = transferMap.get(filename);
                                 
                                 while (fatalError || ftpClient == null || !ftpClient.isConnected()) {
                                     if (!fatalError) openConnection();
                                     if (!ftpClient.isConnected()) {
-                                        System.out.println("FTPSTransport Thread: Still not connected, sleeping for 10 seconds...");
+                                        logger.debug("FTPSTransport Thread: Still not connected, sleeping for 10 seconds...");
                                         Thread.sleep(10000);
                                     }
                                     
@@ -142,13 +143,13 @@ public class FTPSTransport implements FileTransport{
                                 try {  
                                     ftpClient.rename(tmpFn, fn);
                                 } catch (Exception ex){
-                                    System.out.println("ftpClient.rename exception thrown");
+                                    logger.debug("ftpClient.rename exception thrown");
                                     
                                     try { 
                                         ftpClient.dele(fn);// This may fail if the file does not exist
                                     } catch (Exception ex2){
                                         // noop
-                                        System.out.println("ftpClient.dele exception thrown");
+                                        logger.debug("ftpClient.dele exception thrown");
                                     }
                                     ftpClient.rename(tmpFn, fn);
                                 }
@@ -159,20 +160,20 @@ public class FTPSTransport implements FileTransport{
                                 data.close();
                                 transferMap.remove(filename, contents); 
                                 
-                                System.out.println("FTPSTransport Thread: transfer of " + filename + " done in " + DurationFormatter.durationToString(Duration.ofNanos(endTime-startTime), 3, false, RoundingMode.HALF_EVEN));
+                                logger.debug("FTPSTransport Thread: transfer of " + filename + " done in " + DurationFormatter.durationToString(Duration.ofNanos(endTime-startTime), 3, false, RoundingMode.HALF_EVEN));
                                 filename = null;
                             }
 
                         } catch (InterruptedException ex) {
-                            System.out.println("FTPSTransport Thread: InterruptedException thrown");
+                            logger.debug("FTPSTransport Thread: InterruptedException thrown");
                             //if (filename!= null) transferQueue.put(filename);
 
                             //Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
                         } catch (IOException ex) {
-                            System.out.println("FTPSTransport Thread: IOException thrown: "  + ex.getMessage() );
+                            logger.debug("FTPSTransport Thread: IOException thrown: "  + ex.getMessage() );
                             
                             if (encrypted) {
-                                System.out.println("Setting protection mode to \"C\" to see if that fixes the problem");
+                                logger.debug("Setting protection mode to \"C\" to see if that fixes the problem");
                                 protMode="C";
                             }
                             
@@ -180,12 +181,12 @@ public class FTPSTransport implements FileTransport{
                             //if (filename!= null) transferQueue.put(filename);
                             //Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
                         } catch (Exception ex) {
-                            System.out.println("FTPSTransport Thread: Exception tossed: " + ex.getMessage() + ex.toString());
-                            System.out.println(Arrays.toString(ex.getStackTrace()));
+                            logger.debug("FTPSTransport Thread: Exception tossed: " + ex.getMessage() + ex.toString());
+                            logger.debug(Arrays.toString(ex.getStackTrace()));
                         } finally {
                             if (ftpClient.isConnected()) {
                                 try {
-                                    System.out.println("FTPSTransport Thread: calling ftpClient.disconnect()");
+                                    logger.debug("FTPSTransport Thread: calling ftpClient.disconnect()");
                                     ftpClient.disconnect();
                                     Platform.runLater(() -> {transferStatus.set("Disconnected");});
                                 } catch (IOException f) {
@@ -208,7 +209,7 @@ public class FTPSTransport implements FileTransport{
         try {
             
             if (needConfigRefresh) refreshConfig();
-            System.out.println("FTPS Not connected, connecting...");
+            logger.debug("FTPS Not connected, connecting...");
             Platform.runLater(() -> {
                 if (encrypted) transferStatus.set("Connecting FTPS...");
                 else transferStatus.set("Connecting...");
@@ -259,7 +260,7 @@ public class FTPSTransport implements FileTransport{
                         reply = ftpClient.mkd(basePath);
                         
                         if (!FTPReply.isPositiveCompletion(reply)) {
-                            System.out.println("Unable to make remote dir " + basePath);
+                            logger.debug("Unable to make remote dir " + basePath);
                             Platform.runLater(() -> {transferStatus.set("Error: Unabe to make target directory");});
                             fatalError=true;
                             ftpClient.disconnect();
@@ -271,13 +272,13 @@ public class FTPSTransport implements FileTransport{
                     Platform.runLater(() -> {transferStatus.set("Connected");});
                     fatalError=false;
                 } else {
-                  System.out.println("FTP login failed");
+                  logger.debug("FTP login failed");
                   Platform.runLater(() -> {transferStatus.set("Error: Login Failed");});
                   fatalError=true;
                   try {ftpClient.disconnect();} catch (Exception e) {};
                 }
             } else {
-              System.out.println("FTP connect to host failed");
+              logger.debug("FTP connect to host failed");
               Platform.runLater(() -> {transferStatus.set("Error: Unable to connect to host");});
 
               try {ftpClient.disconnect();} catch (Exception e) {};
@@ -291,7 +292,7 @@ public class FTPSTransport implements FileTransport{
                 encrypted = false;
                 openConnection();
             } else {
-                System.out.println("FTP client received network error");
+                logger.debug("FTP client received network error");
                 Platform.runLater(() -> {transferStatus.set("Error: Network Error");});
             }
             
@@ -311,7 +312,7 @@ public class FTPSTransport implements FileTransport{
 
     @Override
     public void save(String filename, String contents) {
-        System.out.println("FTPSTransport.save() called for " + filename);
+        logger.debug("FTPSTransport.save() called for " + filename);
         if (stripAccents) contents = StringUtils.stripAccents(contents);
         transferMap.put(filename,contents);
         if (! transferQueue.contains(filename)) transferQueue.add(filename);
@@ -334,7 +335,7 @@ public class FTPSTransport implements FileTransport{
         basePath=parent.getBasePath();
         if (ftpClient != null && ftpClient.isConnected()) {
             try {
-                System.out.println("FTPSTransport::refreshConfig: calling ftpClient.disconnect()");
+                logger.debug("FTPSTransport::refreshConfig: calling ftpClient.disconnect()");
                 ftpClient.disconnect();
             } catch (IOException f) {
                 // do nothing
@@ -348,7 +349,7 @@ public class FTPSTransport implements FileTransport{
         fatalError=false;
         needConfigRefresh = false;
         } catch (Exception e){
-            System.out.println("FTPSTransport::refreshConfig Exception!");
+            logger.debug("FTPSTransport::refreshConfig Exception!");
             e.printStackTrace();
             fatalError=true;
             needConfigRefresh = true;
@@ -451,7 +452,7 @@ public class FTPSTransport implements FileTransport{
                             try {
                                 ftpClient.disconnect();
                             } catch (IOException ex1) {
-                                Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex1);
+                                logger.warn("IO exception when disconnecting",ex);
                             }
                         }
                     } else {
@@ -459,14 +460,14 @@ public class FTPSTransport implements FileTransport{
                         try {
                             ftpClient.disconnect();
                         } catch (IOException ex) {
-                            Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
+                            logger.warn("IO exception when disconnecting",ex);
                         }
                         return null;
                     }
                     try {
                         ftpClient.disconnect();
                     } catch (IOException ex) {
-                        Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
+                        logger.warn("IO exception when disconnecting",ex);
                     }
                     return null;
                 }

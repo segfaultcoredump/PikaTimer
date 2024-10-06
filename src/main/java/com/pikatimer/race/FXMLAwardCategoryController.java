@@ -54,6 +54,8 @@ import javafx.scene.layout.VBox;
 import javafx.util.Callback;
 import javafx.util.Pair;
 import org.controlsfx.control.ToggleSwitch;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * FXML Controller class
@@ -61,7 +63,8 @@ import org.controlsfx.control.ToggleSwitch;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class FXMLAwardCategoryController {
-
+    private static final Logger logger = LoggerFactory.getLogger(FXMLAwardCategoryController.class);
+    
     @FXML TextField awardTitleTextField;
     
     @FXML ComboBox<AwardCategoryType> awardTypeComboBox;
@@ -132,7 +135,7 @@ public class FXMLAwardCategoryController {
     
     public void initialize() {
         // TODO
-        System.out.println("FXMLAwardCategoryController initialized");
+        logger.debug("FXMLAwardCategoryController initialized");
         awardTypeComboBox.setItems(FXCollections.observableArrayList(AwardCategoryType.values()));
         depthTypeComboBox.setItems(FXCollections.observableArrayList(AwardDepthType.values()));
     }    
@@ -175,7 +178,7 @@ public class FXMLAwardCategoryController {
                 e.getRowValue().startCountProperty().setValue(e.getNewValue());
                 awardCategory.recalcCustomDepths();
             } catch (Exception ex) {
-                System.out.println("depthStartTableColumn.setOnEditCommit Oops....");
+                logger.debug("depthStartTableColumn.setOnEditCommit Oops....");
                 e.getRowValue().startCountProperty().setValue(e.getOldValue());
             }
             
@@ -188,7 +191,7 @@ public class FXMLAwardCategoryController {
             try {
                 e.getRowValue().depthProperty().setValue(e.getNewValue());
             } catch (Exception ex) {
-                System.out.println("depthStartTableColumn.setOnEditCommit Oops....");
+                logger.debug("depthStartTableColumn.setOnEditCommit Oops....");
                 e.getRowValue().depthProperty().setValue(e.getOldValue());
             }
             raceDAO.updateAwardCategory(awardCategory);
@@ -358,7 +361,7 @@ public class FXMLAwardCategoryController {
         
         rebuildAttributeLists();
         ParticipantDAO.getInstance().getCustomAttributes().addListener((ListChangeListener) listener -> {
-            System.out.println("Custom Attributes changed...");
+            logger.debug("Custom Attributes changed...");
             rebuildAttributeLists();
         });
         
@@ -425,7 +428,7 @@ public class FXMLAwardCategoryController {
         });
         
         subdivideListView.setOnEditCommit((ListView.EditEvent<CustomAttribute> t) -> {
-            System.out.println("setOnEditCommit " + t.getIndex());
+            logger.debug("setOnEditCommit " + t.getIndex());
             
             if(t.getIndex() >= 0 && t.getIndex() < t.getSource().getItems().size()) {
                 CustomAttribute ca = t.getSource().getItems().get(t.getIndex()); 
@@ -441,14 +444,14 @@ public class FXMLAwardCategoryController {
                     awardCategory.updateSubdivideList();
                     subdivideCustomAttributesList.forEach( cca -> {
                         if (cca.key.isEmpty().get()) return;
-                        System.out.println("Current splitBy attribute: " + cca.key.getValueSafe());
+                        logger.debug("Current splitBy attribute: " + cca.key.getValueSafe());
                         awardCategory.subDivideProperty().add(cca.key.getValueSafe());
                     });
                     awardCategory.updateSubdivideList();
                     raceDAO.updateAwardCategory(awardCategory);
                 }
             } else {
-                System.out.println("Timing setOnEditCommit event out of index: " + t.getIndex());
+                logger.debug("Timing setOnEditCommit event out of index: " + t.getIndex());
             }
         });
 
@@ -460,7 +463,7 @@ public class FXMLAwardCategoryController {
         // rebuild the list when we add or remove splits or segments
         awardCategory.getRaceAward().getRace().splitsProperty().addListener((ListChangeListener) listener -> {rebuildTimingPointList();});
         awardCategory.getRaceAward().getRace().unsortedSegmentsProperty().addListener((ListChangeListener) listener -> {
-            System.out.println("awardCategory: segments changed...");
+            logger.debug("awardCategory: segments changed...");
             rebuildTimingPointList();
         });
         
@@ -586,14 +589,14 @@ public class FXMLAwardCategoryController {
         Race r = awardCategory.getRaceAward().getRace();
         // Splits
         r.getSplits().forEach(s -> {
-            System.out.println("AwardCategoryController: rebuildTimingPointList: split " + s.getSplitName() + " -> " + s.getPosition());
+            logger.debug("AwardCategoryController: rebuildTimingPointList: split " + s.getSplitName() + " -> " + s.getPosition());
             if (s.getPosition() == 1 ) return; // Skip the start
             if (s.getPosition() == r.getSplits().size()) return;  // Skip the finish
             availableTimingPointsList.add(new AwardTimingPoint(s.splitNameProperty(),"SPLIT",s.getID()));
         });
         // Segments
         r.getSegments().forEach(s ->{
-            System.out.println("AwardCategoryController: rebuildTimingPointList: Segment " + s.getSegmentName()+ " -> " + s.getID());
+            logger.debug("AwardCategoryController: rebuildTimingPointList: Segment " + s.getSegmentName()+ " -> " + s.getID());
             availableTimingPointsList.add(new AwardTimingPoint(s.segmentNameProperty(),"SEGMENT",s.getID()));
         });
         

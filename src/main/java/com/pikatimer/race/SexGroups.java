@@ -42,6 +42,8 @@ import javax.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.Parameter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -52,6 +54,8 @@ import org.hibernate.annotations.Parameter;
 @DynamicUpdate
 @Table(name="race_sex_groups")
 public class SexGroups {
+    private static final Logger logger = LoggerFactory.getLogger(SexGroups.class);
+    
     private Integer raceID;
     
     private Race race;
@@ -141,13 +145,13 @@ public class SexGroups {
     }
     
     public void addSexCode(SexCode sc){
-        System.out.println("SexGroups:addSexCode() called");
+        logger.debug("SexGroups:addSexCode() called");
         sexCodeObservableList.add(sc);
         sexCodeList = sexCodeObservableList;
     }
     
     public void removeSexCode(SexCode sc){
-        System.out.println("SexGroups:removeSexCode() called");
+        logger.debug("SexGroups:removeSexCode() called");
         sexCodeObservableList.remove(sc);
         sexCodeList = sexCodeObservableList;
     }
@@ -155,20 +159,24 @@ public class SexGroups {
     List<String> listSexGroups(Participant p){
         List<String> s = new ArrayList();
         switch(sexHandling) {
-            case OFI: //"Open/Female (Inclusive)")
+            case OFI -> {
+                //"Open/Female (Inclusive)")
                 s.add("Open");
                 if (p.getSex().startsWith("F")) s.add(getLabelFromCode(p.getSex()));
-                break;
-            case OFE: // "Open/Female (Exclusive)"),
+            }
+            case OFE -> {
+                // "Open/Female (Exclusive)"),
                 if (p.getSex().startsWith("F")) s.add(getLabelFromCode(p.getSex()));
                 else s.add("Open");
-                break; 
-            case ALL: // "Awards for each value"),
+            }
+            case ALL -> {
+                // "Awards for each value"),
                 if (! p.getSex().isEmpty()) s.add(getLabelFromCode(p.getSex()));
-                break; 
-            case MF: // "M/F Only");              
+            }
+            case MF -> {
+                // "M/F Only");
                 if (p.getSex().startsWith("M") || p.getSex().startsWith("F")) s.add(getLabelFromCode(p.getSex()));
-                break; 
+            } 
         }
         return s;
     }

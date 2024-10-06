@@ -26,6 +26,8 @@ import javafx.beans.property.StringProperty;
 import javafx.util.Callback;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -33,6 +35,8 @@ import javax.persistence.Embeddable;
  */
 @Embeddable
 public class AwardFilter {
+    private static final Logger logger = LoggerFactory.getLogger(AwardFilter.class);
+    
     private final StringProperty attributeProperty = new SimpleStringProperty(); 
     private final StringProperty comparisonTypeProperty = new SimpleStringProperty(); 
     private final StringProperty referenceValueProperty = new SimpleStringProperty(); 
@@ -54,7 +58,7 @@ public class AwardFilter {
     
     @Column(name="attribute")
     public String getAttribute() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getAttribute() returning " + attributeProperty.getValue());
         return attributeProperty.getValue(); 
     }
     public void setAttribute(String i) {
@@ -66,7 +70,7 @@ public class AwardFilter {
 
     @Column(name="comparison_type")
     public String getComparisonType() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getComparisonType() returning " + comparisonTypeProperty.getValue());
         return comparisonTypeProperty.getValue(); 
     }
     public void setComparisonType(String i) {
@@ -78,7 +82,7 @@ public class AwardFilter {
     
     @Column(name="reference_value")
     public String getReferenceValue() {
-        //System.out.println("AgeGroups.getAGIncrement() returning " + agIncrement);
+        logger.trace("getReferenceValue() returning " + referenceValueProperty.getValue());
         return referenceValueProperty.getValue(); 
     }
     public void setReferenceValue(String i) {
@@ -113,10 +117,10 @@ public class AwardFilter {
         if (attribute.equals("AG")) {
             pvalue = race.getAgeGroups().ageToAGString(p.getAge());
         }
-        else if (attribute.matches("^\\d+$")) value = p.getCustomAttribute(Integer.parseInt(attribute)).getValueSafe();
+        else if (attribute.matches("^\\d+$")) value = p.getCustomAttribute(Integer.valueOf(attribute)).getValueSafe();
         else  pvalue = p.getNamedAttribute(attribute);
         
-        //System.out.println("filter() " + attribute + " " + comparisonType + " " + value + " " + pvalue);
+        logger.trace("filter() " + attribute + " " + comparisonType + " " + value + " " + pvalue);
 
         // We are going to abuse the heck out of the Alphanumeic Cpmarator for now.
         // This should work for numbers, letters, and most other things.

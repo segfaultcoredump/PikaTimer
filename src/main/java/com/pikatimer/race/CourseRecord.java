@@ -43,6 +43,8 @@ import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
@@ -53,6 +55,7 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="Course_Records")
 public class CourseRecord implements Comparable<CourseRecord>{
+    private static final Logger logger = LoggerFactory.getLogger(CourseRecord.class);
     
     //id
     private final IntegerProperty IDProperty = new SimpleIntegerProperty(); 
@@ -104,13 +107,13 @@ public class CourseRecord implements Comparable<CourseRecord>{
     
     public Boolean checkRecordEligible(Result r){
         // checks to see if we are elliglble for this record. 
-        //System.out.println("CourseRecord::checkRecordEligible: Checking Bib " + r.getBib());
+        logger.trace("CourseRecord::checkRecordEligible: Checking Bib " + r.getBib());
         Participant p = ParticipantDAO.getInstance().getParticipantByBib(r.getBib());
         if (p.getSex() == null ? sexProperty.getValueSafe() != null : !p.getSex().equals(sexProperty.getValueSafe())) return false;
         if (!categoryProperty.getValue().equals("OVERALL")) {
             if (!categoryProperty.getValue().equals(race.getAgeGroups().ageToAGString(p.getAge()))) return false;
         }
-        //System.out.println("CourseRecord::checkRecordEligible: " + p.fullNameProperty().get() + " is eligible!");
+        logger.trace("CourseRecord::checkRecordEligible: " + p.fullNameProperty().get() + " is eligible!");
         return true;
     }
     
@@ -143,8 +146,8 @@ public class CourseRecord implements Comparable<CourseRecord>{
             newRecordDurationProperty.set(time);
 
             Participant p = ParticipantDAO.getInstance().getParticipantByBib(r.getBib());
-            System.out.println("NEW Course Record!!! Old: " + sexProperty.get() + " " + categoryProperty.get() + " " + recordDuration.toString());
-            System.out.println("NEW Course Record!!! New: " + p.fullNameProperty().get() + " " + newDuration.toString());
+            logger.debug("NEW Course Record!!! Old: " + sexProperty.get() + " " + categoryProperty.get() + " " + recordDuration.toString());
+            logger.debug("NEW Course Record!!! New: " + p.fullNameProperty().get() + " " + newDuration.toString());
         }
         
     }
@@ -196,7 +199,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
         }
     }
     public void setRecord(Long c) {
-        //System.out.println("CourseRecord::setRecord called with " + c);
+        logger.trace("CourseRecord::setRecord called with " + c);
         if(c != null) {
             setRecordDuration(Duration.ofNanos(c));
         }
@@ -208,7 +211,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
     public void setRecordDuration(Duration f){
         recordDuration = f;
         recordDurationProperty.setValue(f);
-        //System.out.println("CourseRecord::setRecordDuration " + recordDuration.toString());
+        logger.trace("CourseRecord::setRecordDuration " + recordDuration.toString());
 
     }
     
@@ -334,18 +337,18 @@ public class CourseRecord implements Comparable<CourseRecord>{
     private void updateSegment(){
         if (segmentProperty.isNotNull().get()) return;
         if (race == null) return; 
-        //System.out.println("CR::updateSegment() Called");
+        logger.trace("CR::updateSegment() Called");
         if(segmentID != null) {
-            //System.out.println("Looking for segment ID " + segmentID);
+            logger.trace("Looking for segment ID " + segmentID);
             race.getSegments().forEach(s -> {
                 
                 if (segmentID.equals(s.getID())) {
                     segmentProperty.set(s);
                 }
             });
-            System.out.println("  Segment is " + segmentProperty.get().getSegmentName());
+            logger.debug("  Segment is " + segmentProperty.get().getSegmentName());
         } else {
-            System.out.println("  Segment is OVERALL");
+            logger.debug("  Segment is OVERALL");
         }
     }
     
@@ -364,7 +367,7 @@ public class CourseRecord implements Comparable<CourseRecord>{
             if (this.segmentID > other.segmentID) return 1;
             if (this.segmentID < other.segmentID) return -1;
         } 
-        //System.out.println("CourseRecord::compareTo() " + this.segmentID + " vs " + other.segmentID);
+        logger.trace("CourseRecord::compareTo() " + this.segmentID + " vs " + other.segmentID);
                 
         // If we get here then the segments are the same
         if (!this.sexProperty.get().equals(other.sexProperty.get())) {

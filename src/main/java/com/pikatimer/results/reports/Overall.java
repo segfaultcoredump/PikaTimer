@@ -40,12 +40,16 @@ import java.util.stream.Collectors;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author jcgarner
  */
 public class Overall implements RaceReportType{
+    private static final Logger logger = LoggerFactory.getLogger(Overall.class);
+    
     Race race;
     
         // Defaults
@@ -92,14 +96,14 @@ public class Overall implements RaceReportType{
     
     @Override
     public String process(List<ProcessedResult> prList, RaceReport rr) {
-        System.out.println("Overall.process() Called... ");
+        logger.debug("Overall.process() Called... ");
         String report = new String();
         
         race = rr.getRace();
         
         Event event = Event.getInstance();  // fun with singletons... 
         
-        //rr.getKnownAttributeNames().forEach(s -> {System.out.println("Known Attribute: " + s);});
+        //rr.getKnownAttributeNames().forEach(s -> {logger.debug("Known Attribute: " + s);});
         supportedOptions.keySet().forEach(k -> supportedOptions.put(k, rr.getBooleanAttribute(k)));
 
 

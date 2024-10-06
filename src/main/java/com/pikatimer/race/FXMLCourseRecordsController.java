@@ -46,6 +46,8 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.FileChooser;
 import org.apache.commons.io.FileUtils;
 import org.h2.tools.Csv;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -56,6 +58,8 @@ import org.h2.tools.Csv;
  */
 public class FXMLCourseRecordsController {
 
+    private static final Logger logger = LoggerFactory.getLogger(FXMLCourseRecordsController.class);
+    
     @FXML TableView<CourseRecord> recordTableView;
     @FXML TableColumn<CourseRecord,String> categoryTableColumn;
     @FXML TableColumn<CourseRecord,String> segmentTableColumn;
@@ -123,7 +127,7 @@ public class FXMLCourseRecordsController {
         importButton.setOnAction(a -> importCRs());
         exportButton.setOnAction(a -> exportCRs());
         mergeButton.setOnAction(a -> mergeCRs());
-        System.out.println("Race is set to " + r.getRaceName());
+        logger.debug("Race is set to " + r.getRaceName());
     }
 
     private void importCRs() {
@@ -144,7 +148,7 @@ public class FXMLCourseRecordsController {
            
         }
         
-        System.out.println("Using initial directory of " + lastEventFolder.getAbsolutePath());
+        logger.debug("Using initial directory of " + lastEventFolder.getAbsolutePath());
 
         fileChooser.setInitialDirectory(lastEventFolder); 
         fileChooser.getExtensionFilters().addAll(
@@ -152,7 +156,7 @@ public class FXMLCourseRecordsController {
                 new FileChooser.ExtensionFilter("All files", "*")
             );
         File file = fileChooser.showOpenDialog(importButton.getScene().getWindow());
-        System.out.println("Opening existing file....");
+        logger.debug("Opening existing file....");
         if (file == null) return;
         
         // if we have a valid file, loop on it.... 
@@ -167,7 +171,7 @@ public class FXMLCourseRecordsController {
         try {
             String result = new BufferedReader(new InputStreamReader(new FileInputStream(csvImport),uft8Decoder)).lines().collect(Collectors.joining("\n"));
         } catch (Exception ex) {
-            System.out.println("Not UTF-8: " + ex.getMessage());
+            logger.debug("Not UTF-8: " + ex.getMessage());
             charset = "Cp1252"; // Windows standard txt file stuff
         }
 
@@ -183,15 +187,15 @@ public class FXMLCourseRecordsController {
 
                 CourseRecord c = new CourseRecord(race);
                 for (int i = 0; i < meta.getColumnCount(); i++) {
-                        System.out.println(rs.getString(i+1) + " -> " + meta.getColumnLabel(i+1));
+                        logger.debug(rs.getString(i+1) + " -> " + meta.getColumnLabel(i+1));
                         switch(meta.getColumnLabel(i+1).toLowerCase()) {
                             case "segment":
-                                System.out.println("Looking for segment " + rs.getString(i+1));
+                                logger.debug("Looking for segment " + rs.getString(i+1));
                                 for (Segment s: race.getSegments()) {
-                                    System.out.println("Checking " + s.getSegmentName());
+                                    logger.debug("Checking " + s.getSegmentName());
                                     if (s.getSegmentName().equals(rs.getString(i+1))) {
                                         c.setSegmentID(s.getID());
-                                        System.out.println("   Matched!");
+                                        logger.debug("   Matched!");
                                     }
                                 }
                                 break;
@@ -204,7 +208,7 @@ public class FXMLCourseRecordsController {
                             case "time":
                                 if (DurationParser.parsable(rs.getString(i+1)))
                                     c.setRecord(DurationParser.parse(rs.getString(i+1)).toNanos());
-                                else System.out.println("Unable to parse " + rs.getString(i+1));
+                                else logger.debug("Unable to parse " + rs.getString(i+1));
                                 break;
                             case "year":
                                 c.setYear(rs.getString(i+1));
@@ -232,8 +236,8 @@ public class FXMLCourseRecordsController {
 
             }
         } catch (Exception ex) {
-            System.out.println("Something bad happened... ");
-            ex.printStackTrace();
+            logger.debug("Something bad happened... ", ex);
+            //ex.printStackTrace();
         }
         
         ResultsDAO.getInstance().reprocessAllCRs(race);
@@ -270,7 +274,7 @@ public class FXMLCourseRecordsController {
         race.getCourseRecords().forEach(cr -> {
             //        CSV fields
             //        SEGMENT (OVERALL, <segment name>)
-            System.out.println("   Exporting CR: Segment: " + cr.getSegmentID());
+            logger.debug("   Exporting CR: Segment: " + cr.getSegmentID());
             if (cr.getSegmentID() != null) crCSV.append(cr.segmentProperty().get().getSegmentName());
             else crCSV.append("OVERALL");
             crCSV.append(",");
@@ -279,7 +283,7 @@ public class FXMLCourseRecordsController {
             //        SEX
             crCSV.append(cr.getSex()).append(",");
             //        TIME
-            System.out.println("CR Time: " + cr.getRecord() + " current " + cr.currentRecordTime().toString());
+            logger.debug("CR Time: " + cr.getRecord() + " current " + cr.currentRecordTime().toString());
             crCSV.append(DurationFormatter.durationToString(cr.currentRecordTime(), 0, true)).append(",");
             //        year
              //        age
@@ -313,7 +317,7 @@ public class FXMLCourseRecordsController {
             try {
                 FileUtils.writeStringToFile(file, '\ufeff' + crCSV.toString(), StandardCharsets.UTF_8);
             } catch (Exception ex) {
-                ex.printStackTrace();
+                logger.warn("Error writing to file {}",file.getAbsolutePath(),ex);
             }
         
     }

@@ -91,7 +91,7 @@ public class Pikatimer extends Application {
             888        888 888 "88b 888  888 888     888 888  888  888 Y8b.     888     
             888        888 888  888 "Y888888 888     888 888  888  888  "Y8888  888     
 
-                                     ©2024 by John Garner
+                                     ©2025 by John Garner
                                     https://PikaTimer.com/
                                Released under the GPL-3.0 license.                                                                            
                             \n

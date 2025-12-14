@@ -30,6 +30,7 @@ import java.util.Map;
  * @author jcgarner
  */
 public enum Pace {
+    
     MPM, // Minutes per Mile
     MPK, // Minutes per Kilometer
     MPH, // Miles Per Hour

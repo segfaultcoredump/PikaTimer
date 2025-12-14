@@ -145,7 +145,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
          <children>
             <Button fx:id="rsuSyncButton" mnemonicParsing="false" text="RSU Sync" />
             <ProgressBar fx:id="rsuSyncProgressBar" prefHeight="20.0" prefWidth="100.0" progress="0.0" />
-            <Label fx:id="rsuSyncLabel" prefHeight="17.0" prefWidth="141.0" text="rsuSyncLabel" />
+            <Label fx:id="rsuSyncLabel" prefHeight="17.0" prefWidth="141.0" />
             <Pane HBox.hgrow="ALWAYS" />
             <Button fx:id="deleteParticipantsButton" alignment="CENTER_RIGHT" text="Remove" />
          </children>
@@ -168,7 +168,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                         </HBox>
                         <HBox fx:id="raceHBox" alignment="CENTER_LEFT" spacing="2.0">
                            <children>
-                              <Label fx:id="raceLabel" minWidth="-Infinity" prefWidth="50.0" text="Race" textAlignment="RIGHT">
+                              <Label fx:id="raceLabel" minWidth="-Infinity" prefWidth="50.0" text="Event" textAlignment="RIGHT">
                                  <font>
                                     <Font size="14.0" />
                                  </font>
@@ -279,7 +279,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                         </HBox>
                         <HBox>
                            <children>
-                              <ToggleSwitch maxWidth="1.7976931348623157E308" text="Award Elligible" HBox.hgrow="ALWAYS">
+                              <ToggleSwitch fx:id="awardEligibleToggleSwitch" maxWidth="1.7976931348623157E308" text="Award Eligible" HBox.hgrow="ALWAYS">
                                  <font>
                                     <Font size="14.0" />
                                  </font>
@@ -293,7 +293,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                                     <Font size="14.0" />
                                  </font>
                               </Label>
-                              <TextField fx:id="awardGenderOverrideTextField" prefHeight="26.0" prefWidth="40.0" />
+                              <TextField fx:id="awardSexOverrideTextField" prefHeight="26.0" prefWidth="40.0" />
                            </children>
                         </HBox>
                         <HBox alignment="CENTER_LEFT" spacing="2.0">

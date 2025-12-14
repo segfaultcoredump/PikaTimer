@@ -38,7 +38,12 @@ import java.util.Comparator;
  *   Use the static "sort" method from the java.util.Collections class:
  *   Collections.sort(your list, new AlphanumComparator());
  */
-public class AlphanumericComparator implements Comparator
+
+// Tweaked to support generic <T> so that we can avoid casting. 
+// Assumption is that the "toString" method of the object actually 
+// produces something of use. 
+
+public class AlphanumericComparator<T> implements Comparator<T>
 {
     private final boolean isDigit(char ch)
     {
@@ -76,14 +81,13 @@ public class AlphanumericComparator implements Comparator
         return chunk.toString();
     }
 
+    @Override
     public int compare(Object o1, Object o2)
     {
-        if (!(o1 instanceof String) || !(o2 instanceof String))
-        {
-            return 0;
-        }
-        String s1 = (String)o1;
-        String s2 = (String)o2;
+        
+        String s1 = o1.toString();
+        String s2 = o2.toString();
+              
 
         int thisMarker = 0;
         int thatMarker = 0;

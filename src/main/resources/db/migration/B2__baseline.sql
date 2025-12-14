@@ -149,6 +149,8 @@ create table participant (
     status varchar,
     note varchar,
     reg_sync_needed boolean,
+    award_eligible boolean,
+    award_sex_override varchar,
     reguserid int
 );
 
@@ -375,10 +377,18 @@ create table rsuconfig (
     rsuPassword varchar,
     rsuLoginType varchar,
     rsulastsync bigint,
+    bidirectional boolean,
+    capitalization varchar,
     rsuRaceID int
 );
 
 create table rsuconfig_eventmap (
+    configID  int,
+    raceID int,
+    rsuEventID int
+);
+
+create table rsuconfig_default_eventmap (
     configID  int,
     raceID int,
     rsuEventID int

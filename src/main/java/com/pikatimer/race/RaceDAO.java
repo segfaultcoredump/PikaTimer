@@ -162,7 +162,7 @@ public class RaceDAO {
     } 
     
     public Wave getWaveByID(int id) {
-        logger.trace("getWaveByID: racesLoadedLatch is now " + racesLoadedLatch.getCount());
+        //logger.trace("getWaveByID: racesLoadedLatch is now " + racesLoadedLatch.getCount());
         try {
             racesLoadedLatch.await();
         } catch (InterruptedException ex) {

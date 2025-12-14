@@ -16,6 +16,7 @@
  */
 package com.pikatimer.event;
 
+import com.pikatimer.Pikatimer;
 import com.pikatimer.participant.ParticipantDAO;
 import com.pikatimer.race.AgeGroups;
 import com.pikatimer.race.AwardCategory;
@@ -282,6 +283,7 @@ public class FXMLEventController {
     protected void setEventTitle() {
         event.setEventName(eventTitle.getText());
         updateEvent();
+        Pikatimer.getPrimaryStage().setTitle("PikaTimer: " + eventTitle.getText());
 
     }
     

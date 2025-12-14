@@ -116,6 +116,9 @@ public class Participant {
     private Boolean regSyncNeeded = false;
     private Map<Integer,Integer> regEventIDMap = new HashMap();
     
+    private Boolean awardEligible = true;
+    private String awardSexOverride;
+    
     public Participant() {
         fullNameProperty.bind(new StringBinding(){
             {super.bind(firstNameProperty,middleNameProperty, lastNameProperty);}
@@ -658,6 +661,27 @@ public class Participant {
     }
     public void setRegSyncNeeded(Boolean syncNeeded) {
         regSyncNeeded = syncNeeded;
+    }
+    
+    @Column(name="award_eligible")
+    public Boolean getAwardEligible(){
+        return awardEligible;
+    }
+    public void setAwardEligible(Boolean a){
+        awardEligible = a;
+    }
+    
+    @Column(name="award_sex_override")
+    public String getAwardSexOverride(){
+        return awardSexOverride;
+    }
+    public void setAwardSexOverride(String x){
+        awardSexOverride = x;
+    }
+    @Transient
+    public String getAwardSex(){
+        if (awardSexOverride == null || awardSexOverride.isBlank()) return sexProperty.getValueSafe();
+        return awardSexOverride;
     }
     
     @ElementCollection(fetch = FetchType.EAGER)

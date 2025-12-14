@@ -144,6 +144,9 @@ public class FXMLParticipantController  {
     //@FXML private TextField zipTextField;
     @FXML private TextField countryTextField;
     @FXML private DatePicker birthdayDatePicker;    
+    
+    @FXML private TextField awardSexOverrideTextField;
+    @FXML private ToggleSwitch awardEligibleToggleSwitch;
 
     @FXML private TextField filterField; 
     @FXML private Button formAddButton; 
@@ -243,53 +246,106 @@ public class FXMLParticipantController  {
             
             MenuItem swapBibs = new MenuItem("Swap Bibs");
             swapBibs.setOnAction((ActionEvent event) -> {
-                ObservableList<Participant> swapMe = FXCollections.observableArrayList(participantTableView.getSelectionModel().getSelectedItems());
+                List<Participant> swapMe = FXCollections.observableArrayList(participantTableView.getSelectionModel().getSelectedItems());
                 
                 if (swapMe.size() == 2) {
                     String tmp = swapMe.get(1).getBib();
                     swapMe.get(1).setBib(swapMe.get(0).getBib());
                     swapMe.get(0).setBib(tmp);
                     
-                    participantDAO.updateParticipant(swapMe.get(1));
-                    participantDAO.updateParticipant(swapMe.get(0));
+                    swapMe.get(0).setRegSyncNeeded(Boolean.TRUE);
+                    swapMe.get(1).setRegSyncNeeded(Boolean.TRUE);
                     
+                    participantDAO.updateParticipant(swapMe);
+                    
+                    
+                    TimingDAO.getInstance().reprocessBib(swapMe.get(0).getBib());
+                    TimingDAO.getInstance().reprocessBib(swapMe.get(2).getBib());
+
+                    ResultsDAO.getInstance().reprocessAllCRs();
+
+                    if (rsuDAO.isSetup().get() ) {
+                        Thread.ofVirtual().start(() -> {
+                            swapMe.get(0).setRegSyncNeeded(Boolean.TRUE);
+                            swapMe.get(1).setRegSyncNeeded(Boolean.TRUE);
+                            rsuDAO.syncToRSU();
+                        });
+                    }
                 }
 		
             });
             
-            Menu assignWave = new Menu("Assign");
+            Menu addToWave = new Menu("Add To...");
             //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
-            RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator()).stream().forEach(w -> {
+            
+            //RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator()).forEach(w -> {
+            for(Wave w:RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>())) {
                 MenuItem m = new MenuItem(w.toString());
                 m.setOnAction(e -> {
                     participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
-                        p.setWaves((Wave)w);
+                        p.addWave(w);
                         participantDAO.updateParticipant(p);
+                        
+                        TimingDAO.getInstance().reprocessBib(p.getBib());
+                        ResultsDAO.getInstance().reprocessAllCRs();
+
+                        if (rsuDAO.isSetup().get() ) {
+                            Thread.ofVirtual().start(() -> {
+                                p.setRegSyncNeeded(Boolean.TRUE);
+                                rsuDAO.syncToRSU();
+                            });
+                        }
 
                     });
                 });
-                assignWave.getItems().add(m);
+                addToWave.getItems().add(m);
+            } 
+            
+            Menu moveToWave = new Menu("Move To...");
+            //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
+            RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>()).stream().forEach(w -> {
+                MenuItem m = new MenuItem(w.toString());
+                m.setOnAction(e -> {
+                    participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
+                        
+                        p.setWaves(w);
+                        participantDAO.updateParticipant(p);
+                        
+                        TimingDAO.getInstance().reprocessBib(p.getBib());
+                        ResultsDAO.getInstance().reprocessAllCRs();
+
+                        if (rsuDAO.isSetup().get() ) {
+                            Thread.ofVirtual().start(() -> {
+                                p.setRegSyncNeeded(Boolean.TRUE);
+                                rsuDAO.syncToRSU();
+                            });
+                        }
+
+                    });
+                });
+                moveToWave.getItems().add(m);
             });
             
             RaceDAO.getInstance().listWaves().addListener((Change<? extends Wave> change) -> {
-                assignWave.getItems().clear();
+                addToWave.getItems().clear();
+                moveToWave.getItems().clear();
                 //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
-                RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator()).stream().forEach(w -> {
+                RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>()).stream().forEach(w -> {
                     MenuItem m = new MenuItem(w.toString());
                     m.setOnAction(e -> {
                         participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
-                            p.setWaves((Wave)w);
+                            p.setWaves(w);
                             participantDAO.updateParticipant(p);
 
                         });
                     });
-                    assignWave.getItems().add(m);
+                    addToWave.getItems().add(m);
+                    moveToWave.getItems().add(m);
                 });
-                
             });
             
             // context menu to assign/unassign runners to a given wave
-            rowMenu.getItems().addAll(editItem, removeItem, swapBibs, assignWave);
+            rowMenu.getItems().addAll(editItem, removeItem, swapBibs, addToWave,moveToWave);
             
             // only display context menu for non-null items:
             row.contextMenuProperty().bind(
@@ -300,16 +356,27 @@ public class FXMLParticipantController  {
             // Hide the edit option if more than one item is selected and only show
             // the swap option if exactly two items are selected. 
             participantTableView.getSelectionModel().getSelectedIndices().addListener((Change<? extends Integer> change) -> {
+                // Enable the swap bibs if we have exactly two selected
                 if (change.getList().size() == 2) {
                     swapBibs.setDisable(false);
                 } else {
                     swapBibs.setDisable(true);
                 }
+                
+                // Enable the edit option if we have only one selected
                 if (change.getList().size() == 1) {
                     editItem.setDisable(false);
                 } else {
                     editItem.setDisable(true);
                 }
+                
+                // Disable the delete option if RSU sync is configured
+                if(RunSignUpDAO.getInstance().isSetup().getValue()) {
+                    removeItem.setDisable(true);
+                } else {
+                    removeItem.setDisable(false);
+                }
+                
             });
             
             return row;
@@ -356,7 +423,7 @@ public class FXMLParticipantController  {
         
         raceHBox.managedProperty().bind(Bindings.size(RaceDAO.getInstance().listWaves()).greaterThan(1));
         raceHBox.visibleProperty().bind(Bindings.size(RaceDAO.getInstance().listWaves()).greaterThan(1));
-        if (RaceDAO.getInstance().listRaces().size() > 1) raceLabel.setText("Race");
+        if (RaceDAO.getInstance().listRaces().size() > 1) raceLabel.setText("Event(s)");
         else raceLabel.setText("Wave");
         
         searchWaveComboBox.visibleProperty().bind(Bindings.size(RaceDAO.getInstance().listWaves()).greaterThan(1));
@@ -644,7 +711,7 @@ public class FXMLParticipantController  {
         
         // RSU sync stuff
         rsuSyncSetupButton.setOnAction(event -> rsuDAO.showSetupWizard());
-        rsuSyncButton.setOnAction(event -> rsuDAO.syncFromRSU(rsuSyncProgressBar, rsuSyncLabel));
+        rsuSyncButton.setOnAction(event -> rsuDAO.syncWithRSU(rsuSyncProgressBar, rsuSyncLabel));
         rsuSyncButton.visibleProperty().bind(rsuDAO.isSetup());
         rsuSyncProgressBar.visibleProperty().bind(rsuDAO.isSetup());
         
@@ -657,14 +724,14 @@ public class FXMLParticipantController  {
         importButton.setOnAction(event -> importParticipants());
         exportButton.setOnAction(event -> exportParticipants());
         deleteParticipantsButton.setOnAction(event -> deleteParticipants());
-        formAddButton.setOnAction(event -> addPerson());
+        formAddButton.setOnAction(event -> addParticipant());
         formResetButton.setOnAction(event -> resetForm());
         formUpdateButton.setOnAction(event -> updateParticipant() );
 
     }
     
     @FXML
-    protected void addPerson() {
+    protected void addParticipant() {
         // Make sure they actually entered something first
         logger.debug("addPerson fired");
         if (!(firstNameField.getText().isEmpty() && lastNameField.getText().isEmpty())) {
@@ -699,40 +766,45 @@ public class FXMLParticipantController  {
             p.setNote(noteTextField.getText());
             p.setStatus(statusPrefixSelectionChoiceBox.getSelectionModel().getSelectedItem());
             
+            p.setAwardSexOverride(awardSexOverrideTextField.getText());
+            p.setAwardEligible(awardEligibleToggleSwitch.selectedProperty().getValue());
+            
             //custom attributes
             participantDAO.getCustomAttributes().forEach(a -> {
                 Integer aID = a.getID();
                 switch (a.getAttributeType()) {
-                    case LIST:
-                        {
+                    case LIST ->                         {
                             p.setCustomAttribute(aID, customAttributesChoiceBoxes.get(aID).getValue());
-                            break;
                         }
-                    case DATE:
-                        {
+                    case DATE ->                         {
                             try {
                             p.setCustomAttribute(aID, customAttributesDatePickers.get(aID).getValue().format(DateTimeFormatter.ISO_DATE));
                             } catch (Exception e){
                                 p.setCustomAttribute(aID, "");
                             }
-                            break;
                         }
-                    case BOOLEAN:
-                        {
+                    case BOOLEAN ->                         {
                             p.setCustomAttribute(aID, customAttributesCheckBox.get(aID).selectedProperty().getValue().toString());
-                            break;
                         }
-                    default:
-                        {
+                    default ->                         {
                             p.setCustomAttribute(aID, customAttributesTextFields.get(aID).getText());                        
-                            break;
                         }
                 }
             });
             
             
-            //participantsList.add(p);
+            if (rsuDAO.isSetup().get()) {
+                logger.trace("Setting the RegSyncNeeded flag to true for {}",p.firstNameProperty().getValue());
+                p.setRegSyncNeeded(Boolean.TRUE);
+            }
+            
             participantDAO.addParticipant(p);
+            
+            if (rsuDAO.isSetup().get() ) {
+                Thread.ofVirtual().start(() -> {
+                    rsuDAO.syncToRSU();
+                });
+            }
             
             resetForm();
             
@@ -745,17 +817,32 @@ public class FXMLParticipantController  {
         return participantDAO.listParticipants(); 
     }
     
-    public void removeParticipant(Participant p)     {
+    public void removeParticipant(Participant p) {
+        if (rsuDAO.isSetup().get()) {
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("RSU Sync Enabled");
+            alert.setHeaderText("RunSignUp Sync is enabled");
+            alert.setContentText("Use the RSU Dashboard to remove the participant.");
+            alert.showAndWait();
+
+            return;
+        }
+    
         participantDAO.removeParticipant(p);
     }
     
-    public void removeParticipants(ObservableList p) {
-        //long starttime = System.currentTimeMillis();
+    public void removeParticipants(List p) {
+        if (rsuDAO.isSetup().get()) {
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("RSU Sync Enabled");
+            alert.setHeaderText("RunSignUp Sync is enabled");
+            alert.setContentText("Use the RSU Dashboard to remove the participant.");
+            alert.showAndWait();
+
+            return;
+        }
         
         participantDAO.removeParticipants(p);
-        
-        //long endtime = System.currentTimeMillis();
-        //System.out.println("Delete Time: " + (endtime-starttime));
     }
     
     public void editParticipant(Participant p) {
@@ -781,6 +868,9 @@ public class FXMLParticipantController  {
         noteTextField.setText(p.getNote());
              
         waveComboBox.getCheckModel().clearChecks();
+        
+        awardSexOverrideTextField.setText(p.getAwardSexOverride());
+        awardEligibleToggleSwitch.selectedProperty().set(p.getAwardEligible());
         
         
         p.wavesObservableList().stream().forEach(w -> {
@@ -866,6 +956,9 @@ public class FXMLParticipantController  {
             editedParticipant.setStatus(statusPrefixSelectionChoiceBox.getSelectionModel().getSelectedItem());
             editedParticipant.setNote(noteTextField.getText());
             
+            editedParticipant.setAwardSexOverride(awardSexOverrideTextField.getText());
+            editedParticipant.setAwardEligible(awardEligibleToggleSwitch.selectedProperty().getValue());
+            
             // If there is only one wave, assign it
             if (RaceDAO.getInstance().listWaves().size()== 1){
                 editedParticipant.setWaves(RaceDAO.getInstance().listWaves());
@@ -899,13 +992,26 @@ public class FXMLParticipantController  {
             });
             
             
+            if (rsuDAO.isSetup().get()) {
+                logger.debug("Setting the RegSyncNeeded flag to true for {}",editedParticipant.firstNameProperty().getValue());
+                editedParticipant.setRegSyncNeeded(Boolean.TRUE);
+            } else {
+                logger.debug("RSU is not setup, not updating");
+            }
             
             // perform the actual update
-            participantDAO.updateParticipant(editedParticipant);
-            TimingDAO.getInstance().reprocessBib(editedParticipant.getBib());
-            if (!org_bib.equals(editedParticipant.getBib())) TimingDAO.getInstance().reprocessBib(org_bib);
             
-            ResultsDAO.getInstance().reprocessAllCRs();
+                participantDAO.updateParticipant(editedParticipant);
+                TimingDAO.getInstance().reprocessBib(editedParticipant.getBib());
+                if (!org_bib.equals(editedParticipant.getBib())) TimingDAO.getInstance().reprocessBib(org_bib);
+
+                ResultsDAO.getInstance().reprocessAllCRs();
+
+                if (rsuDAO.isSetup().get() ) {
+                    Thread.ofVirtual().start(() -> {
+                        rsuDAO.syncToRSU();
+                    });
+                }
             
             // reset the fields
             resetForm();   
@@ -942,7 +1048,8 @@ public class FXMLParticipantController  {
         noteTextField.setText("");
         statusPrefixSelectionChoiceBox.getSelectionModel().select(Status.GOOD);
         
-   
+        awardSexOverrideTextField.setText("");
+        awardEligibleToggleSwitch.selectedProperty().set(true);
         
         // set the Update buton to invisible
         formUpdateButton.setVisible(false);
@@ -1286,7 +1393,7 @@ public class FXMLParticipantController  {
     public void clearParticipants(){
         Alert alert = new Alert(AlertType.CONFIRMATION);
         alert.setTitle("Confirm Participant Removal");
-        alert.setHeaderText("This will remove all Participants from the event.");
+        alert.setHeaderText("This will remove all Participants from the race.");
         alert.setContentText("This action cannot be undone. Are you sure you want to do this?");
 
         Optional<ButtonType> result = alert.showAndWait();
@@ -1476,11 +1583,11 @@ public class FXMLParticipantController  {
         if (result.isPresent()) {
             AlphanumericComparator ac = new AlphanumericComparator();
             
-            Integer currentBib = Integer.parseInt(startTextField.getText());
+            Integer currentBib = Integer.valueOf(startTextField.getText());
             Integer lastBib = Integer.MAX_VALUE;
             if (!endTextField.getText().isEmpty()) {
                 try{
-                    lastBib = Integer.parseInt(endTextField.getText());
+                    lastBib = Integer.valueOf(endTextField.getText());
                 } catch (Exception ex){
                     lastBib = Integer.MAX_VALUE;
                 }
@@ -1568,9 +1675,11 @@ public class FXMLParticipantController  {
                     
                     })  // Sort them
                     .collect(Collectors.toList());
-            
+             
+            logger.debug("Bulk Bib: assignees.size() = {}",assignees.size());
             
             Participant existing = null;
+            List<Participant> modifiedParticipants = new ArrayList();
             for(Participant p: assignees){
                 if (currentBib > lastBib) break;
                 logger.trace("Assigning bib for " + p.fullNameProperty().getValueSafe());
@@ -1593,7 +1702,7 @@ public class FXMLParticipantController  {
                         if (currentBib > lastBib) break;
                     } while (!good);
                 } else {
-                    logger.trace("skiList was empty");
+                    logger.trace("skipList was empty");
                 }
                 if (currentBib > lastBib) break;
                 
@@ -1602,15 +1711,18 @@ public class FXMLParticipantController  {
                 
                 if (existing != null && !existing.equals(p)) {
                     existing.setBib("OLD: " + currentBib.toString());
-                    participantDAO.updateParticipant(existing);
+                    modifiedParticipants.add(existing);
                 }
                 logger.trace("Assigning " + currentBib.toString() + "...");
                 p.setBib(currentBib.toString());
                 p.setWaves(participantDAO.getWaveByBib(currentBib.toString()));
-                participantDAO.updateParticipant(p);
+                p.setRegSyncNeeded(Boolean.TRUE);
+                modifiedParticipants.add(p);
+                
                 logger.trace("  " + p.fullNameProperty().getValueSafe() + " now has bib " + currentBib);
                 currentBib++;
             }
+            if (!modifiedParticipants.isEmpty()) participantDAO.updateParticipant(modifiedParticipants);
         }
     }
     

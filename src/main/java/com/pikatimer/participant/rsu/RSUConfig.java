@@ -16,11 +16,15 @@
  */
 package com.pikatimer.participant.rsu;
 
+import com.pikatimer.race.Race;
+import com.pikatimer.util.StringCapitalizationNormalizer;
 import java.util.Map;
 import javax.persistence.CollectionTable;
 import javax.persistence.Column;
 import javax.persistence.ElementCollection;
 import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
@@ -45,14 +49,21 @@ public class RSUConfig {
     
     String rsuTempKey;
     String rsuTempSecret;
+    Long rsuTempTimestamp=0L;
     
     Integer rsuRaceID;
     
     Long rsuLastSync = 0L;
     
+    Boolean bidiSync = true;
+    StringCapitalizationNormalizer capNormalize = StringCapitalizationNormalizer.TitleCase;
+    
     Map<Integer,Integer> eventToRaceMap;
     
-    RSUConfig(){
+    Map<Integer,Integer> raceToEventMap;
+    
+    
+    public RSUConfig(){
         
     }
     
@@ -117,6 +128,13 @@ public class RSUConfig {
         //logger.debug("Participant UUID is now " + uuidProperty.get());
     }
     
+    public Integer getRSUEvent(Race race){
+        return eventToRaceMap.entrySet().stream()
+            .filter(e -> e.getValue().equals(race.getID()))
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElse(null);
+    }
     
     @ElementCollection(fetch = FetchType.EAGER)
     @MapKeyColumn(name="raceID")
@@ -130,8 +148,35 @@ public class RSUConfig {
         eventToRaceMap = eventMap;
     }
     
+    @ElementCollection(fetch = FetchType.EAGER)
+    @MapKeyColumn(name="rsuEventID")
+    @Column(name="raceID")
+    @CollectionTable(name="rsuconfig_default_eventmap", joinColumns=@JoinColumn(name="configID"))
+    public Map<Integer,Integer> getRSUDefaultEventMap(){
+        return raceToEventMap;
+    }
     
-    // Map<String,String> attributeMap;
-    // Map<String,Boolean> options;
+    public void setRSUDefaultEventMap(Map<Integer,Integer> eventMap) {
+        raceToEventMap = eventMap;
+    }
+    
+    
+    @Column(name="bidirectional") // boolean
+    public Boolean getBiDiSync(){
+        return bidiSync;
+    }
+    public void setBiDiSync(Boolean b){
+        bidiSync = b;
+    }
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name="capitalization")
+    public StringCapitalizationNormalizer getNormalizeCapitalization() {
+        return capNormalize;
+    }
+    public void setNormalizeCapitalization(StringCapitalizationNormalizer n){
+        capNormalize = n;
+    }
+    
     
 }

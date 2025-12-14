@@ -16,10 +16,12 @@
  */
 package com.pikatimer.event;
 
+import com.pikatimer.Pikatimer;
 import com.pikatimer.util.HibernateUtil;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import javafx.application.Platform;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.type.LongType;
@@ -84,6 +86,7 @@ public class EventDAO {
         query.executeUpdate();
         s.getTransaction().commit();
 
+        Platform.runLater(() -> {Pikatimer.getPrimaryStage().setTitle("PikaTimer: New Event");});
         // Thread.dumpStack(); // who called this?
     }
 
@@ -111,6 +114,7 @@ public class EventDAO {
                 event.setEventDate(row[2].toString());
                 logger.debug("Results: " + row[1].toString() + " Date:" + row[2].toString());
             }
+            Platform.runLater(() -> {Pikatimer.getPrimaryStage().setTitle("PikaTimer: " + event.getEventName());});
         }
 
     }

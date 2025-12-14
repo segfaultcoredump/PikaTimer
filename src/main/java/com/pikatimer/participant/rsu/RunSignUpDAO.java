@@ -24,6 +24,7 @@ import com.pikatimer.race.Race;
 import com.pikatimer.race.RaceDAO;
 import com.pikatimer.race.Wave;
 import com.pikatimer.util.HibernateUtil;
+import com.pikatimer.util.StringCapitalizationNormalizer;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -40,7 +41,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -51,9 +54,12 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -70,6 +76,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.controlsfx.control.ToggleSwitch;
 import org.controlsfx.dialog.Wizard;
 import org.controlsfx.dialog.WizardPane;
 import org.hibernate.Session;
@@ -82,17 +89,34 @@ import org.slf4j.LoggerFactory;
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
+
+//////
+//
+// WARNING: this is a hack and a half from a thread and process flow standpoint.
+// It should probably be refactored at some point in the future. 
+//
+//
+//  TODO:
+//     * if username/key starts with "TEST:" then use the test.runsignup.com
+//       endpoint and adjust.
+//     * Error checking and recovery needs to be implemented. 
+//
+/////////
+
 public class RunSignUpDAO {
 
     private static final Logger logger = LoggerFactory.getLogger(RunSignUpDAO.class);
     private RSUConfig rsuConfig;
 
-    private final Event event = Event.getInstance();
+    //private final Event event = Event.getInstance();
 
     private final BooleanProperty isSetup = new SimpleBooleanProperty(false); 
     
     private final ParticipantDAO partDAO = ParticipantDAO.getInstance();
     private final RaceDAO raceDAO = RaceDAO.getInstance();
+    
+    Boolean syncInProgress = false;
+
 
     private static class SingletonHolder {
 
@@ -103,6 +127,8 @@ public class RunSignUpDAO {
 
         return SingletonHolder.INSTANCE;
     }
+    
+    
 
     public BooleanProperty isSetup() {
         if (rsuConfig == null) {
@@ -110,6 +136,10 @@ public class RunSignUpDAO {
         }
 
         return isSetup;
+    }
+    
+    public Boolean syncInProgress(){
+        return syncInProgress;
     }
 
     private RSUConfig getRSUConfig() {
@@ -146,6 +176,29 @@ public class RunSignUpDAO {
 
         return rsuConfig;
     }
+    
+    public void syncWithRSU(ProgressBar progressBar, Label progressLabel){
+        
+        if (syncInProgress) return; 
+         
+        // We don't want to block the JavaFX thread, so we dump this into a task. 
+        
+        Task rsuSyncTask = new Task<Void>() {
+            @Override
+            protected Void call() {
+                Boolean okToGo = true; 
+                okToGo = syncToRSU();
+                if (okToGo) syncFromRSU(progressBar,progressLabel);
+            
+                return null;
+            }
+        };
+
+        Thread resync = new Thread(rsuSyncTask);
+        
+        resync.setDaemon(true);
+        resync.start();
+    }
 
     public void syncFromRSU(ProgressBar progressBar, Label progressLabel) {
         logger.debug("RunSignUpDAO::syncFromRSU() Start...");
@@ -159,7 +212,8 @@ public class RunSignUpDAO {
         Task resyncTask = new Task<Void>() {
             @Override
             protected Void call() {
-                logger.debug("Starting up the resyncThread");
+                logger.debug("SyncFromRSU Thread Started");
+                syncInProgress = true;
 
                 updateProgress(0, 100);
 
@@ -178,8 +232,6 @@ public class RunSignUpDAO {
                 
                 });
                 
-                                
-                               
                 // Quick count for the progress bar
                 Integer eventsToProcess = 0;
                 Integer eventsProcessed = 0;
@@ -199,16 +251,14 @@ public class RunSignUpDAO {
                         Integer page = 1;
                         logger.info("Getting registrations for Race with event_id {} from RSU", event);
                         
-                        //TODO
-                        // Figure out where to stick folks (default wave or by bib # with a fallback if there is no bib number)
+                        
                         Race race = RaceDAO.getInstance().getRaceByID(rsuConfig.eventToRaceMap.get(event));
                         Boolean multipleWaves = race.getWaves().size() > 1;
                         
                         Wave defaultWave = race.getWaves().getLast();
                         
-                        // TODO
-                        // Only sync from last sync time
-                    
+                        updateMessage("Syncing " + race.getRaceName() + "...");
+                                         
                         try {
                             do {
 
@@ -226,6 +276,7 @@ public class RunSignUpDAO {
                                     rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
                                     rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
                                 } else {
+                                    updateRSUKeys();
                                     rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
                                     rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
                                 }
@@ -243,15 +294,20 @@ public class RunSignUpDAO {
 
                                         if (response.body().startsWith("[{")) { // We have a json array....
                                             try {
-                                                JSONArray results = new JSONArray(response.body()).getJSONObject(0).getJSONArray("participants");
+                                                JSONArray rsuResponse = new JSONArray(response.body());
+                                                logger.trace("RSU Raw Response: {} ",rsuResponse.toString(4));
+                                                if (rsuResponse.getJSONObject(0).isNull("participants")) {
+                                                    logger.debug("No participants returned.");
+                                                    break;
+                                                }       
+                                                
+                                                JSONArray results = rsuResponse.getJSONObject(0).getJSONArray("participants");
                                                 logger.trace(results.toString(4));
 
                                                 regReturned = results.length();
                                                 for (int j = 0; j < results.length(); j++) {
                                                     JSONObject rsuReg = results.getJSONObject(j);
-                                                    
-                                                    
-                                                        
+                                                                                                            
                                                     Participant p;
                                                     if (regIDtoParticipantMap.containsKey(rsuReg.optIntegerObject("registration_id"))) {
                                                         p = regIDtoParticipantMap.get(rsuReg.optIntegerObject("registration_id"));
@@ -263,7 +319,13 @@ public class RunSignUpDAO {
                                                         p = new Participant();
                                                         logger.trace("RSUSync: unable to find an existing registration or user, creating a new user....");
                                                     }
-                                                        
+                                                    
+                                                    // If the particiopant is pending a sync to RSU, skip it.
+                                                    // 
+                                                    if (p.getRegSyncNeeded()) break;
+                                                    
+                                                    p.setRegSyncNeeded(false);
+                                                    
                                                     CountDownLatch platformDone = new CountDownLatch(1);
                                                     Platform.runLater(() -> {    
 
@@ -289,7 +351,9 @@ public class RunSignUpDAO {
                                                         p.setEmail(pJSON.optString("email"));
                                                         p.setSex(pJSON.optString("gender"));
                                                         //if (pJSON.optString("is_anonymous").equalsIgnoreCase("T")) p.setIsAnon(Boolean.TRUE);
+                                                        p.setAge(rsuReg.optIntegerObject("age"));
                                                         p.setBirthday(pJSON.optString("dob"));
+                                                        
 
                                                         JSONObject aJSON = pJSON.getJSONObject("address");
                                                         p.setCity(aJSON.optString("city"));
@@ -299,6 +363,36 @@ public class RunSignUpDAO {
 
                                                         // link the particpant to the race
                                                         
+                                                        if(rsuConfig.capNormalize != StringCapitalizationNormalizer.NONE){
+                                                            Boolean update = false;
+                                                            String f = rsuConfig.capNormalize.normalize(p.getFirstName());
+                                                            if (!f.equals(p.getFirstName())) {
+                                                                update = true;
+                                                                p.setFirstName(f);
+                                                            }
+
+                                                            String m = rsuConfig.capNormalize.normalize(p.getMiddleName());
+                                                            if (!m.equals(p.getMiddleName())) {
+                                                                update = true;
+                                                                p.setMiddleName(m);
+                                                            }
+
+                                                            String l = rsuConfig.capNormalize.normalize(p.getLastName());
+                                                            if (!l.equals(p.getLastName())) {
+                                                                update = true;
+                                                                p.setLastName(l);
+                                                            }
+
+                                                            String c = rsuConfig.capNormalize.normalize(p.getCity());
+                                                            if (!c.equals(p.getCity())){
+                                                                update = true;
+                                                                p.setCity(c);
+                                                            }
+
+                                                            if (update) {
+                                                                p.setRegSyncNeeded(update);
+                                                            }                                                            
+                                                        }
                                                         
                                                         List<Wave> waveList = p.wavesObservableList();
                                                         if (waveList.isEmpty()) {
@@ -337,7 +431,7 @@ public class RunSignUpDAO {
                                                             }
                                                         }
                                                         
-                                                        p.getRegID2RaceIDDMap().put(rsuReg.optIntegerObject("registration_id"),race.getID());
+                                                        p.getRegID2RaceIDDMap().put(rsuReg.optIntegerObject("registration_id"),event);
                                                            
                                                         
                                                         platformDone.countDown();
@@ -355,7 +449,8 @@ public class RunSignUpDAO {
                                                     
                                                 }
                                                 logger.debug("Found " + results.length() + " registrations\n\n");
-                                            } catch (org.json.JSONException exJ) {
+                                            } catch (org.json.JSONException exj) {
+                                                logger.error("JSON Exception: {}",exj.getMessage(),exj);
                                                 regReturned = 0;
                                             }
                                             page++;
@@ -406,6 +501,7 @@ public class RunSignUpDAO {
                                     rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
                                     rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
                                 } else {
+                                    updateRSUKeys();
                                     rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
                                     rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
                                 }
@@ -490,14 +586,7 @@ public class RunSignUpDAO {
                 updateMessage("Done!");
                 updateProgress(1,1);
 
-                try {
-                    Thread.sleep(10000);
-                } catch (InterruptedException ex) {
-                    // We don't really care....
-                } finally {
-                    updateMessage("");
-                    updateProgress(0,1);
-                }
+                
 
                 // save lastRunTS
                 rsuConfig.setRSULastSync(lastRunTS);
@@ -506,13 +595,32 @@ public class RunSignUpDAO {
                 s.beginTransaction();
                 s.saveOrUpdate(rsuConfig);
                 s.getTransaction().commit();
+                
+                syncInProgress = false;
+                
+                try {
+                    Thread.sleep(10000);
+                } catch (InterruptedException ex) {
+                    // We don't really care....
+                } finally {
+                    updateMessage("");
+                    updateProgress(0,1);
+                }
+                
+                Platform.runLater(() -> {
+                    progressBar.progressProperty().unbind();
+                    progressLabel.textProperty().unbind();
+                });
 
                 return null;
             }
         };
 
-        progressBar.progressProperty().bind(resyncTask.progressProperty());
-        progressLabel.textProperty().bind(resyncTask.messageProperty());
+        Platform.runLater(() -> {
+            progressBar.progressProperty().bind(resyncTask.progressProperty());
+            progressLabel.textProperty().bind(resyncTask.messageProperty());
+        });
+        
 
         Thread resync = new Thread(resyncTask);
         
@@ -548,24 +656,670 @@ public class RunSignUpDAO {
 
         syncFromRSU(pb, runnerName);
 
+        // TODO: Close after the sync is done. 
+        
         dialog.showAndWait();
 
     }
 
-    public void syncToRSU() {
+    public Boolean syncToRSU() {
+        logger.debug("Init: syncToRSU()");
+
+        
+        Boolean noErrors = true; 
+        
+        if (rsuConfig.getBiDiSync()) {
+        
+            // Look for new participants and create them
+            //if (noErrors) noErrors = pushNewParticipants();
+
+            // Update general attributes   
+            noErrors = updateParticipants();
+
+            // look for event adds/transfers/deletes and then handle them. 
+            if (noErrors) noErrors =  swapRSUEvents();
+            logger.debug("RunSignUpDAO::syncToRSU() swapRSUEvents() returned {}",noErrors);
+
+            // Look for deleted participants and delete them
+            //partDAO.blockingRemoveParticipants(new ArrayList());
+            
+            // if no issues, clear the rsuSyncNeeded flag
+            if (noErrors){
+                partDAO.listParticipants().forEach(p -> {
+                    if (p.getRegSyncNeeded()){
+                        p.setRegSyncNeeded(false);
+                        partDAO.updateParticipant(p);
+                    }
+                });
+            } else {
+                logger.warn("Error in pushing data to RSU!. Not clearing rsuSyncNeeded flag!");
+            }
+        }
+        
+        return noErrors;
+    }
+    
+    public Boolean swapRSUEvents(){
+        
+           
+        List<Registration> transfers = new ArrayList();
+        Map<Integer,List<Registration>> adds = new ConcurrentHashMap();
+        List<Registration> removes = new ArrayList();
+        
+        
+        logger.trace("Starting swapRSUEvents()...");
+        // Look for folks whos registrations don't match their races
+        // partDAO.listParticipants().parallelStream().forEach(p -> {
+        partDAO.listParticipants().forEach(p -> {
+            if (p.getRegSyncNeeded()){
+                logger.debug("swapRSUEvents(): checking {}",p.fullNameProperty().getValueSafe());
+                
+                List<Integer> regIDsToRemove = new ArrayList();
+                List<Integer> rsuEventsToAdd = new ArrayList();
+
+                        
+                
+                // used to hold what races RSU thinks that we are in
+                Set<Race> races = new HashSet();
+                                
+                // Look for events to remove
+                for (Integer reg: p.getRegID2RaceIDDMap().keySet()){
+                    logger.trace("Checking rsuRegID {} -> {}",reg,p.getRegID2RaceIDDMap().get(reg));
+                    Integer rsuEventID = p.getRegID2RaceIDDMap().get(reg);
+                    Integer pikaRaceID = rsuConfig.getRSUEventMap().get(rsuEventID);
+                    Race race = raceDAO.getRaceByID(pikaRaceID);
+                    races.add(race); // we use this in the "events to add" below
+                    logger.debug("Checking if we are still in {}...", race.getRaceName());
+                    Boolean isValid = false;
+                    for(Integer w:p.getWaveIDs()) {
+                        logger.trace("Checking waveID {}",w);
+                        if(Objects.equals(race.getID(), raceDAO.getWaveByID(w).getRace().getID())) isValid=true;
+                        logger.trace("isValid = {}", isValid);
+                    }
+                    if (!isValid) {
+                        regIDsToRemove.add(reg);
+                    }
+                }
+                
+                // Look for events to add
+                for(Integer i:p.getWaveIDs()){
+                    Race race = raceDAO.getWaveByID(i).getRace();
+                    logger.trace("Checking to see if we are registered for {} in RSU...",race.getRaceName());
+                    if(! races.contains(race)) {
+                        rsuEventsToAdd.add(rsuConfig.getRSUEvent(race));
+                        logger.debug("We are NOT registered for {}, adding RSU event ID {} to the add list",race.getRaceName(), rsuConfig.getRSUEvent(race));
+                    }
+                    logger.trace("We are alread registered for {}",race.getRaceName());
+                }
+                
+                
+                // Registration(Integer rsuRegID, Integer newRSUEventID, Integer newPikaRaceID, Participant participant) 
+                if (!regIDsToRemove.isEmpty() || !rsuEventsToAdd.isEmpty()) {
+                    
+                    while(!regIDsToRemove.isEmpty() && !rsuEventsToAdd.isEmpty()) {
+                        Registration r = new Registration(regIDsToRemove.removeFirst(), rsuEventsToAdd.removeFirst(),null,p);
+                        transfers.add(r);
+                    }
+                    for(Integer a: regIDsToRemove) {
+                        Registration r = new Registration(a, null, null, p);
+                        removes.add(r);
+                    }
+                    for (Integer a: rsuEventsToAdd){
+                        if (!adds.containsKey(a)) adds.put(a, new ArrayList());
+                        Registration r = new Registration(null, a, null, p);
+                        adds.get(a).add(r);
+                    }
+                }
+            }
+        });
+
+        logger.trace("swapRSUEvents(): participant scan finished: transfers: {} adds: {} removes: {}",transfers.size(),adds.size(),removes.size());
+                
+        // Process the transfers, adds, and deletes
+        
+        //////////////
+        // Transfers
+        // /Rest/Race/<raceID>/switch-participant-events
+        //////////////
+       
+        
+        if (!transfers.isEmpty()) {
+            JSONArray transfersJSONArray = new JSONArray();
+           
+            transfers.forEach(r -> {
+               JSONObject o = new JSONObject();
+               o.put("registration_id", r.rsuRegID);
+               o.put("new_event_id",r.newRSUEventID);
+               transfersJSONArray.put(o);
+            });
+
+            JSONObject transfersPostData = new JSONObject();
+            transfersPostData.put("registrations", transfersJSONArray);
+            
+            StringBuilder rsuURL = new StringBuilder();
+            rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+            rsuURL.append("/switch-participant-events?format=json");
+
+            // log it now before we tack on the key and secret
+            logger.debug("Swap Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
+
+            if (rsuConfig.rsuLoginType.equals("API")) {
+                rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
+                rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+            } else {
+                updateRSUKeys();
+                rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
+                rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
+            }
+
+
+            StringBuilder postString = new StringBuilder();
+            postString.append("race_id=").append(rsuConfig.rsuRaceID);
+            postString.append("&transfer_bibs=T&request_format=json");
+            postString.append("&request=").append(transfersPostData.toString());
+
+
+            logger.debug("Transfer Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(rsuURL.toString()))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+                    .build();
+            request.bodyPublisher().get().toString();
+            HttpClient client = HttpClient.newHttpClient();
+            try {
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    // TODO: Look for error response because RSU sends them with 200's :-/ 
+                    logger.trace("RAW RSU switch-participant response.body(): {}",response.body());
+                    // pull in the response to snag the new registration ID's
+                    // and then update the participant records
+                    if (response.body().startsWith("{")) { 
+                        try {
+                            JSONObject rsuResponse = new JSONObject(response.body());
+                            logger.trace("RSU switch-participant Response: {} ",rsuResponse.toString(4));
+                            if (!rsuResponse.has("participants")) {
+                                logger.debug("No participants returned.");
+                            } else {
+                                JSONArray results = rsuResponse.getJSONArray("participants");
+                                logger.trace(results.toString(4));
+
+                                for (int j = 0; j < results.length(); j++) {
+                                    JSONObject rsuReg = results.getJSONObject(j);
+                                    Integer newRegID = rsuReg.getInt("registration_id");
+                                    Registration r = transfers.get(j);
+                                    Participant p = r.participant;
+                                    p.getRegID2RaceIDDMap().remove(r.rsuRegID);
+                                    p.getRegID2RaceIDDMap().put(newRegID,r.newRSUEventID);
+                                    logger.debug("RSU Switch Event: Old rsuID: {} New rsuID: {} New EventID: {} Participant: {}", r.rsuRegID, newRegID, r.newRSUEventID, p.fullNameProperty().getValueSafe());
+                                    partDAO.updateParticipant(p);
+                                } 
+                            }      
+                        } catch (Exception e){
+                            logger.error("Exception in RSU participant transfer: {}",e.getMessage(),e);
+                        }
+                    }
+                    
+                    transfers.forEach(r -> {
+                        r.participant.getRegID2RaceIDDMap().remove(r.rsuRegID);
+                        partDAO.updateParticipant(r.participant);
+                    });
+
+                } else {
+                    logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                    // TODO: Alert Dialog Box
+                }
+            } catch (Exception ex) {
+                logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
+                // TODO: Alert Dialog Box
+            }
+
+        } 
+        
+        
+        
+        
+        //////////////
+        // Adds
+        //////////////
+        Map<Integer,JSONArray> updatesMap = new HashMap();
+        
+        // Get any registrations that need to be synced up
+
+        // if we have stuff to sync, upload them
+        if (!adds.isEmpty()) {
+            for(Integer rsuEventID:adds.keySet()){
+                if (! adds.get(rsuEventID).isEmpty()) {
+                    List<Registration> regs = adds.get(rsuEventID);
+                    logger.debug("Adding {} participants to RSU EventID {}",regs.size(),rsuEventID);
+
+
+                    for(Registration reg:regs){
+                        Participant part = reg.participant;
+                        JSONObject pData = new JSONObject();
+                        if (part.getRegUserID() != null && part.getRegUserID() > 0) pData.put("user_id", part.getRegUserID());
+
+                        // if the bib is blank, a dupe, or does not have any digits, send a null bib
+                        if (part.getBib().isBlank() || part.getBib().startsWith("Dupe") || ! part.getBib().matches("\\d+")) pData.put("bib_num", JSONObject.NULL);
+                        else pData.put("bib_num",Integer.parseInt(part.getBib().replaceAll("\\D", "")));  
+
+                        JSONObject uData = new JSONObject();
+                        uData.put("first_name",part.getFirstName());
+                        uData.put("last_name",part.getLastName());
+                        uData.put("gender",part.getSex());
+                        if (part.getMiddleName().isBlank()) uData.put("middle_name",JSONObject.NULL);
+                        else uData.put("middle_name",part.getMiddleName());
+
+                        JSONObject aData = new JSONObject();
+                        aData.put("city",part.getCity());
+                        aData.put("state",part.getState());
+                        aData.put("country_code", part.getCountry());
+                        uData.put("address",aData);
+                        pData.put("user",uData);
+
+                        pData.put("age",part.getAge());
+                        if (part.getBirthday() == null || part.getBirthday().isBlank()) uData.put("dob",JSONObject.NULL);
+                        else uData.put("dob",part.getBirthday());
+
+
+                        if (!updatesMap.containsKey(rsuEventID)) {
+                            updatesMap.put(rsuEventID, new JSONArray());
+                        }
+                        updatesMap.get(rsuEventID).put(pData);
+                        logger.trace("update participants: Event id: {} pData: {}",rsuEventID,pData.toString(4));
+                    }
+                }
+            }
+
+
+            if (updatesMap.isEmpty()) {
+                logger.debug("RSUSync: No pending uploads");
+            } else {
+                for(Integer event: updatesMap.keySet()){
+                    StringBuilder rsuURL = new StringBuilder();
+                    rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+                    rsuURL.append("/participants?format=json");
+
+                    // log it now before we tack on the key and secret
+                    logger.debug("Add participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
+
+                    if (rsuConfig.rsuLoginType.equals("API")) {
+                        rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
+                        rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                    } else {
+                        updateRSUKeys();
+                        rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
+                        rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
+                    }
+
+
+                    JSONObject postData = new JSONObject();
+                    postData.put("participants", updatesMap.get(event));
+
+                    StringBuilder postString = new StringBuilder();
+                    postString.append("event_id=").append(event);
+                    postString.append("&restrict_potential_dup=T&clear_null_corrals=F&request_format=json");
+                    postString.append("&request=").append(postData.toString());
+
+
+                    logger.debug("Update Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(rsuURL.toString()))
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+                            .build();
+                    request.bodyPublisher().get().toString();
+                    HttpClient client = HttpClient.newHttpClient();
+                    try {
+                        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                        if (response.statusCode() == 200) {
+                            // TODO: Catch restrict_potential_dup issues 
+                            logger.debug("RSU add Participants Response: {}",response.body());
+                            JSONObject rsuResponse = new JSONObject(response.body());
+                            JSONArray adds_response_array = rsuResponse.getJSONArray("participants");
+                            
+                            List<Registration> a = adds.get(event);
+                            if (a.size() == adds_response_array.length()) {
+                                for (int j = 0; j < adds_response_array.length(); j++) {
+                                    JSONObject rsuReg = adds_response_array.getJSONObject(j);
+                                    a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("registration_id"), event);
+                                    partDAO.updateParticipant(a.get(j).participant);
+                                }
+                            } else {
+                                logger.error("Issue in adding participants to event: Add list size does not equal response! {} adds and {} returned!",a.size(),adds_response_array.length());
+                            }
+                        } else {
+                            logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                        }
+                    } catch (Exception ex) {
+                        logger.warn("Exception in updateParticipants: {}",ex.getMessage(),ex);
+                    }
+                }
+            }
+        }
+        
+        //////////////
+        // Removes
+        //////////////
+        if (! removes.isEmpty()) {
+            
+            JSONArray removesJSONArray = new JSONArray();
+            removes.forEach(r -> {
+                JSONObject o = new JSONObject();
+                o.put("registration_id", r.rsuRegID);
+                removesJSONArray.put(o);
+            });
+
+            JSONObject removesPostData = new JSONObject();
+            removesPostData.put("registrations", removesJSONArray);
+
+        
+
+            StringBuilder rsuURL = new StringBuilder();
+            rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+            rsuURL.append("/delete-participants?format=json");
+
+            // log it now before we tack on the key and secret
+            logger.debug("Remove Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
+
+            if (rsuConfig.rsuLoginType.equals("API")) {
+                rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
+                rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+            } else {
+                updateRSUKeys();
+                rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
+                rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
+            }
+
+
+            StringBuilder postString = new StringBuilder();
+            postString.append("race_id=").append(rsuConfig.rsuRaceID);
+            postString.append("&transfer_bibs=T&request_format=json");
+            postString.append("&request=").append(removesPostData.toString());
+
+
+            logger.debug("Transfer Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(rsuURL.toString()))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+                    .build();
+            request.bodyPublisher().get().toString();
+            HttpClient client = HttpClient.newHttpClient();
+            try {
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    // TODO: Look for error response because RSU sends them with 200's :-/ 
+                    logger.trace("RSU delete-participants Response: {}",response.body());
+                    
+                    removes.forEach(r -> {
+                        r.participant.getRegID2RaceIDDMap().remove(r.rsuRegID);
+                        partDAO.updateParticipant(r.participant);
+                    });
+
+                } else {
+                    logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                    // TODO: Alert Dialog Box
+                }
+            } catch (Exception ex) {
+                logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
+                // TODO: Alert Dialog Box
+            }
+
+        }            
+            
+
+        
+        logger.trace("swapRSUEvents complete. ");
+        return true;
+        
+    }
+    
+    // NOTE: This works but is very dangerous. 
+    // We will popup a notice when folks try to remove a participant
+    // that they need to go to RSU to do it. 
+    
+//    public List<Participant> removeDeletedParticipants(){
+//        List<Participant> removedParticipants = new ArrayList();
+//        
+//        for(Participant p:ParticipantDAO.getInstance().listParticipants()) {
+//            if (p.getRegSyncNeeded() && p.wavesObservableList().isEmpty()){
+//                logger.debug("RSU: removing {} ({})",p.fullNameProperty().toString(),p.getRegID2RaceIDDMap());
+//                
+//                
+//                JSONArray removesJSONArray = new JSONArray();
+//                p.getRegID2RaceIDDMap().keySet().forEach(r -> {
+//                    JSONObject o = new JSONObject();
+//                    o.put("registration_id", r);
+//                    removesJSONArray.put(o);
+//                });
+//                
+//                JSONObject removesPostData = new JSONObject();
+//                removesPostData.put("registrations", removesJSONArray);
+//                
+//                
+//                if (removesPostData.length()> 0) {
+//                    
+//                    StringBuilder rsuURL = new StringBuilder();
+//                    rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+//                    rsuURL.append("/delete-participants?format=json");
+//
+//                    // log it now before we tack on the key and secret
+//                    logger.debug("Remove Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
+//
+//                    if (rsuConfig.rsuLoginType.equals("API")) {
+//                        rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
+//                        rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+//                    } else {
+//                        updateRSUKeys();
+//                        rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
+//                        rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
+//                    }
+//
+//
+//                    StringBuilder postString = new StringBuilder();
+//                    postString.append("race_id=").append(rsuConfig.rsuRaceID);
+//                    postString.append("&allow_non_imports=T&request_format=json");
+//                    postString.append("&request=").append(removesPostData.toString());
+//
+//
+//                    logger.debug("Delete Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
+//                    HttpRequest request = HttpRequest.newBuilder()
+//                            .uri(URI.create(rsuURL.toString()))
+//                            .header("Content-Type", "application/x-www-form-urlencoded")
+//                            .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+//                            .build();
+//                    request.bodyPublisher().get().toString();
+//                    HttpClient client = HttpClient.newHttpClient();
+//                    try {
+//                        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+//
+//                        if (response.statusCode() == 200) {
+//                            // TODO: Look for error response because RSU sends them with 200's :-/ 
+//                            logger.debug("RSU Response: {}",response.body());
+//                            logger.debug("RSU: Removed {} ({})",p.fullNameProperty().getValueSafe(),p.getRegID2RaceIDDMap());
+//
+//                            removedParticipants.add(p);
+//                        } else {
+//                            logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+//                            // TODO: Alert Dialog Box
+//                        }
+//                    } catch (Exception ex) {
+//                        logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
+//                        // TODO: Alert Dialog Box
+//                    }
+//                    
+//                }            
+//            }
+//        }
+//        
+//        
+//        return removedParticipants;
+//        
+//    }
+    
+    public Boolean updateParticipants(){
+        logger.trace("Entering RunSignUpDAO::updateParticipants()...");
+        ParticipantDAO pDAO = ParticipantDAO.getInstance();
+        //RaceDAO rDAO = RaceDAO.getInstance();
+        
+        BooleanProperty noIssues = new SimpleBooleanProperty(true);
+        
+        Map<Integer,JSONArray> updatesMap = new HashMap();
+        
+        // Get any registrations that need to be synced up
+
+        // if we have stuff to sync, upload them
+        pDAO.listParticipants().forEach(part -> { 
+            if (part.getRegSyncNeeded()) { 
+                logger.debug("Syncing {} to RSU with {} registrations...",part.fullNameProperty().getValueSafe(), part.getRegID2RaceIDDMap().size());
+                // Invert the regID -> eventID map
+                //Map<Integer,Integer> event2RegMap = new HashMap();
+                //part.getRegID2RaceIDDMap().keySet().forEach(reg -> event2RegMap.put(part.getRegID2RaceIDDMap().get(reg), reg));
+
+                for(Integer regID:part.getRegID2RaceIDDMap().keySet()){
+                    JSONObject pData = new JSONObject();
+                    pData.put("registration_id", regID);
+
+                    // if the bib is blank, a dupe, or does not have any digits, send a null bib
+                    if (part.getBib().isBlank() || part.getBib().startsWith("Dupe") || ! part.getBib().matches("\\d+")) pData.put("bib_num", JSONObject.NULL);
+                    else pData.put("bib_num",Integer.parseInt(part.getBib().replaceAll("\\D", "")));  
+
+                    JSONObject uData = new JSONObject();
+                    uData.put("first_name",part.getFirstName());
+                    uData.put("last_name",part.getLastName());
+                    if (part.getMiddleName().isBlank()) uData.put("middle_name",JSONObject.NULL);
+                    else uData.put("middle_name",part.getMiddleName());
+                    uData.put("gender",part.getSex());
+
+                    JSONObject aData = new JSONObject();
+                    aData.put("city",part.getCity());
+                    aData.put("state",part.getState());
+                    aData.put("country_code", part.getCountry());
+                    uData.put("address",aData);
+                    pData.put("user",uData);
+
+                    pData.put("age",part.getAge());
+                    if (part.getBirthday() == null || part.getBirthday().isBlank()) uData.put("dob",JSONObject.NULL);
+                    else uData.put("dob",part.getBirthday());
+
+
+                    Integer eventID = part.getRegID2RaceIDDMap().get(regID);
+                    if (!updatesMap.containsKey(eventID)) {
+                        updatesMap.put(eventID, new JSONArray());
+                        //updatedParticipantsMap.put(eventID, new ArrayList());
+                    }
+                    updatesMap.get(eventID).put(pData);
+                    logger.trace("update participants: Event id: {} pData: {}",eventID,pData.toString(4));
+                    //updatedParticipantsMap.get(eventID).add(part);
+                }
+            }
+        });
+       
+
+        if (updatesMap.isEmpty()) {
+            logger.debug("RSUSync: No pending uploads");
+        } else {
+            for(Integer event: updatesMap.keySet()){
+                StringBuilder rsuURL = new StringBuilder();
+                rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+                rsuURL.append("/participants?format=json");
+
+                // log it now before we tack on the key and secret
+                logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
+
+                if (rsuConfig.rsuLoginType.equals("API")) {
+                    rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
+                    rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                } else {
+                    updateRSUKeys();
+                    rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
+                    rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
+                }
+
+
+                JSONObject postData = new JSONObject();
+                postData.put("participants", updatesMap.get(event));
+
+                StringBuilder postString = new StringBuilder();
+                postString.append("event_id=").append(event);
+                postString.append("&restrict_potential_dup=T&clear_null_corrals=F&request_format=json");
+                postString.append("&request=").append(postData.toString());
+
+
+                logger.debug("Update Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(rsuURL.toString()))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+                        .build();
+                request.bodyPublisher().get().toString();
+                HttpClient client = HttpClient.newHttpClient();
+                try {
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                    if (response.statusCode() == 200) {
+                        // TODO: Catch restrict_potential_dup issues 
+                        logger.debug("RSU updateParticipants Response: {}",response.body());
+                    } else {
+                        logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                    }
+                } catch (Exception ex) {
+                    logger.warn("Exception in updateParticipants: {}",ex.getMessage(),ex);
+                    noIssues.set(false);
+                }
+            }
+        }
+            
+       
+        
+//        // if no issues, clear the rsuSyncNeeded flag
+//        
+//        if (noIssues.get()){
+//            pDAO.listParticipants().forEach(p -> {
+//                if (p.getRegSyncNeeded()){
+//                    p.setRegSyncNeeded(false);
+//                    pDAO.updateParticipant(p);
+//                }
+//            });
+//        } else {
+//            logger.warn("Error in pushing data to RSU!. Not clearing rsuSyncNeeded flag!");
+//        }
+        
+        return noIssues.getValue();
 
     }
 
     public void showSetupWizard() {
+        
+        // pre-wizzard warning
+        if (!partDAO.listParticipants().isEmpty()){
+            Alert alert = new Alert(AlertType.CONFIRMATION);
+            alert.setTitle("Existing Participants");
+            alert.setHeaderText("Existing Participants Found!");
+            alert.setContentText("The RunSignUp Wizzard will remove all existing participants before syncing from RSU. This action cannot be undone. Are you sure you want to do this?");
+
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.get() != ButtonType.OK){
+                return;
+            }
+        }
+        
+        
         // Wizard flow:
         // Page 1: RSU Login
         // Page 2: RSU Race Selection
         // Page 3: Map RSU Event -> PikaTimer Race
+        // page 5: Options
+        //         --String Normalization
+        //         --Default Race -> RSU Event
         
         // TODO: 
         // Page 4: Map RSU Attributes to custom attributes
         // Page 5: Options 
-        //          --Case Normalization
         //          --City Mapping 
         
         // Page 6: Import / Finish
@@ -621,24 +1375,39 @@ public class RunSignUpDAO {
 
         // Event Date
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        setupData.put("eventDate", event.getLocalEventDate().format(formatter));
+        setupData.put("eventDate", Event.getInstance().getLocalEventDate().format(formatter));
 
         // RSU RaceID
         if (rsuConf.rsuRaceID != null) {
             setupData.put("rsuRaceID", rsuConf.rsuRaceID.toString());
         }
 
-        // RSU Event -> Race map
+        // RSU Event -> Pika Event map
         if (rsuConf.eventToRaceMap != null) {
             rsuConf.eventToRaceMap.keySet().forEach(k -> {
                 setupData.put(k.toString(), rsuConf.eventToRaceMap.get(k).toString());
             });
         }
+        
+        // String Normalization
+        setupData.put("stringNormalize", rsuConf.capNormalize.name());
+        
+        // Bidirectional Sync
+        setupData.put("bidiSync", rsuConf.bidiSync.toString());
+        
+        // Pika Event -> RSU Event map
+        // TODO
 
         List<WizardPane> wizardPanes = new ArrayList();
 
         Wizard wizard = new Wizard();
         wizard.setTitle("Setup RunSignUp Sync");
+        
+        /////////////////////////////////
+        //
+        // Wizard Pane 0: Existing Participant Warning
+        // 
+
 
         /////////////////////////////////
         //
@@ -758,7 +1527,7 @@ public class RunSignUpDAO {
                 requestURL.append("https://runsignup.com/Rest/races");
                 requestURL.append("?api_key=").append(rsuUsernameTextField.getText());
                 requestURL.append("&api_secret=").append(rsuPasswordTextField.getText());
-                requestURL.append("&format=json").append("&include_event_days=T");
+                requestURL.append("&format=json").append("&include_event_days=T&only_partner_races=T");
                 requestURL.append("&page=1&results_per_page=50&sort=name+ASC");
                 requestURL.append("&start_date=").append(setupData.get("eventDate"));
                 requestURL.append("&end_date=").append(setupData.get("eventDate"));
@@ -779,20 +1548,22 @@ public class RunSignUpDAO {
                         JSONObject rsuResponse = new JSONObject(response.body());
                         if (rsuResponse.has("races")) {
                             int responseSize = rsuResponse.getJSONArray("races").length();
-                            if (responseSize > 0 && responseSize < 50) {
+                            if (responseSize > 0 && responseSize <= 50) {
                                 pane1OkayToGo.setValue(true);
                                 loginSuccessLabel.setText("Valid");
                                 setupData.put("rsuLoginType", "API");
                                 setupData.put("rsuUsername", rsuUsernameTextField.getText());
                                 setupData.put("rsuPassword", rsuPasswordTextField.getText());
                             } else {
-                                loginSuccessLabel.setText("Invalid API Secret / Key");
+                                loginSuccessLabel.setText("Invalid API Secret / Key: No races for " + setupData.get("eventDate"));
                             }
                         } else {
                             logger.error("Error in RSU Login: {} ", response.body());
+                            loginSuccessLabel.setText("Invalid API Secret / Key");
                         }
                     } else {
                         logger.error("Error in RSU Login: {} ", response.body());
+                        loginSuccessLabel.setText("Error in connecting to RunSignUp");
                     }
                 } catch (Exception ex) {
                     logger.error("Exception in HttpClient response: ", ex);
@@ -814,6 +1585,7 @@ public class RunSignUpDAO {
         };
         rsuLoginWizardPane.setHeaderText("RunSignUp Login");
         rsuLoginWizardPane.setContent(rsuLoginGrid);
+        rsuLoginWizardPane.getStylesheets().removeFirst();
         wizardPanes.add(rsuLoginWizardPane);
 
         /////////////////////////////////
@@ -886,6 +1658,7 @@ public class RunSignUpDAO {
                 if (setupData.get("rsuLoginType").equals("API")) {
                     requestURL.append("?api_key=").append(setupData.get("rsuUsername"));
                     requestURL.append("&api_secret=").append(setupData.get("rsuPassword"));
+                    requestURL.append("&only_partner_races=T");
                 } else {
                     requestURL.append("?tmp_key=").append(setupData.get("rsuTempKey"));
                     requestURL.append("&tmp_secret=").append(setupData.get("rsuTempSecret"));
@@ -947,6 +1720,8 @@ public class RunSignUpDAO {
 
             }
         };
+        
+        rsuRaceListWizardPane.getStylesheets().removeFirst();
         wizardPanes.add(rsuRaceListWizardPane);
 
         rsuRaceListWizardPane.setContent(rsuRaceListGrid);
@@ -1080,7 +1855,7 @@ public class RunSignUpDAO {
                         if (rsuResponse.has("race")) {
 
                             // Get the events
-                            LocalDate raceDate = event.getLocalEventDate();
+                            LocalDate raceDate = Event.getInstance().getLocalEventDate();
                             rsuResponse.getJSONObject("race").getJSONArray("events").forEach((r) -> {
                                 if (r instanceof JSONObject event) {
                                     LocalDate eventStart = LocalDate.parse(event.getString("start_time").replaceAll(" ..:..", ""), DateTimeFormatter.ofPattern("M/d/yyyy"));
@@ -1157,6 +1932,106 @@ public class RunSignUpDAO {
         rsuEventListWizardPane.setContent(rsuEventListGrid);
         rsuEventListWizardPane.setHeaderText("Map RSU Event to Pika Event");
 
+        /////////////////////////////////
+        //
+        // Page 5: Options
+        // 
+        // 
+        GridPane optionsGridPane = new GridPane();
+        optionsGridPane.setVgap(10);
+        optionsGridPane.setHgap(10);
+        
+        // BiDi Sync toggle
+        ToggleSwitch bidiToggleSwitch = new ToggleSwitch("Sync back to RSU");
+        // Capitalization drop down;
+        ChoiceBox<StringCapitalizationNormalizer> normalizeChoiceBox = new ChoiceBox();
+        
+        // Table for pika race -> rsu event mappings
+        
+        
+        record pikaRace(Race pikaRace, SimpleObjectProperty<rsuEvent> rsuEvent) {
+            public pikaRace(Race race, rsuEvent event) {
+                this(race, new SimpleObjectProperty<>(event));
+            }
+        }
+
+        ObservableList<pikaRace> pikaRaceList = FXCollections.observableArrayList();
+
+        TableView<pikaRace> raceTable = new TableView(pikaRaceList);
+        raceTable.setEditable(true);
+        raceTable.setPrefHeight(200);
+        raceTable.setMinHeight(200);
+        raceTable.setMaxWidth(Double.MAX_VALUE);
+        GridPane.setHgrow(raceTable, Priority.ALWAYS);
+
+        TableColumn<pikaRace, rsuEvent> raceTableRSUEventTablecolumn = new TableColumn<>("RSU Event");
+        raceTableRSUEventTablecolumn.setCellValueFactory(cellData -> cellData.getValue().rsuEvent);
+        raceTableRSUEventTablecolumn.setEditable(true);
+        
+        TableColumn<pikaRace, String> raceTablePikaRaceTableColumn = new TableColumn<>("PikaTimer Event");
+        raceTablePikaRaceTableColumn.setCellValueFactory(cellData -> cellData.getValue().pikaRace.raceNameProperty());
+        
+
+        raceTable.getColumns().add(raceTablePikaRaceTableColumn);
+        raceTable.getColumns().add(raceTableRSUEventTablecolumn);
+
+        int optRow = 0;
+        optionsGridPane.add(new Label("Set Default Pika Event -> RSU Event"),0,optRow);
+        optRow++;
+        
+        optionsGridPane.add(raceTable, 0, optRow);
+        optRow++;
+        
+        optionsGridPane.add(bidiToggleSwitch,0,optRow);
+        optRow++;
+        
+        HBox normalizeHBox = new HBox(new Label("Normalize Names"),normalizeChoiceBox);
+        normalizeHBox.setSpacing(4);
+        normalizeHBox.setAlignment(Pos.CENTER_LEFT);
+        optionsGridPane.add(normalizeHBox,0,optRow);
+
+        
+
+        
+        final WizardPane optionsWizardPane = new WizardPane() {
+            @Override
+            public void onEnteringPage(Wizard wizard) {
+                // set the normalize drop down
+                normalizeChoiceBox.getItems().setAll(StringCapitalizationNormalizer.values());
+                if (setupData.containsKey("stringNormalize")) 
+                    normalizeChoiceBox.setValue(StringCapitalizationNormalizer.valueOf(setupData.get("stringNormalize")));
+                else normalizeChoiceBox.setValue(StringCapitalizationNormalizer.TitleCase);
+                
+                // set the bidi sync option
+                bidiToggleSwitch.selectedProperty().setValue(Boolean.valueOf(setupData.get("bidiSync")));
+                
+                // setup the pika -> rsu mapping
+                // TODO
+            }
+            
+            @Override
+            public void onExitingPage(Wizard wizard) {
+                logger.debug("Start onExitingPage() Wizard optionsWizardPane...");
+                wizard.invalidProperty().unbind();
+                
+                setupData.put("stringNormalize", normalizeChoiceBox.getSelectionModel().getSelectedItem().name());
+                
+                setupData.put("bidiSync",bidiToggleSwitch.selectedProperty().getValue().toString());
+
+                eventList.forEach(e -> {
+                    setupData.put(e.eventID.toString(), e.pikaRace.getValue().getID().toString());
+                    logger.debug(" Event -> RaceID: {} -> {}", e.eventID, e.pikaRace.getValue().getID());
+                });
+
+                logger.debug("End onExitingPage() Wizard optionsWizardPane...");
+            }
+        };
+        
+        wizardPanes.add(optionsWizardPane);
+
+        optionsWizardPane.setContent(optionsGridPane);
+        optionsWizardPane.setHeaderText("Defaults and Options");
+        
 //        /////////////////////////////////
 //        //
 //        // Page 4: Map the RSU questions -> Pikatimer custom attributes
@@ -1278,7 +2153,7 @@ public class RunSignUpDAO {
         // Showtime....
         //
         for (WizardPane p : wizardPanes) {
-            p.setMinSize(450, 350);
+            p.setMinSize(500, 400);
         }
 
         wizard.setFlow(new Wizard.LinearFlow(wizardPanes));
@@ -1309,6 +2184,11 @@ public class RunSignUpDAO {
                         rsuConf.eventToRaceMap.put(Integer.valueOf(k), Integer.valueOf(setupData.get(k)));
                     }
                 });
+                
+                // bidi sync
+                rsuConf.setBiDiSync(Boolean.valueOf(setupData.get("bidiSync")));
+                // Normalize srings
+                rsuConf.setNormalizeCapitalization(StringCapitalizationNormalizer.valueOf(setupData.get("stringNormalize")));
 
                 // Save config to DB
                 Session s = HibernateUtil.getSessionFactory().getCurrentSession();
@@ -1316,7 +2196,12 @@ public class RunSignUpDAO {
                 s.saveOrUpdate(rsuConf);
                 s.getTransaction().commit();
 
-                // fire up the dialog to sync from RSU
+                isSetup.set(true);
+                
+                // clear existing participants
+                if (!partDAO.listParticipants().isEmpty()) partDAO.blockingClearAll();
+                
+                // Sync from RSU
                 syncFromRSU();
             }
         });
@@ -1332,6 +2217,10 @@ public class RunSignUpDAO {
     }
 
     private void updateRSUKeys() {
+        
+        // If we have updated the temp keys in the last 10 minutes, just return
+        Long now = Instant.now().getEpochSecond();
+        if (now - rsuConfig.rsuTempTimestamp < 600) return;
 
         StringBuilder postData = new StringBuilder();
         postData.append("email=");
@@ -1356,6 +2245,7 @@ public class RunSignUpDAO {
                     logger.debug("updateRSUKeys -> RSU Response: {}", response.body());
                     rsuConfig.rsuTempKey = rsuResponse.getString("tmp_key");
                     rsuConfig.rsuTempSecret = rsuResponse.getString("tmp_secret");
+                    rsuConfig.rsuTempTimestamp = Instant.now().getEpochSecond();
                     logger.debug(" RSU Temp Key/Secret: {} / {}", rsuResponse.get("tmp_key"), rsuResponse.get("tmp_secret"));
                 } else {
                     logger.error("Error in RSU Login: {} ", response.body());
@@ -1368,5 +2258,7 @@ public class RunSignUpDAO {
 
         }
     }
+    
+    record Registration(Integer rsuRegID, Integer newRSUEventID, Integer newPikaRaceID, Participant participant) { };
 
 }

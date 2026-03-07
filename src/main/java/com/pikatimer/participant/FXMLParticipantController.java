@@ -929,6 +929,20 @@ public class FXMLParticipantController  {
         
         if (!(firstNameField.getText().isEmpty() && lastNameField.getText().isEmpty())) {
             
+            // If RSU is configured, make sure we are not deleting the runner
+            // from any events. If we are, toss up a warning and bail.
+            
+            if (rsuDAO.isSetup().get()  && editedParticipant.getWaveIDs().size() > waveComboBox.getCheckModel().getCheckedItems().size()){
+                logger.warn("Removing waves from a user not supported w/ RSU!" );
+                Alert alert = new Alert(AlertType.WARNING);
+                alert.setTitle("Removing Events Not Supported");
+                alert.setHeaderText("Removing Events Not Supported");
+                alert.setContentText("When RSU Sync is enabled, you can add a participant to an event or transfer them to a new event. Removing a participant from an event is not supported. \nYou must use the RSU dashboard to remove a participant from an event. ");
+                alert.showAndWait();
+                return;
+            }
+            
+            
             // Save the old bib
             String org_bib = editedParticipant.getBib();
             editedParticipant.setBib(bibTextField.getText());

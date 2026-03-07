@@ -151,7 +151,7 @@ public class RunSignUpDAO {
             Session s = HibernateUtil.getSessionFactory().getCurrentSession();
             s.beginTransaction();
 
-            logger.debug("RunSignUpDAO:: loading existing RSU Config");
+            logger.debug("RunSignUpDAO:: loading existing RSU Config from db");
 
             try {
                 list = s.createQuery("from RSUConfig").list();
@@ -273,8 +273,8 @@ public class RunSignUpDAO {
                                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
                                 
                                 if (rsuConfig.rsuLoginType.equals("API")) {
-                                    rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
                                 } else {
                                     updateRSUKeys();
                                     rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -498,8 +498,8 @@ public class RunSignUpDAO {
                                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
                                 if (rsuConfig.rsuLoginType.equals("API")) {
-                                    rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
                                 } else {
                                     updateRSUKeys();
                                     rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -675,13 +675,21 @@ public class RunSignUpDAO {
 
             // Update general attributes   
             noErrors = updateParticipants();
+            logger.debug("RunSignUpDAO::syncToRSU() updateParticipants() returned {}",noErrors);
 
             // look for event adds/transfers/deletes and then handle them. 
             if (noErrors) noErrors =  swapRSUEvents();
             logger.debug("RunSignUpDAO::syncToRSU() swapRSUEvents() returned {}",noErrors);
 
             // Look for deleted participants and delete them
-            //partDAO.blockingRemoveParticipants(new ArrayList());
+            List<Participant> toBeDeleted = new ArrayList();
+            partDAO.listParticipants().forEach(p -> {
+                if (p.wavesProperty().getValue().isEmpty()) {
+                    toBeDeleted.add(p);
+                    logger.debug("Participant {} is in no races. Marking for deletion.",p.fullNameProperty().getValue());
+                }
+            });
+            if (! toBeDeleted.isEmpty()) partDAO.blockingRemoveParticipants(toBeDeleted);
             
             // if no issues, clear the rsuSyncNeeded flag
             if (noErrors){
@@ -706,6 +714,7 @@ public class RunSignUpDAO {
         Map<Integer,List<Registration>> adds = new ConcurrentHashMap();
         List<Registration> removes = new ArrayList();
         
+        Boolean isOK = true; 
         
         logger.trace("Starting swapRSUEvents()...");
         // Look for folks whos registrations don't match their races
@@ -745,11 +754,13 @@ public class RunSignUpDAO {
                 for(Integer i:p.getWaveIDs()){
                     Race race = raceDAO.getWaveByID(i).getRace();
                     logger.trace("Checking to see if we are registered for {} in RSU...",race.getRaceName());
-                    if(! races.contains(race)) {
-                        rsuEventsToAdd.add(rsuConfig.getRSUEvent(race));
-                        logger.debug("We are NOT registered for {}, adding RSU event ID {} to the add list",race.getRaceName(), rsuConfig.getRSUEvent(race));
-                    }
-                    logger.trace("We are alread registered for {}",race.getRaceName());
+                    if(! races.contains(race) ) {
+                        if (rsuConfig.getRSUEvent(race) == null ) logger.debug("We are registered for race {} but that is not mapped to any RSU Event!",race.getRaceName());
+                        else {
+                                rsuEventsToAdd.add(rsuConfig.getRSUEvent(race));
+                                logger.debug("We are NOT registered for {}, adding RSU event ID {} to the add list",race.getRaceName(), rsuConfig.getRSUEvent(race));
+                        }
+                    } else logger.trace("We are alread registered for {}",race.getRaceName());
                 }
                 
                 
@@ -804,8 +815,8 @@ public class RunSignUpDAO {
             logger.debug("Swap Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
 
             if (rsuConfig.rsuLoginType.equals("API")) {
-                rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
             } else {
                 updateRSUKeys();
                 rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -857,6 +868,7 @@ public class RunSignUpDAO {
                                 } 
                             }      
                         } catch (Exception e){
+                            isOK = false;
                             logger.error("Exception in RSU participant transfer: {}",e.getMessage(),e);
                         }
                     }
@@ -868,10 +880,12 @@ public class RunSignUpDAO {
 
                 } else {
                     logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                    isOK = false;
                     // TODO: Alert Dialog Box
                 }
             } catch (Exception ex) {
                 logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
+                isOK = false;
                 // TODO: Alert Dialog Box
             }
 
@@ -906,6 +920,7 @@ public class RunSignUpDAO {
 
                         JSONObject uData = new JSONObject();
                         uData.put("first_name",part.getFirstName());
+                        
                         uData.put("last_name",part.getLastName());
                         uData.put("gender",part.getSex());
                         if (part.getMiddleName().isBlank()) uData.put("middle_name",JSONObject.NULL);
@@ -945,8 +960,8 @@ public class RunSignUpDAO {
                     logger.debug("Add participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
                     if (rsuConfig.rsuLoginType.equals("API")) {
-                        rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                        rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                        rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                        rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
                     } else {
                         updateRSUKeys();
                         rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -959,7 +974,7 @@ public class RunSignUpDAO {
 
                     StringBuilder postString = new StringBuilder();
                     postString.append("event_id=").append(event);
-                    postString.append("&restrict_potential_dup=T&clear_null_corrals=F&request_format=json");
+                    postString.append("&restrict_potential_dup=F&clear_null_corrals=F&request_format=json");
                     postString.append("&request=").append(postData.toString());
 
 
@@ -973,28 +988,46 @@ public class RunSignUpDAO {
                     HttpClient client = HttpClient.newHttpClient();
                     try {
                         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
                         if (response.statusCode() == 200) {
-                            // TODO: Catch restrict_potential_dup issues 
                             logger.debug("RSU add Participants Response: {}",response.body());
                             JSONObject rsuResponse = new JSONObject(response.body());
-                            JSONArray adds_response_array = rsuResponse.getJSONArray("participants");
                             
-                            List<Registration> a = adds.get(event);
-                            if (a.size() == adds_response_array.length()) {
-                                for (int j = 0; j < adds_response_array.length(); j++) {
-                                    JSONObject rsuReg = adds_response_array.getJSONObject(j);
-                                    a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("registration_id"), event);
-                                    partDAO.updateParticipant(a.get(j).participant);
+                            if (rsuResponse.has("participants")) {
+                                JSONArray adds_response_array = rsuResponse.getJSONArray("participants");
+
+                                List<Registration> a = adds.get(event);
+                                if (a.size() == adds_response_array.length()) {
+                                    for (int j = 0; j < adds_response_array.length(); j++) {
+                                        JSONObject rsuReg = adds_response_array.getJSONObject(j);
+                                        a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("registration_id"), event);
+                                        partDAO.updateParticipant(a.get(j).participant);
+                                    }
+                                } else {
+                                    logger.error("Issue in adding participants to event: Add list size does not equal response! {} adds and {} returned!",a.size(),adds_response_array.length());
                                 }
                             } else {
-                                logger.error("Issue in adding participants to event: Add list size does not equal response! {} adds and {} returned!",a.size(),adds_response_array.length());
+                                logger.debug("Error in RSU Response, looking for dup regID matches");
+                                if (rsuResponse.has("error_details")) {
+                                    JSONArray rsuError = rsuResponse.getJSONArray("error_details");
+                                    List<Registration> a = adds.get(event);
+                                    for (int j = 0; j < rsuError.length(); j++) {
+                                        JSONObject rsuReg = rsuError.getJSONObject(j);
+                                        if (rsuReg.getInt("error_code") == 517) { // reg id match
+                                            logger.debug("We have a regID match! Adjusting...");
+                                            a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("detailed_desc"), event);
+                                            a.get(j).participant.setRegSyncNeeded(false);
+                                            partDAO.updateParticipant(a.get(j).participant);
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                            isOK = false;
                         }
                     } catch (Exception ex) {
                         logger.warn("Exception in updateParticipants: {}",ex.getMessage(),ex);
+                        isOK = false;
                     }
                 }
             }
@@ -1022,11 +1055,11 @@ public class RunSignUpDAO {
             rsuURL.append("/delete-participants?format=json");
 
             // log it now before we tack on the key and secret
-            logger.debug("Remove Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
+            logger.debug("Delete Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
 
             if (rsuConfig.rsuLoginType.equals("API")) {
-                rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
             } else {
                 updateRSUKeys();
                 rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -1040,7 +1073,7 @@ public class RunSignUpDAO {
             postString.append("&request=").append(removesPostData.toString());
 
 
-            logger.debug("Transfer Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
+            logger.debug("Delete Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(rsuURL.toString()))
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -1063,23 +1096,23 @@ public class RunSignUpDAO {
                 } else {
                     logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
                     // TODO: Alert Dialog Box
+                    isOK = false;
                 }
             } catch (Exception ex) {
                 logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
                 // TODO: Alert Dialog Box
+                isOK = false;
             }
 
         }            
-            
-
-        
+                    
         logger.trace("swapRSUEvents complete. ");
-        return true;
+        return isOK;
         
     }
     
     // NOTE: This works but is very dangerous. 
-    // We will popup a notice when folks try to remove a participant
+    // We should popup a notice when folks try to remove a participant
     // that they need to go to RSU to do it. 
     
 //    public List<Participant> removeDeletedParticipants(){
@@ -1111,8 +1144,8 @@ public class RunSignUpDAO {
 //                    logger.debug("Remove Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
 //
 //                    if (rsuConfig.rsuLoginType.equals("API")) {
-//                        rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-//                        rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+//                        rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+//                        rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
 //                    } else {
 //                        updateRSUKeys();
 //                        rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -1232,8 +1265,8 @@ public class RunSignUpDAO {
                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
                 if (rsuConfig.rsuLoginType.equals("API")) {
-                    rsuURL.append("&api_key=").append(rsuConfig.rsuUsername);
-                    rsuURL.append("&api_secret=").append(rsuConfig.rsuPassword);
+                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
+                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
                 } else {
                     updateRSUKeys();
                     rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
@@ -1353,17 +1386,17 @@ public class RunSignUpDAO {
 
         // pre-fill the setupData from the existing config or pikaPrefs
         // RSU Username
-        if (rsuConf.rsuUsername != null) {
-            setupData.put("rsuUsername", rsuConf.rsuUsername);
+        if (rsuConf.rsuKey != null) {
+            setupData.put("rsuKey", rsuConf.rsuKey);
         } else {
-            setupData.put("rsuUsername", pikaPrefs.get("rsuUsername", ""));
+            setupData.put("rsuKey", pikaPrefs.get("rsuKey", ""));
         }
 
         // RSU Password
-        if (rsuConf.rsuPassword != null) {
-            setupData.put("rsuPassword", rsuConf.rsuPassword);
+        if (rsuConf.rsuSecret != null) {
+            setupData.put("rsuSecret", rsuConf.rsuSecret);
         } else {
-            setupData.put("rsuPassword", pikaPrefs.getObfuscated("rsuPassword"));
+            setupData.put("rsuSecret", pikaPrefs.getObfuscated("rsuSecret"));
         }
 
         // RSU Login Type
@@ -1424,25 +1457,25 @@ public class RunSignUpDAO {
 
         rsuLoginGrid.add(new Label("Login Method:"), 0, row);
         ComboBox<String> rsuLoginTypeComboBox = new ComboBox<>();
-        rsuLoginTypeComboBox.getItems().addAll("Username / Password", "API Key/Secret");
+        rsuLoginTypeComboBox.getItems().addAll("API Key/Secret (v1)","API Key/Secret (v2)");
         if (setupData.get("rsuLoginType").equals("API")) {
-            rsuLoginTypeComboBox.getSelectionModel().select("API Key/Secret");
+            rsuLoginTypeComboBox.getSelectionModel().select("API Key/Secret (v1)");
         } else {
-            rsuLoginTypeComboBox.getSelectionModel().select("Username / Password");
+            rsuLoginTypeComboBox.getSelectionModel().select("API Key/Secret (v2)");
         }
         GridPane.setHgrow(rsuLoginTypeComboBox, Priority.ALWAYS);
         rsuLoginGrid.add(rsuLoginTypeComboBox, 1, row++);
 
-        rsuLoginGrid.add(new Label("Username / Key:"), 0, row);
-        TextField rsuUsernameTextField = createTextField("rsuUsername");
-        rsuUsernameTextField.setText(setupData.get("rsuUsername"));
+        rsuLoginGrid.add(new Label("Key:"), 0, row);
+        TextField rsuUsernameTextField = createTextField("rsuKey");
+        rsuUsernameTextField.setText(setupData.get("rsuKey"));
         GridPane.setHgrow(rsuUsernameTextField, Priority.ALWAYS);
         rsuLoginGrid.add(rsuUsernameTextField, 1, row++);
 
-        rsuLoginGrid.add(new Label("Password / Secret:"), 0, row);
+        rsuLoginGrid.add(new Label("Secret:"), 0, row);
         PasswordField rsuPasswordTextField = new PasswordField();
         GridPane.setHgrow(rsuPasswordTextField, Priority.ALWAYS);
-        rsuPasswordTextField.setText(setupData.get("rsuPassword"));
+        rsuPasswordTextField.setText(setupData.get("rsuSecret"));
         GridPane.setHgrow(rsuPasswordTextField, Priority.ALWAYS);
         rsuLoginGrid.add(rsuPasswordTextField, 1, row++);
 
@@ -1492,8 +1525,8 @@ public class RunSignUpDAO {
                             logger.debug("RSU Response: {}", response.body());
 
                             setupData.put("rsuLoginType", "PASSWORD");
-                            setupData.put("rsuUsername", rsuUsernameTextField.getText());
-                            setupData.put("rsuPassword", rsuPasswordTextField.getText());
+                            setupData.put("rsuKey", rsuUsernameTextField.getText());
+                            setupData.put("rsuSecret", rsuPasswordTextField.getText());
                             setupData.put("rsuTempKey", rsuResponse.getString("tmp_key"));
                             setupData.put("rsuTempSecret", rsuResponse.getString("tmp_secret"));
                             logger.debug(" RSU Temp Key/Secret: {} / {}", rsuResponse.get("tmp_key"), rsuResponse.get("tmp_secret"));
@@ -1552,8 +1585,8 @@ public class RunSignUpDAO {
                                 pane1OkayToGo.setValue(true);
                                 loginSuccessLabel.setText("Valid");
                                 setupData.put("rsuLoginType", "API");
-                                setupData.put("rsuUsername", rsuUsernameTextField.getText());
-                                setupData.put("rsuPassword", rsuPasswordTextField.getText());
+                                setupData.put("rsuKey", rsuUsernameTextField.getText());
+                                setupData.put("rsuSecret", rsuPasswordTextField.getText());
                             } else {
                                 loginSuccessLabel.setText("Invalid API Secret / Key: No races for " + setupData.get("eventDate"));
                             }
@@ -1656,8 +1689,8 @@ public class RunSignUpDAO {
                 requestURL.append("https://runsignup.com/Rest/races");
 
                 if (setupData.get("rsuLoginType").equals("API")) {
-                    requestURL.append("?api_key=").append(setupData.get("rsuUsername"));
-                    requestURL.append("&api_secret=").append(setupData.get("rsuPassword"));
+                    requestURL.append("?api_key=").append(setupData.get("rsuKey"));
+                    requestURL.append("&api_secret=").append(setupData.get("rsuSecret"));
                     requestURL.append("&only_partner_races=T");
                 } else {
                     requestURL.append("?tmp_key=").append(setupData.get("rsuTempKey"));
@@ -1742,6 +1775,11 @@ public class RunSignUpDAO {
 
             public rsuEvent(String name, Integer eventID, Race r) {
                 this(name, eventID, new SimpleObjectProperty<>(r));
+            }
+            
+            @Override
+            public String toString(){
+                return name;
             }
 
         }
@@ -1828,8 +1866,8 @@ public class RunSignUpDAO {
                 requestURL.append("https://runsignup.com/Rest/race/");
                 requestURL.append(setupData.get("race_id"));
                 if (setupData.get("rsuLoginType").equals("API")) {
-                    requestURL.append("?api_key=").append(setupData.get("rsuUsername"));
-                    requestURL.append("&api_secret=").append(setupData.get("rsuPassword"));
+                    requestURL.append("?api_key=").append(setupData.get("rsuKey"));
+                    requestURL.append("&api_secret=").append(setupData.get("rsuSecret"));
                 } else {
                     requestURL.append("?tmp_key=").append(setupData.get("rsuTempKey"));
                     requestURL.append("&tmp_secret=").append(setupData.get("rsuTempSecret"));
@@ -1921,7 +1959,7 @@ public class RunSignUpDAO {
 
                 eventList.forEach(e -> {
                     setupData.put(e.eventID.toString(), e.pikaRace.getValue().getID().toString());
-                    logger.debug(" Event -> RaceID: {} -> {}", e.eventID, e.pikaRace.getValue().getID());
+                    logger.debug("RSU Event -> Pika RaceID: {} -> {}", e.eventID, e.pikaRace.getValue().getID());
                 });
 
                 logger.debug("End onExitingPage() Wizard page3...");
@@ -2005,8 +2043,53 @@ public class RunSignUpDAO {
                 // set the bidi sync option
                 bidiToggleSwitch.selectedProperty().setValue(Boolean.valueOf(setupData.get("bidiSync")));
                 
-                // setup the pika -> rsu mapping
-                // TODO
+                // setup the pika -> rsu mapping table
+                pikaRaceList.clear();
+                // Setup the Pika -> possible RSU Event Map
+                Map<Race,List<rsuEvent>> r2eMap = new HashMap();
+                Map<Integer,rsuEvent> rsuEventMap = new HashMap();
+                eventList.forEach(e -> {
+                    if (!r2eMap.containsKey(e.pikaRace.getValue())) {
+                        r2eMap.put(e.pikaRace.getValue(), new ArrayList());
+                    } 
+                    r2eMap.get(e.pikaRace.getValue()).add(e);    
+                    rsuEventMap.put(e.eventID, e);
+                    logger.trace("r2eMap add: Adding {} to {}: total: {}",e.name,e.pikaRace.getValue().getRaceName(),r2eMap.get(e.pikaRace.getValue()).size());
+                });
+                raceDAO.listRaces().forEach(r -> {
+                    if (r2eMap.containsKey(r)) {
+                        pikaRace race = new pikaRace(r,new SimpleObjectProperty<>(r2eMap.get(r).getFirst()));
+                        if (rsuConf.raceToEventMap.containsKey(r.getID()) && r2eMap.get(r).contains(rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID()))) ) {
+                            race.rsuEvent.setValue(rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID())));
+                            logger.trace("Existing race -> rsu event map found: {} -> {}",r.getRaceName(),rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID())).name);
+                        }
+                        pikaRaceList.add(race);
+                    }
+                });
+                
+                // Setup the cell factory for the rsuRace
+                raceTableRSUEventTablecolumn.setCellFactory(tc -> {
+                    ComboBox<rsuEvent> combo = new ComboBox<>();
+                    TableCell<pikaRace, rsuEvent> cell = new TableCell<pikaRace, rsuEvent>() {
+                        @Override
+                        protected void updateItem(rsuEvent r, boolean empty) {
+                            super.updateItem(r, empty);
+                            if (empty) {
+                                setGraphic(null);
+                            } else {
+                                combo.getItems().setAll(r2eMap.get(getTableView().getItems().get(getIndex()).pikaRace));
+                                combo.setValue(r);
+                                setGraphic(combo);
+                            }
+                        }
+                    };
+                    
+                    combo.setOnAction(e -> {
+                        tc.getTableView().getItems().get(cell.getIndex()).rsuEvent.setValue(combo.getValue());
+                    });
+                    return cell;
+                });
+                
             }
             
             @Override
@@ -2018,9 +2101,8 @@ public class RunSignUpDAO {
                 
                 setupData.put("bidiSync",bidiToggleSwitch.selectedProperty().getValue().toString());
 
-                eventList.forEach(e -> {
-                    setupData.put(e.eventID.toString(), e.pikaRace.getValue().getID().toString());
-                    logger.debug(" Event -> RaceID: {} -> {}", e.eventID, e.pikaRace.getValue().getID());
+                pikaRaceList.forEach(r -> {
+                    logger.debug(" Pika Event -> RSU Event: {} -> {}", r.pikaRace.getRaceName(), r.rsuEvent.getValue().name);
                 });
 
                 logger.debug("End onExitingPage() Wizard optionsWizardPane...");
@@ -2166,12 +2248,12 @@ public class RunSignUpDAO {
 
                 // Save the rsu Username/Password to the global prefs
                 pikaPrefs.set("rsuLoginType", setupData.get("rsuLoginType"));
-                pikaPrefs.set("rsuUsername", setupData.get("rsuUsername"));
-                pikaPrefs.setObfuscated("rsuPassword", setupData.get("rsuPassword"));
+                pikaPrefs.set("rsuKey", setupData.get("rsuKey"));
+                pikaPrefs.setObfuscated("rsuSecret", setupData.get("rsuSecret"));
 
                 // Save the Username/Password/LoginType to the race db
-                rsuConf.rsuPassword = setupData.get("rsuPassword");
-                rsuConf.rsuUsername = setupData.get("rsuUsername");
+                rsuConf.rsuSecret = setupData.get("rsuSecret");
+                rsuConf.rsuKey = setupData.get("rsuKey");
                 rsuConf.rsuLoginType = setupData.get("rsuLoginType");
 
                 rsuConf.rsuRaceID = Integer.valueOf(setupData.get("rsuRaceID"));
@@ -2183,6 +2265,12 @@ public class RunSignUpDAO {
                     if (k.matches("^\\d+$")) {
                         rsuConf.eventToRaceMap.put(Integer.valueOf(k), Integer.valueOf(setupData.get(k)));
                     }
+                });
+                
+                rsuConf.raceToEventMap = new HashMap();
+                pikaRaceList.forEach(r -> {
+                    logger.debug("Saving Pika Event -> RSU Event: {} -> {}", r.pikaRace.getRaceName(), r.rsuEvent.getValue().name);
+                    rsuConf.raceToEventMap.put(r.pikaRace.getID(), r.rsuEvent.getValue().eventID);
                 });
                 
                 // bidi sync
@@ -2224,9 +2312,9 @@ public class RunSignUpDAO {
 
         StringBuilder postData = new StringBuilder();
         postData.append("email=");
-        postData.append(URLEncoder.encode(rsuConfig.rsuUsername, StandardCharsets.UTF_8));
+        postData.append(URLEncoder.encode(rsuConfig.rsuKey, StandardCharsets.UTF_8));
         postData.append("&password=");
-        postData.append(URLEncoder.encode(rsuConfig.rsuPassword, StandardCharsets.UTF_8));
+        postData.append(URLEncoder.encode(rsuConfig.rsuSecret, StandardCharsets.UTF_8));
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://runsignup.com/Rest/login?format=json&supports_nb=T"))
                 .header("Content-Type", "application/x-www-form-urlencoded")

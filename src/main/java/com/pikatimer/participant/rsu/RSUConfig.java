@@ -43,8 +43,8 @@ import org.hibernate.annotations.GenericGenerator;
 @Table(name="RSUConfig")
 public class RSUConfig {
     Integer id;
-    String rsuUsername;
-    String rsuPassword;
+    String rsuKey;
+    String rsuSecret;
     String rsuLoginType;
     
     String rsuTempKey;
@@ -81,20 +81,20 @@ public class RSUConfig {
     @Column(name="rsuUsername")
     public String getRSUUsername() {
        // logger.debug("Participant UUID is " + uuidProperty.get());
-        return rsuUsername; 
+        return rsuKey; 
     }
     public void setRSUUsername(String  rsuUsername) {
-        this.rsuUsername = rsuUsername;
+        this.rsuKey = rsuUsername;
         //logger.debug("Participant UUID is now " + uuidProperty.get());
     }
     
     @Column(name="rsuPassword")
     public String getRSUPassword() {
        // logger.debug("Participant UUID is " + uuidProperty.get());
-        return rsuPassword; 
+        return rsuSecret; 
     }
     public void setRSUPassword(String  rsuPassword) {
-        this.rsuPassword = rsuPassword;
+        this.rsuSecret = rsuPassword;
         //logger.debug("Participant UUID is now " + uuidProperty.get());
     }
     
@@ -129,11 +129,7 @@ public class RSUConfig {
     }
     
     public Integer getRSUEvent(Race race){
-        return eventToRaceMap.entrySet().stream()
-            .filter(e -> e.getValue().equals(race.getID()))
-            .map(Map.Entry::getKey)
-            .findFirst()
-            .orElse(null);
+        return raceToEventMap.get(race.getID());
     }
     
     @ElementCollection(fetch = FetchType.EAGER)
@@ -152,11 +148,11 @@ public class RSUConfig {
     @MapKeyColumn(name="rsuEventID")
     @Column(name="raceID")
     @CollectionTable(name="rsuconfig_default_eventmap", joinColumns=@JoinColumn(name="configID"))
-    public Map<Integer,Integer> getRSUDefaultEventMap(){
+    public Map<Integer,Integer> getRaceToRSUEventMap(){
         return raceToEventMap;
     }
     
-    public void setRSUDefaultEventMap(Map<Integer,Integer> eventMap) {
+    public void setRaceToRSUEventMap(Map<Integer,Integer> eventMap) {
         raceToEventMap = eventMap;
     }
     

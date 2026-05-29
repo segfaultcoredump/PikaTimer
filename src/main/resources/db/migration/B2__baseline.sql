@@ -181,7 +181,7 @@ create table timing_location_input (
 );
  
 create table timing_location_input_attributes (
-    index_id int, 
+    -- index_id int, 
     tli_id int, 
     attribute varchar, 
     attribute_value varchar

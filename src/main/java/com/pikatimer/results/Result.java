@@ -242,7 +242,7 @@ public class Result {
     }
     
     @ElementCollection(fetch = FetchType.EAGER)
-    @MapKeyColumn(name="split_id", insertable=false,updatable=false)
+    @MapKeyColumn(name="split_id")
     @Column(name="split_time",nullable=false)
     @CollectionTable(name="split_results", joinColumns=@JoinColumn(name="result_id"))
     public Map<Integer,Long> getSplitMap(){

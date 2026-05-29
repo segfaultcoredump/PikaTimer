@@ -486,7 +486,6 @@ public class Race {
     // easier than a really wide table of attributes since this thing will just 
     // grow once we add in custom stuff
     @ElementCollection(fetch = FetchType.EAGER)
-    //@MapKeyColumn(name="attribute", insertable=false,updatable=false)
     @MapKeyColumn(name="attribute")
     @Column(name="attribute_value")
     @CollectionTable(name="race_attributes", joinColumns=@JoinColumn(name="race_id") )

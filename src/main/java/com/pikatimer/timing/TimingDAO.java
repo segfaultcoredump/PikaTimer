@@ -398,7 +398,8 @@ public class TimingDAO {
         try {  
             list=s.createQuery("from TimingLocation order by id").list();
         } catch (Exception e) {
-            logger.debug(e.getMessage());
+            logger.debug(e.getMessage(),e);
+            
         } 
         s.getTransaction().commit(); 
         

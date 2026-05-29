@@ -82,7 +82,7 @@ public class Bib2ChipMap {
     
     // Where we stash the attributes for the input
     @ElementCollection(fetch = FetchType.EAGER)
-    @MapKeyColumn(name="chip", insertable=false,updatable=false)
+    @MapKeyColumn(name="chip")
     @Column(name="bib")
     @CollectionTable(name="bib2chipmap", joinColumns=@JoinColumn(name="bib2chip_id"))
     public Map<String, String> getChip2BibMap() {

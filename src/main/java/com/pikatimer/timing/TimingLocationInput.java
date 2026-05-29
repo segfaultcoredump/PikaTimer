@@ -1,4 +1,4 @@
-/* 
+ /* 
  * Copyright (C) 2017 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
@@ -214,10 +214,10 @@ public class TimingLocationInput implements TimingListener{
     
     // Where we stash the attributes for the input
     @ElementCollection(fetch = FetchType.EAGER)
-    @MapKeyColumn(name="attribute", insertable=false,updatable=false)
+    @MapKeyColumn(name="attribute")
     @Column(name="attribute_value")
     @CollectionTable(name="timing_location_input_attributes", joinColumns=@JoinColumn(name="tli_id"))
-    @OrderColumn(name = "index_id")
+    //@OrderColumn(name = "index_id")
     public Map<String, String> getAttributes() {
         logger.trace("TLI.getAttributes called, returning " + attributes.size() + " attributes");
         return attributes;

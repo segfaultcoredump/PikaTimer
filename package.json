@@ -1,12 +1,12 @@
 {
     "bin": {"PikaTimer": "jdeploy-bundle/jdeploy.js"},
     "author": "John Garner",
+    "description": "Open Source Race Timing Application",
     "main": "index.js",
     "preferGlobal": true,
     "repository": {"url": "https://github.com/PikaTimer/PikaTimer"},
     "version": "2.0_alpha1",
     "jdeploy": {
-        "jdk": true,
         "args": [
             "-X[mac]dock:name=\"PikaTimer\"",
             "--add-opens javafx.graphics/javafx.scene=org.controlsfx.controls",

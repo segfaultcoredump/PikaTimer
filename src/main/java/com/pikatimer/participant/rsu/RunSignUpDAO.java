@@ -2059,7 +2059,7 @@ public class RunSignUpDAO {
                 raceDAO.listRaces().forEach(r -> {
                     if (r2eMap.containsKey(r)) {
                         pikaRace race = new pikaRace(r,new SimpleObjectProperty<>(r2eMap.get(r).getFirst()));
-                        if (rsuConf.raceToEventMap.containsKey(r.getID()) && r2eMap.get(r).contains(rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID()))) ) {
+                        if (rsuConf.raceToEventMap != null && rsuConf.raceToEventMap.containsKey(r.getID()) && r2eMap.get(r).contains(rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID()))) ) {
                             race.rsuEvent.setValue(rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID())));
                             logger.trace("Existing race -> rsu event map found: {} -> {}",r.getRaceName(),rsuEventMap.get(rsuConf.raceToEventMap.get(r.getID())).name);
                         }

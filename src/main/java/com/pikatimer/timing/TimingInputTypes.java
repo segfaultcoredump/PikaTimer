@@ -47,13 +47,13 @@ public enum TimingInputTypes {
     private static Map<TimingInputTypes, String> createMap() {
         Map<TimingInputTypes, String> result = new HashMap<>();
 
-        //result.put(PikaReader, "PikaReader");
+        result.put(PikaReader, "PikaReader");
         result.put(RFIDFile, "RFIDServer / Outreach File");
         result.put(RFIDDirect, "RFID Ultra/Joey (TCP)");
         result.put(PCTimer, "PC Timer (Race Director)");
         result.put(RaceTimer, "Race Timer");
-        //result.put(GeneriChipTimeFile, "Generic Chip -> Time File");
-        //result.put(GeneriBibTimeFile, "Generic Bib -> Time File");
+        result.put(GeneriChipTimeFile, "Generic Chip -> Time File");
+        result.put(GeneriBibTimeFile, "Generic Bib -> Time File");
 
         return Collections.unmodifiableMap(result);
     }

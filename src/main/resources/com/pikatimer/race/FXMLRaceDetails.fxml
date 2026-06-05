@@ -47,6 +47,169 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     <RowConstraints maxHeight="1.7976931348623157E308" minHeight="125.0" prefHeight="300.0" vgrow="ALWAYS" />
   </rowConstraints>
    <children>
+      <VBox maxHeight="-Infinity" minHeight="-Infinity" spacing="5.0" GridPane.halignment="CENTER" GridPane.hgrow="ALWAYS" GridPane.rowIndex="1" GridPane.valignment="TOP" GridPane.vgrow="NEVER">
+         <children>
+            <HBox fx:id="raceNameHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+               <children>
+                  <Label prefHeight="20.0" prefWidth="110.0" text="Event Name">
+                     <font>
+                        <Font size="18.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="raceNameTextField" onAction="#updateRaceName" prefHeight="26.0" prefWidth="192.0" HBox.hgrow="ALWAYS" />
+                  <Pane maxWidth="1.7976931348623157E308" prefWidth="0.0" HBox.hgrow="ALWAYS" />
+               </children>
+               <padding>
+                  <Insets right="5.0" />
+               </padding>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+               <children>
+                  <Label prefHeight="20.0" prefWidth="110.0" text="Distance">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="raceDistanceTextField" onAction="#updateRaceDistance" prefWidth="75.0" />
+                  <ChoiceBox fx:id="distanceUnitChoiceBox" onInputMethodTextChanged="#updateRaceDistance" />
+               </children>
+            </HBox>
+            <HBox fx:id="startTimeHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+               <children>
+                  <Label prefHeight="20.0" prefWidth="110.0" text="Start Time">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="raceStartTimeTextField" onAction="#updateRaceStartTime" prefHeight="25.0" prefWidth="96.0" promptText="HH:MM:SS.sss" />
+               </children>
+            </HBox>
+            <VBox fx:id="startFinishLocationVBox" spacing="5.0">
+               <children>
+                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <Label prefHeight="20.0" prefWidth="110.0" text="Start Location">
+                           <font>
+                              <Font size="16.0" />
+                           </font>
+                        </Label>
+                        <ComboBox fx:id="startLocationComboBox" minWidth="-Infinity" prefWidth="150.0" />
+                        <HBox fx:id="maxStartHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                           <children>
+                              <Label text="Max Start">
+                                 <font>
+                                    <Font size="16.0" />
+                                 </font>
+                                 <HBox.margin>
+                                    <Insets left="5.0" />
+                                 </HBox.margin>
+                              </Label>
+                              <TextField fx:id="maxStartTextField" minWidth="-Infinity" prefHeight="26.0" prefWidth="75.0" promptText="HH:MM:SS" />
+                           </children>
+                           <HBox.margin>
+                              <Insets />
+                           </HBox.margin>
+                        </HBox>
+                     </children>
+                  </HBox>
+                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <Label prefHeight="20.0" prefWidth="110.0" text="Finish Location">
+                           <font>
+                              <Font size="16.0" />
+                           </font>
+                        </Label>
+                        <ComboBox fx:id="finishLocationComboBox" minWidth="-Infinity" prefWidth="150.0" />
+                        <Button fx:id="updateResultsButton" maxHeight="-Infinity" minHeight="-Infinity" mnemonicParsing="false" prefHeight="26.0" text="Recalculate Results">
+                           <HBox.margin>
+                              <Insets left="10.0" />
+                           </HBox.margin>
+                           <font>
+                              <Font size="14.0" />
+                           </font></Button>
+                     </children>
+                  </HBox>
+               </children>
+            </VBox>
+         </children>
+         <GridPane.margin>
+            <Insets />
+         </GridPane.margin>
+      </VBox>
+      <VBox maxHeight="-Infinity" minHeight="-Infinity" spacing="5.0" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.rowSpan="2" GridPane.valignment="TOP" GridPane.vgrow="NEVER">
+         <children>
+            <HBox alignment="CENTER_LEFT" fillHeight="false" prefWidth="180.0" spacing="2.0">
+               <children>
+                  <Label prefHeight="20.0" prefWidth="100.0" text="Cutoff Time:">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="raceCutoffTimeTextField" prefHeight="26.0" prefWidth="75.0" promptText="HH:MM:SS" />
+                  <Label fx:id="raceCutoffTimePaceLabel" prefHeight="20.0" prefWidth="90.0" HBox.hgrow="ALWAYS">
+                     <font>
+                        <Font size="14.0" />
+                     </font>
+                  </Label>
+               </children>
+            </HBox>
+            <HBox fx:id="bibRangeHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="2.0" VBox.vgrow="NEVER">
+               <children>
+                  <Label prefHeight="20.0" prefWidth="99.0" text="Bib Range: ">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="startBibTextField" prefWidth="75.0" />
+                  <Label prefHeight="20.0" text="-&gt;">
+                     <font>
+                        <Font size="14.0" />
+                     </font>
+                  </Label>
+                  <TextField fx:id="endBibTextField" prefWidth="75.0" />
+               </children>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" fillHeight="false" prefHeight="26.0" spacing="5.0">
+               <children>
+                  <ToggleSwitch fx:id="splitsToggleSwitch" prefHeight="24.0" prefWidth="175.0" text="On-Course Splits">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </ToggleSwitch>
+               </children>
+            </HBox>
+            <HBox>
+               <children>
+                  <ToggleSwitch fx:id="waveStartsToggleSwitch" prefHeight="26.0" prefWidth="175.0" text="Wave Starts">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </ToggleSwitch>
+               </children>
+            </HBox>
+            <HBox>
+               <children>
+                  <ToggleSwitch fx:id="lapRaceToggleSwitch" prefHeight="26.0" prefWidth="175.0" text="Lap Race">
+                     <font>
+                        <Font size="16.0" />
+                     </font>
+                  </ToggleSwitch>
+               </children>
+            </HBox>
+            <HBox alignment="CENTER" fillHeight="false" maxHeight="-Infinity" minHeight="-Infinity" prefHeight="40.0">
+               <children>
+                  <Button fx:id="courseRecordSetupButton" mnemonicParsing="false" text="Setup Course Records">
+                     <font>
+                        <Font size="14.0" />
+                     </font>
+                  </Button>
+               </children>
+               <padding>
+                  <Insets top="10.0" />
+               </padding>
+            </HBox>
+         </children>
+      </VBox>
       <VBox fx:id="splitsVBox" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" spacing="2.0" GridPane.hgrow="ALWAYS" GridPane.rowIndex="2" GridPane.vgrow="ALWAYS">
          <children>
             <Label maxHeight="-Infinity" minHeight="-Infinity" prefHeight="25.0" text="On-Course Splits" VBox.vgrow="NEVER">
@@ -205,169 +368,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                <VBox.margin>
                   <Insets top="5.0" />
                </VBox.margin>
-            </VBox>
-         </children>
-         <GridPane.margin>
-            <Insets />
-         </GridPane.margin>
-      </VBox>
-      <VBox maxHeight="-Infinity" minHeight="-Infinity" spacing="5.0" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.rowIndex="1" GridPane.rowSpan="2" GridPane.valignment="TOP" GridPane.vgrow="NEVER">
-         <children>
-            <HBox alignment="CENTER_LEFT" fillHeight="false" prefWidth="180.0" spacing="2.0">
-               <children>
-                  <Label prefHeight="20.0" prefWidth="100.0" text="Cutoff Time:">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="raceCutoffTimeTextField" prefHeight="26.0" prefWidth="75.0" promptText="HH:MM:SS" />
-                  <Label fx:id="raceCutoffTimePaceLabel" prefHeight="20.0" prefWidth="90.0" HBox.hgrow="ALWAYS">
-                     <font>
-                        <Font size="14.0" />
-                     </font>
-                  </Label>
-               </children>
-            </HBox>
-            <HBox fx:id="bibRangeHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="2.0" VBox.vgrow="NEVER">
-               <children>
-                  <Label prefHeight="20.0" prefWidth="99.0" text="Bib Range: ">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="startBibTextField" prefWidth="75.0" />
-                  <Label prefHeight="20.0" text="-&gt;">
-                     <font>
-                        <Font size="14.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="endBibTextField" prefWidth="75.0" />
-               </children>
-            </HBox>
-            <HBox alignment="CENTER_LEFT" fillHeight="false" prefHeight="26.0" spacing="5.0">
-               <children>
-                  <ToggleSwitch fx:id="splitsToggleSwitch" prefHeight="24.0" prefWidth="175.0" text="On-Course Splits">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </ToggleSwitch>
-               </children>
-            </HBox>
-            <HBox>
-               <children>
-                  <ToggleSwitch fx:id="waveStartsToggleSwitch" prefHeight="26.0" prefWidth="175.0" text="Wave Starts">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </ToggleSwitch>
-               </children>
-            </HBox>
-            <HBox>
-               <children>
-                  <ToggleSwitch fx:id="lapRaceToggleSwitch" prefHeight="26.0" prefWidth="175.0" text="Lap Race">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </ToggleSwitch>
-               </children>
-            </HBox>
-            <HBox alignment="CENTER" fillHeight="false" maxHeight="-Infinity" minHeight="-Infinity" prefHeight="40.0">
-               <children>
-                  <Button fx:id="courseRecordSetupButton" mnemonicParsing="false" text="Setup Course Records">
-                     <font>
-                        <Font size="14.0" />
-                     </font>
-                  </Button>
-               </children>
-               <padding>
-                  <Insets top="10.0" />
-               </padding>
-            </HBox>
-         </children>
-      </VBox>
-      <VBox maxHeight="-Infinity" minHeight="-Infinity" spacing="5.0" GridPane.halignment="CENTER" GridPane.hgrow="ALWAYS" GridPane.rowIndex="1" GridPane.valignment="TOP" GridPane.vgrow="NEVER">
-         <children>
-            <HBox fx:id="raceNameHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-               <children>
-                  <Label prefHeight="20.0" prefWidth="110.0" text="Event Name">
-                     <font>
-                        <Font size="18.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="raceNameTextField" onAction="#updateRaceName" prefHeight="26.0" prefWidth="192.0" HBox.hgrow="ALWAYS" />
-                  <Pane maxWidth="1.7976931348623157E308" prefWidth="0.0" HBox.hgrow="ALWAYS" />
-               </children>
-               <padding>
-                  <Insets right="5.0" />
-               </padding>
-            </HBox>
-            <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-               <children>
-                  <Label prefHeight="20.0" prefWidth="110.0" text="Distance">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="raceDistanceTextField" onAction="#updateRaceDistance" prefWidth="75.0" />
-                  <ChoiceBox fx:id="distanceUnitChoiceBox" onInputMethodTextChanged="#updateRaceDistance" />
-               </children>
-            </HBox>
-            <HBox fx:id="startTimeHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-               <children>
-                  <Label prefHeight="20.0" prefWidth="110.0" text="Start Time">
-                     <font>
-                        <Font size="16.0" />
-                     </font>
-                  </Label>
-                  <TextField fx:id="raceStartTimeTextField" onAction="#updateRaceStartTime" prefHeight="25.0" prefWidth="96.0" promptText="HH:MM:SS.sss" />
-               </children>
-            </HBox>
-            <VBox fx:id="startFinishLocationVBox" spacing="5.0">
-               <children>
-                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-                     <children>
-                        <Label prefHeight="20.0" prefWidth="110.0" text="Start Location">
-                           <font>
-                              <Font size="16.0" />
-                           </font>
-                        </Label>
-                        <ComboBox fx:id="startLocationComboBox" minWidth="-Infinity" prefWidth="150.0" />
-                        <HBox fx:id="maxStartHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-                           <children>
-                              <Label text="Max Start">
-                                 <font>
-                                    <Font size="16.0" />
-                                 </font>
-                                 <HBox.margin>
-                                    <Insets left="5.0" />
-                                 </HBox.margin>
-                              </Label>
-                              <TextField fx:id="maxStartTextField" minWidth="-Infinity" prefHeight="26.0" prefWidth="75.0" promptText="HH:MM:SS" />
-                           </children>
-                           <HBox.margin>
-                              <Insets />
-                           </HBox.margin>
-                        </HBox>
-                     </children>
-                  </HBox>
-                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
-                     <children>
-                        <Label prefHeight="20.0" prefWidth="110.0" text="Finish Location">
-                           <font>
-                              <Font size="16.0" />
-                           </font>
-                        </Label>
-                        <ComboBox fx:id="finishLocationComboBox" minWidth="-Infinity" prefWidth="150.0" />
-                        <Button fx:id="updateResultsButton" maxHeight="-Infinity" minHeight="-Infinity" mnemonicParsing="false" prefHeight="26.0" text="Recalculate Results">
-                           <HBox.margin>
-                              <Insets left="10.0" />
-                           </HBox.margin>
-                           <font>
-                              <Font size="14.0" />
-                           </font></Button>
-                     </children>
-                  </HBox>
-               </children>
             </VBox>
          </children>
          <GridPane.margin>

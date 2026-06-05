@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public enum StringCapitalizationNormalizer {
-    NONE, // NoOp
+    NONE, // NOOP
     TitleCase, // Titlecase Everyting
     lowercase, // lowercase everything
     UPPERCASE; // UPPERCASE EVERYTHING
@@ -35,7 +35,7 @@ public enum StringCapitalizationNormalizer {
     private static final Logger logger = LoggerFactory.getLogger(StringCapitalizationNormalizer.class);
 
     
-    private static final Map<StringCapitalizationNormalizer, String> CACE_MAP = createMap();
+    private static final Map<StringCapitalizationNormalizer, String> CASE_MAP = createMap();
 
     private static Map<StringCapitalizationNormalizer, String> createMap() {
         Map<StringCapitalizationNormalizer, String> result = new HashMap<>();
@@ -49,16 +49,16 @@ public enum StringCapitalizationNormalizer {
     
     @Override 
     public String toString(){
-        return CACE_MAP.get(this);
+        return CASE_MAP.get(this);
     }
 
     public String normalize(String s){
         switch(this){
             case NONE -> {
-                return titleCase(s);
+                return s;
             }
             case TitleCase -> {
-                return s;
+                return titleCase(s);
             }
             case lowercase -> {
                 return s.toLowerCase();

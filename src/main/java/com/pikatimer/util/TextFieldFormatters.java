@@ -132,7 +132,7 @@ public class TextFieldFormatters {
                 return change;
             } else if ( newValue.matches("^([012]|[01][0-9]|2[0-3]):?$") || 
                         newValue.matches("^([01][0-9]|2[0-3]):[0-5]?$") || 
-                        newValue.matches("^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5]?$") ){
+                        newValue.matches("^([01][0-9]|2[0-3]):[0-5]?[0-9]?:[0-5]?[0-9]?$") ){
                 logger.debug("Possiblely good LocalTime (newValue: " + newValue + ")");
                 return change;
             } else if(newValue.matches("^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]*)?)?$") ) { // Looks like a time, lets check

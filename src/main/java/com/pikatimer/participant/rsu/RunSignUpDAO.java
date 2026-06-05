@@ -360,6 +360,19 @@ public class RunSignUpDAO {
                                                         p.setState(aJSON.optString("state"));
                                                         p.setZip(aJSON.optString("zip"));
                                                         p.setCountry(aJSON.optString("country_code"));
+                                                        
+                                                        // look for inadvertant reduplication
+                                                        // e.g "Colorado SpringsColorado Springs"
+                                                        // Actual reduplicated names will have an odd length (like "Walla Walla")
+                                                        if (p.getCity().length() % 2 == 0) {
+                                                            String c = p.getCity();
+                                                            if (c.toLowerCase().substring(0, (c.length()/2)).equals(c.substring(c.length()/2, c.length()))) {
+                                                                c = c.substring(0, (c.length()/2));
+                                                                logger.debug("Reduplicated City: {} -> {}",p.getCity(),c);
+                                                                p.setCity(c);
+                                                                p.setRegSyncNeeded(true);
+                                                            }
+                                                        }
 
                                                         // link the particpant to the race
                                                         
@@ -368,31 +381,35 @@ public class RunSignUpDAO {
                                                             String f = rsuConfig.capNormalize.normalize(p.getFirstName());
                                                             if (!f.equals(p.getFirstName())) {
                                                                 update = true;
+                                                                logger.trace("Normalizing First Name: {} -> {}",p.getFirstName(),f);
                                                                 p.setFirstName(f);
                                                             }
 
                                                             String m = rsuConfig.capNormalize.normalize(p.getMiddleName());
                                                             if (!m.equals(p.getMiddleName())) {
                                                                 update = true;
+                                                                logger.trace("Normalizing Middle Name: {} -> {}",p.getFirstName(),f);
                                                                 p.setMiddleName(m);
                                                             }
 
                                                             String l = rsuConfig.capNormalize.normalize(p.getLastName());
                                                             if (!l.equals(p.getLastName())) {
                                                                 update = true;
+                                                                logger.trace("Normalizing Last Name: {} -> {}",p.getFirstName(),f);
                                                                 p.setLastName(l);
                                                             }
 
                                                             String c = rsuConfig.capNormalize.normalize(p.getCity());
                                                             if (!c.equals(p.getCity())){
                                                                 update = true;
+                                                                logger.trace("Normalizing City: {} -> {}",p.getFirstName(),f);
                                                                 p.setCity(c);
                                                             }
 
                                                             if (update) {
                                                                 p.setRegSyncNeeded(update);
                                                             }                                                            
-                                                        }
+                                                        } 
                                                         
                                                         List<Wave> waveList = p.wavesObservableList();
                                                         if (waveList.isEmpty()) {

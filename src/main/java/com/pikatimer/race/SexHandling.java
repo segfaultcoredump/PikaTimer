@@ -28,7 +28,7 @@ public enum SexHandling {
     
     OFI("O/F Inc","Open/Female (Inclusive)"),
     OFE("O/F Ex","Open/Female (Exclusive)"),
-    ALL("ALL","Awards for each value"),
+    ALL("ALL","Awards for each Sex"),
     MF("M/F","M/F Only"); 
     
 
@@ -46,7 +46,7 @@ public enum SexHandling {
         Map<SexHandling, String> result = new HashMap<>();
         result.put(OFI, "Open/Female (Inclusive)");
         result.put(OFE, "Open/Female (Exclusive)");
-        result.put(ALL, "Awards for each value");
+        result.put(ALL, "Awards for each Sex");
         result.put(MF, "M/F Only");
 
         return Collections.unmodifiableMap(result);

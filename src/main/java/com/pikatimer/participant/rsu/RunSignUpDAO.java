@@ -311,20 +311,20 @@ public class RunSignUpDAO {
                                                     Participant p;
                                                     if (regIDtoParticipantMap.containsKey(rsuReg.optIntegerObject("registration_id"))) {
                                                         p = regIDtoParticipantMap.get(rsuReg.optIntegerObject("registration_id"));
-                                                        logger.trace("RSUSync: Found existing RSU RegistrationID {} for {}", rsuReg.optIntegerObject("registration_id"), p.fullNameProperty().toString() );
+                                                        logger.trace("RSUSync: Found existing RSU RegistrationID {} for {}", rsuReg.optIntegerObject("registration_id"), p.fullNameProperty().getValue() );
                                                     } else if (userIDtoParticipantMap.containsKey(rsuReg.getJSONObject("user").optIntegerObject("user_id"))) { 
                                                         p = userIDtoParticipantMap.get(rsuReg.getJSONObject("user").optIntegerObject("user_id"));
-                                                        logger.trace("RSUSync: Found existing RSU UserID {} for {}", rsuReg.getJSONObject("user").optIntegerObject("user_id"), p.fullNameProperty().toString() );
+                                                        logger.trace("RSUSync: Found existing RSU UserID {} for {}", rsuReg.getJSONObject("user").optIntegerObject("user_id"), p.fullNameProperty().getValue() );
                                                     } else {
                                                         p = new Participant();
                                                         logger.trace("RSUSync: unable to find an existing registration or user, creating a new user....");
+                                                        p.setRegSyncNeeded(false);
                                                     }
                                                     
                                                     // If the particiopant is pending a sync to RSU, skip it.
-                                                    // 
-                                                    if (p.getRegSyncNeeded()) break;
+                                                    // if (p.getRegSyncNeeded()) break;
                                                     
-                                                    p.setRegSyncNeeded(false);
+                                                    
                                                     
                                                     CountDownLatch platformDone = new CountDownLatch(1);
                                                     Platform.runLater(() -> {    
@@ -361,6 +361,9 @@ public class RunSignUpDAO {
                                                         p.setZip(aJSON.optString("zip"));
                                                         p.setCountry(aJSON.optString("country_code"));
                                                         
+                                                        
+                                                        // Cleanup the name / city     
+                                                        
                                                         // look for inadvertant reduplication
                                                         // e.g "Colorado SpringsColorado Springs"
                                                         // Actual reduplicated names will have an odd length (like "Walla Walla")
@@ -374,8 +377,7 @@ public class RunSignUpDAO {
                                                             }
                                                         }
 
-                                                        // link the particpant to the race
-                                                        
+                                                                                                           
                                                         if(rsuConfig.capNormalize != StringCapitalizationNormalizer.NONE){
                                                             Boolean update = false;
                                                             String f = rsuConfig.capNormalize.normalize(p.getFirstName());
@@ -417,6 +419,7 @@ public class RunSignUpDAO {
                                                             else p.setWaves(partDAO.getWaveByBib(p.getBib()));
                                                         } else {
                                                             // merge / replace time
+                                                            logger.debug("Participant {} is already registered for another event!",p.fullNameProperty().getValue());
                                                             
                                                             if (!multipleWaves) {
                                                                 if (!waveList.contains(defaultWave)) {
@@ -701,7 +704,8 @@ public class RunSignUpDAO {
             // Look for deleted participants and delete them
             List<Participant> toBeDeleted = new ArrayList();
             partDAO.listParticipants().forEach(p -> {
-                if (p.wavesProperty().getValue().isEmpty()) {
+                
+                if (p.getWaveIDs().isEmpty()) {
                     toBeDeleted.add(p);
                     logger.debug("Participant {} is in no races. Marking for deletion.",p.fullNameProperty().getValue());
                 }

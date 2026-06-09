@@ -50,7 +50,7 @@ public class Pikatimer extends Application {
     private static String jdbcURL; // Holds the jdbcURL for the open db
     private static HTTPServices webServer;
     
-    public static final String VERSION = "2.0_Alpha_1";
+    public static final String VERSION = "2.0_Alpha_1g";
     
     /**
     * SingletonHolder is loaded on the first execution of Singleton.getInstance() 
@@ -91,7 +91,7 @@ public class Pikatimer extends Application {
             888        888 888 "88b 888  888 888     888 888  888  888 Y8b.     888     
             888        888 888  888 "Y888888 888     888 888  888  888  "Y8888  888     
 
-                                     ©2025 by John Garner
+                                     ©2026 by John Garner
                                     https://PikaTimer.com/
                                Released under the GPL-3.0 license.                                                                            
                             \n

@@ -78,14 +78,22 @@ public class HTTPServices {
         Boolean bound = false; 
         port = 8080;
         
-        InetAddress localhost; 
-        try {
-            localhost = InetAddress.getLocalHost();
-            logger.info("System IP Address : " + (localhost.getHostAddress()).trim()); 
-            url = "http://" + (localhost.getHostAddress()).trim();
-        } catch (UnknownHostException ex) {
-            logger.error("Error in InetAddress.getLocalHost()", ex);
+        // InetAddress localhost; 
+        String ip = "127.0.0.1";
+        
+        try (final DatagramSocket socket = new DatagramSocket()) {
+            // Connect to a pseudo-address to force network routing selection
+            socket.connect(InetAddress.getByName("8.8.8.8"), 10002);
+            ip = socket.getLocalAddress().getHostAddress();
+            System.out.println("Preferred Local IPv4 Address: " + ip);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
+            
+            //localhost = InetAddress.getLocalHost();
+            logger.info("System IP Address : " + ip); 
+            url = "http://" + ip;
+        
         
         //server.enableCaseSensitiveUrls();
         
@@ -256,21 +264,23 @@ public class HTTPServices {
                                 ctx.result("NOT_FOUND");
                             }
                             else {
-                                ctx.json(p.getJSONObject());
+                                ctx.json(p.getJSONObject().toString());
                             }
         });
         server.get("/participants", ctx -> {
-                        JSONArray p = new JSONArray();
-                        JSONObject o = new JSONObject();
-
-                        ParticipantDAO.getInstance().listParticipants().forEach(part -> {p.put(part.getJSONObject());});
-                        o.put("Participants", p);
-                        //ctx.contentType("application/json; charset=utf-8");
-                        ctx.json(o);
+            JSONArray p = new JSONArray();
+            JSONObject o = new JSONObject();
+            logger.debug("HTTPServices.java: /participants called");
+            ParticipantDAO.getInstance().listParticipants().forEach(part -> {p.put(part.getJSONObject());});
+            o.put("Participants", p);
+            //ctx.contentType("application/json; charset=utf-8");
+            logger.trace("Returning {}",o.toString(4));
+            ctx.json(o.toString(4));
         
         });
         
         server.get("/results",ctx -> {
+            logger.debug("HTTPServices.java: /results called");
             JSONArray p = new JSONArray();
             JSONObject o = new JSONObject();
             ResultsDAO resDAO = ResultsDAO.getInstance();
@@ -296,7 +306,7 @@ public class HTTPServices {
                 });
                 o.put("Results", p);
             });
-            ctx.json(o);
+            ctx.json(o.toString());
         });
     }
     

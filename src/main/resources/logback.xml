@@ -19,6 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 <configuration scan="true" scanPeriod="30 seconds" >
+    <!-- 1. Define the timestamp variable at the top -->
+   <timestamp key="dateStamp" datePattern="yyyyMMdd'T'HHmmss" />
+  
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
@@ -29,7 +32,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     </appender>
     <!-- <appender name="DebugLogHolder" class="com.pikatimer.pikareader.util.DebugLogHolder"/> -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${java.io.tmpdir}/PikaTimer.log</file>
+        <file>${java.io.tmpdir}/PikaTimer-${dateStamp}.log</file>
         <append>true</append>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>TRACE</level>

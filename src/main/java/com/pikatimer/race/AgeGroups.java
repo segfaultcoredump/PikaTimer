@@ -312,6 +312,7 @@ public class AgeGroups {
             }
         } else {
             if (i == 0) agShortNameMap.put(ageToAG(i), "0"); //Zero is a special case
+            else if (agIncrementProperty.getValue() == 1) agShortNameMap.put(i, i.toString());
             else if(i <= agStartProperty.get()) {
                 agShortNameMap.put(ageToAG(i), "1-" + (agStartProperty.getValue()));
             } else {
@@ -357,8 +358,9 @@ public class AgeGroups {
     private void invalidateMaps() {
         logger.trace("AgeGroups.invalidateMaps() Called");
 
-        agNameMap = new ConcurrentHashMap();
-        agMap = new ConcurrentHashMap();
+        agNameMap.clear();
+        agMap.clear();
+        agShortNameMap.clear();
     }
 
     

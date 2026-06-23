@@ -40,6 +40,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
@@ -250,8 +252,25 @@ public class FXMLTimingController {
         filteredTimesList = new FilteredList<>(cookedTimeList, p -> true);
 
         // 2. Set the filter Predicate whenever the filter changes.
+        // We will use a Timeline to act as a debounce so the filter will only
+        // fire after .25 seconds of no input. 
+        
+        // TODO: Rework to implement the asynchronous background thread 
+        // for filtering and updates every 500ms and not 20x per second. 
+        Timeline debounceTimeline = new Timeline();
+        javafx.util.Duration bounceTime = javafx.util.Duration.millis(250);
         searchTextBox.textProperty().addListener((observable, oldValue, newValue) -> {
-            updateFilterPredicate();
+            logger.trace("TimingController searchTextBox listener fired...");
+            debounceTimeline.stop();
+            
+            // Configure the action to take once the timer finishes
+            KeyFrame keyFrame = new KeyFrame(bounceTime, (event) -> {
+                updateFilterPredicate();
+            });
+
+            // Refresh the timeline with the new keyframe and start the countdown
+            debounceTimeline.getKeyFrames().setAll(keyFrame);
+            debounceTimeline.play();
         });
         searchScopeCheckComboBox.getCheckModel().getCheckedItems().addListener((ListChangeListener.Change<? extends TimingLocation> c) -> {
             
@@ -1416,11 +1435,12 @@ public class FXMLTimingController {
     }
     
     private void updateFilterPredicate(){
+        logger.trace("updateFilterPredicate called...");
         filteredTimesList.setPredicate(cookedRead -> {
             // If filter text is empty, display all persons.
            // logger.debug("filteredParticpantsList.predicateProperty changing...");
             if (searchTextBox.textProperty().getValueSafe().isEmpty() && searchScopeCheckComboBox.getCheckModel().getCheckedItems().isEmpty()) {
-                logger.trace("...both are empty: true");
+                //logger.trace("...both are empty: true");
                 return true;
             }
 
@@ -1431,16 +1451,16 @@ public class FXMLTimingController {
                         if (tl != null && tl.getID().equals(cookedRead.getTimingLocationId())) waveFilterMatch.set(true);
                     }); 
             } else {
-                logger.trace("...searchWaveComboBox is empty: true");
+                //logger.trace("...searchWaveComboBox is empty: true");
 
                 waveFilterMatch.set(true);
             }
 
             if (searchTextBox.textProperty().getValueSafe().isEmpty() && waveFilterMatch.getValue()) {
-                logger.trace("...filterField is empty and wave matches");
+                //logger.trace("...filterField is empty and wave matches");
                 return true;
             } else if (!waveFilterMatch.getValue()) {
-                logger.trace("...filterField is empty and wave does not match");
+                //logger.trace("...filterField is empty and wave does not match");
                 return false;
             } 
 

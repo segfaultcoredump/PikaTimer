@@ -22,7 +22,8 @@
         "javafx": true,
         "title": "PikaTimer",
         "platformBundlesEnabled": false,
-        "downloadPage": {"platforms": ["default"]}
+        "downloadPage": {"platforms": ["default"]},
+        "runAsAdministrator":"disabled"
     },
     "dependencies": {
         "command-exists-promise": "^2.0.2",

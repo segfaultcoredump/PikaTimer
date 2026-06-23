@@ -235,15 +235,15 @@ public class FTPSTransport implements FileTransport{
                     String message = event.getMessage().trim();
                     // Don't print the actuall password :-) 
                     if (message.toUpperCase().startsWith("PASS")) {
-                        logger.info("FTP CMD SENT: PASS **********");
+                        logger.trace("FTP CMD SENT: PASS **********");
                     } else {
-                        logger.info("FTP CMD SENT: " + message);
+                        logger.trace("FTP CMD SENT: " + message);
                     }
                 }
 
                 @Override
                 public void protocolReplyReceived(ProtocolCommandEvent event) {
-                    logger.debug("FTP REPLY RCV: " + event.getReplyCode() + " - " + event.getMessage().trim());
+                    logger.trace("FTP REPLY RCV: " + event.getReplyCode() + " - " + event.getMessage().trim());
                 }
             });
             

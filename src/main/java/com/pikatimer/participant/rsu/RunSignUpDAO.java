@@ -369,7 +369,7 @@ public class RunSignUpDAO {
                                                         // Actual reduplicated names will have an odd length (like "Walla Walla")
                                                         if (p.getCity().length() % 2 == 0) {
                                                             String c = p.getCity();
-                                                            if (c.toLowerCase().substring(0, (c.length()/2)).equals(c.substring(c.length()/2, c.length()))) {
+                                                            if (c.toLowerCase().substring(0, (c.length()/2)).equals(c.toLowerCase().substring(c.length()/2, c.length()))) {
                                                                 c = c.substring(0, (c.length()/2));
                                                                 logger.debug("Reduplicated City: {} -> {}",p.getCity(),c);
                                                                 p.setCity(c);
@@ -419,15 +419,18 @@ public class RunSignUpDAO {
                                                             else p.setWaves(partDAO.getWaveByBib(p.getBib()));
                                                         } else {
                                                             // merge / replace time
-                                                            logger.debug("Participant {} is already registered for another event!",p.fullNameProperty().getValue());
+                                                            logger.trace("syncFromRSU: Participant {} is already registered for {} other event(s)!",p.fullNameProperty().getValue(),waveList.size());
                                                             
                                                             if (!multipleWaves) {
+                                                                logger.trace("The new event does NOT have multiple waves...");
                                                                 if (!waveList.contains(defaultWave)) {
-                                                                    waveList.add(defaultWave);
-                                                                    p.setWaves(waveList);
-                                                                }
+                                                                    logger.debug("Adding participant to the {} event",defaultWave.getRace().getRaceName());
+                                                                    p.addWave(defaultWave);
+                                                                } else logger.debug("Participant was already in this wave!");
                                                             } else {
+                                                                logger.trace("The new event DOES have multiple waves....");
                                                                 // This kinda sucks....
+                                                                // TODO: Fix this mess to properly move folks from one wave to the next
                                                                 Map<Race,Wave> existingRaceWaveMap = new HashMap();
                                                                 waveList.forEach(w -> existingRaceWaveMap.put(w.getRace(),w)); 
                                                             

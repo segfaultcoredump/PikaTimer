@@ -37,6 +37,8 @@ import javafx.concurrent.Task;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.net.PrintCommandListener;
+import org.apache.commons.net.ProtocolCommandEvent;
+import org.apache.commons.net.ProtocolCommandListener;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPReply;
@@ -224,7 +226,27 @@ public class FTPSTransport implements FileTransport{
                 ftpsClient = null;
             }
             
-            ftpClient.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out), true));
+            //ftpClient.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out), true));
+            
+            ftpsClient.addProtocolCommandListener(new ProtocolCommandListener() {
+                @Override
+                public void protocolCommandSent(ProtocolCommandEvent event) {
+                    // event.getMessage() includes the trailing CRLF change; trim if needed
+                    String message = event.getMessage().trim();
+                    // Don't print the actuall password :-) 
+                    if (message.toUpperCase().startsWith("PASS")) {
+                        logger.info("FTP CMD SENT: PASS **********");
+                    } else {
+                        logger.info("FTP CMD SENT: " + message);
+                    }
+                }
+
+                @Override
+                public void protocolReplyReceived(ProtocolCommandEvent event) {
+                    logger.debug("FTP REPLY RCV: " + event.getReplyCode() + " - " + event.getMessage().trim());
+                }
+            });
+            
             // Connect to host
             ftpClient.setConnectTimeout(10000); // 10 seconds
             ftpClient.connect(hostname);
@@ -254,6 +276,9 @@ public class FTPSTransport implements FileTransport{
                     //ftpClient.setFileType(FTP.ASCII_FILE_TYPE);
                     ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
                     //ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+                    
+                    // Set the data transfer timeout
+                    ftpClient.setDataTimeout(Duration.ofSeconds(10)); 
                     
                     Platform.runLater(() -> {transferStatus.set("Changing Directories...");});
                     if(!ftpClient.changeWorkingDirectory(basePath)) {

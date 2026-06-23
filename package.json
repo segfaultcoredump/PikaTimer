@@ -10,7 +10,9 @@
         "args": [
             "-X[mac]dock:name=\"PikaTimer\"",
             "--add-opens javafx.graphics/javafx.scene=org.controlsfx.controls",
-            "--add-opens javafx.graphics/javafx.scene=ALL-UNNAMED"
+            "--add-opens javafx.graphics/javafx.scene=ALL-UNNAMED",
+            "-Xms2g",
+            "-Xmx8g"
         ],
         "fallbackToUniversal": false,
         "generateLegacyBundles": false,

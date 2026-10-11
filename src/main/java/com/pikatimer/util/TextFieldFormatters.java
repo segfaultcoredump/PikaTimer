@@ -158,6 +158,124 @@ public class TextFieldFormatters {
         return new TextFormatter<>(localTimeFilter);
     }
     
+    
+    public static TextFormatter<LocalTime> getNewLocalTimeFormatter(){
+        String BASE_MASK = "00:00:00";
+        String FULL_MASK = "00:00:00.000";
+
+
+        UnaryOperator<TextFormatter.Change> localTimeFilter = change -> {
+            String currentText = change.getControlText();
+            int start = change.getRangeStart();
+            int end = change.getRangeEnd();
+
+            // 1. Handle Deletions (Backspace / Delete / Selection Clear)
+            if (change.isDeleted() && change.getText().isEmpty()) {
+                StringBuilder sb = new StringBuilder(currentText);
+               
+                // If deleting across or inside the millisecond boundary, handle length reduction
+                if (currentText.contains(".") && end > 8) {
+                    sb.delete(start, end);
+                    // Strip the trailing dot if no digits remain after it
+                    if (sb.toString().endsWith(".")) {
+                        sb.deleteCharAt(sb.length() - 1);
+                    }
+                } else {
+                    // Standard inline edit: revert deleted characters back to '0' placeholders
+                    for (int i = start; i < end; i++) {
+                        if (i < BASE_MASK.length()) {
+                            sb.setCharAt(i, BASE_MASK.charAt(i));
+                        }
+                    }
+                }
+
+                // Final safety validation pass on deletion structure
+                String result = sb.toString();
+                if (result.isEmpty()) result = BASE_MASK; // Never allow a completely empty field
+               
+                change.setText(result);
+                change.setRange(0, currentText.length());
+                change.setCaretPosition(start);
+                change.setAnchor(start);
+                return change;
+            }
+
+            // 2. Handle Additions (Typing / Pasting)
+            String input = change.getText();
+            if (input.isEmpty()) {
+                return change; // Simple cursor movement
+            }
+
+            // Combine current state to project the new string layout
+            StringBuilder sb = new StringBuilder(currentText);
+            int caret = start;
+
+            for (int i = 0; i < input.length(); i++) {
+                char inputChar = input.charAt(i);
+
+                // Dynamically select the active mask template based on the caret position
+                String activeMask = (caret >= 8 || inputChar == '.' || sb.indexOf(".") != -1) ? FULL_MASK : BASE_MASK;
+
+                if (caret >= activeMask.length()) {
+                    return null; // Enforce hard cap maximum length
+                }
+
+                char maskChar = activeMask.charAt(caret);
+
+                // Handle manual typing/pasting of delimiters securely
+                if ((maskChar == ':' || maskChar == '.') && (inputChar == ':' || inputChar == '.')) {
+                    caret++;
+                    continue;
+                }
+
+                // Auto-advance caret if it currently sits on a formatting delimiter
+                if (maskChar == ':' || maskChar == '.') {
+                    if (maskChar == '.' && !sb.toString().contains(".")) {
+                        sb.insert(caret, '.');
+                    }
+                    caret++;
+                    if (caret >= activeMask.length()) return null;
+                    maskChar = activeMask.charAt(caret);
+                }
+
+                // Block non-numeric characters for time segment slots
+                if (!Character.isDigit(inputChar)) {
+                    return null;
+                }
+
+                // Insert or overwrite based on target position
+                if (caret < sb.length()) {
+                    sb.setCharAt(caret, inputChar);
+                } else {
+                    sb.append(inputChar);
+                }
+                caret++;
+            }
+
+            // 3. Structural Validation (Chronological Boundary Logic)
+            String validatedStr = sb.toString();
+            if (!isValidVariableTime(validatedStr)) {
+                return null;
+            }
+
+            // 4. Commit changes back to the text control
+            change.setText(validatedStr);
+            change.setRange(0, currentText.length());
+
+            // Skip trailing delimiter gaps smoothly so next character doesn't overwrite it
+            String activeMask = validatedStr.contains(".") ? FULL_MASK : BASE_MASK;
+            if (caret < activeMask.length() && (activeMask.charAt(caret) == ':' || activeMask.charAt(caret) == '.')) {
+                caret++;
+            }
+
+            change.setCaretPosition(Math.min(caret, validatedStr.length()));
+            change.setAnchor(Math.min(caret, validatedStr.length()));
+            return change;
+        };
+
+        return new TextFormatter<>(localTimeFilter);
+    }
+    
     public static TextFormatter<Duration> getDurationFormatter(){
         UnaryOperator<Change> durationFilter = change -> {
             // if the content does not change, just return
@@ -199,5 +317,30 @@ public class TextFieldFormatters {
         return new TextFormatter<>(durationFilter);
     }
     
+    // Handles validation cleanly for both "HH:mm:ss" and "HH:mm:ss.SSS" layouts
+    private static boolean isValidVariableTime(String timeStr) {
+        try {
+            if (timeStr.length() < 8) return false;
+
+            int hr = Integer.parseInt(timeStr.substring(0, 2));
+            int min = Integer.parseInt(timeStr.substring(3, 5));
+            int sec = Integer.parseInt(timeStr.substring(6, 8));
+
+            if (hr > 23 || min > 59 || sec > 59) return false;
+
+            // Optional Milliseconds validation if delimiter exists
+            if (timeStr.contains(".")) {
+                int dotIdx = timeStr.indexOf(".");
+                String msStr = timeStr.substring(dotIdx + 1);
+                if (!msStr.isEmpty()) {
+                    int ms = Integer.parseInt(msStr);
+                    if (ms > 999) return false;
+                }
+            }
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
     
 }

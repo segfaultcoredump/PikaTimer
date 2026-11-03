@@ -167,10 +167,11 @@ public class ResultsDAO {
                             logger.debug("ResultsDAO ProcessNewResult Thread: Waiting for more bibs to process...");
                             pendingBibs.add(resultsQueue.take());
                             logger.debug("ResultsDAO ProcessNewResult Thread: The wait is over...");
-                            Thread.sleep(10); // Times rarely come in 1 at a time
+                            Thread.sleep(100); // Times rarely come in 1 at a time
 
                             //resultsQueue.drainTo(pendingBibs,299);  // 500 total
                             resultsQueue.drainTo(pendingBibs);
+                            
                             logger.debug("ResultsDAO ProcessNewResult Thread: Processing: " + pendingBibs.size());
 
                             List<Result> pendingResults = new ArrayList();

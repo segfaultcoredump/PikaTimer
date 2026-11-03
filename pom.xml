@@ -107,7 +107,7 @@
         <dependency>
             <groupId>io.javalin</groupId>
             <artifactId>javalin</artifactId>
-            <version>6.6.0</version>
+            <version>6.7.0</version>
             <type>jar</type>
         </dependency>
         <dependency>

@@ -260,7 +260,7 @@ public class FXMLParticipantController  {
                     
                     
                     TimingDAO.getInstance().reprocessBib(swapMe.get(0).getBib());
-                    TimingDAO.getInstance().reprocessBib(swapMe.get(2).getBib());
+                    TimingDAO.getInstance().reprocessBib(swapMe.get(1).getBib());
 
                     ResultsDAO.getInstance().reprocessAllCRs();
 
@@ -276,72 +276,12 @@ public class FXMLParticipantController  {
             });
             
             Menu addToWave = new Menu("Add To...");
-            //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
-            
-            //RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator()).forEach(w -> {
-            for(Wave w:RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>())) {
-                MenuItem m = new MenuItem(w.toString());
-                m.setOnAction(e -> {
-                    participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
-                        p.addWave(w);
-                        participantDAO.updateParticipant(p);
-                        
-                        TimingDAO.getInstance().reprocessBib(p.getBib());
-                        ResultsDAO.getInstance().reprocessAllCRs();
-
-                        if (rsuDAO.isSetup().get() ) {
-                            Thread.ofVirtual().start(() -> {
-                                p.setRegSyncNeeded(Boolean.TRUE);
-                                rsuDAO.syncToRSU();
-                            });
-                        }
-
-                    });
-                });
-                addToWave.getItems().add(m);
-            } 
-            
             Menu moveToWave = new Menu("Move To...");
-            //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
-            RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>()).stream().forEach(w -> {
-                MenuItem m = new MenuItem(w.toString());
-                m.setOnAction(e -> {
-                    participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
-                        
-                        p.setWaves(w);
-                        participantDAO.updateParticipant(p);
-                        
-                        TimingDAO.getInstance().reprocessBib(p.getBib());
-                        ResultsDAO.getInstance().reprocessAllCRs();
+            populateWaveMenus(addToWave, moveToWave);
 
-                        if (rsuDAO.isSetup().get() ) {
-                            Thread.ofVirtual().start(() -> {
-                                p.setRegSyncNeeded(Boolean.TRUE);
-                                rsuDAO.syncToRSU();
-                            });
-                        }
-
-                    });
-                });
-                moveToWave.getItems().add(m);
-            });
-            
+            // Rebuild the menus (with the same add / move behavior) if the waves change
             RaceDAO.getInstance().listWaves().addListener((Change<? extends Wave> change) -> {
-                addToWave.getItems().clear();
-                moveToWave.getItems().clear();
-                //RaceDAO.getInstance().listWaves().sorted((Wave u1, Wave u2) -> u1.toString().compareTo(u2.toString())).stream().forEach(w -> {
-                RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>()).stream().forEach(w -> {
-                    MenuItem m = new MenuItem(w.toString());
-                    m.setOnAction(e -> {
-                        participantTableView.getSelectionModel().getSelectedItems().stream().forEach(p -> {
-                            p.setWaves(w);
-                            participantDAO.updateParticipant(p);
-
-                        });
-                    });
-                    addToWave.getItems().add(m);
-                    moveToWave.getItems().add(m);
-                });
+                populateWaveMenus(addToWave, moveToWave);
             });
             
             // context menu to assign/unassign runners to a given wave
@@ -817,6 +757,81 @@ public class FXMLParticipantController  {
         return participantDAO.listParticipants(); 
     }
     
+    // Build the "Add To..." and "Move To..." context menus. Each menu gets its
+    // own MenuItems (a MenuItem can only live in one menu).
+    private void populateWaveMenus(Menu addToWave, Menu moveToWave) {
+        addToWave.getItems().clear();
+        moveToWave.getItems().clear();
+        for (Wave w : RaceDAO.getInstance().listWaves().sorted(new AlphanumericComparator<>())) {
+            MenuItem add = new MenuItem(w.toString());
+            add.setOnAction(e -> addSelectedToWave(w));
+            addToWave.getItems().add(add);
+
+            MenuItem move = new MenuItem(w.toString());
+            move.setOnAction(e -> moveSelectedToWave(w));
+            moveToWave.getItems().add(move);
+        }
+    }
+
+    private void addSelectedToWave(Wave w) {
+        List<Participant> selected = new ArrayList<>(participantTableView.getSelectionModel().getSelectedItems());
+        logger.debug("Adding {} participant(s) to {}", selected.size(), w.toString());
+        selected.forEach(p -> {
+            if (p.getWaveIDs().contains(w.getID())) {
+                logger.debug("{} is already in {}", p.fullNameProperty().getValueSafe(), w.toString());
+                return;
+            }
+            p.addWave(w);
+            if (rsuDAO.isSetup().get()) p.setRegSyncNeeded(Boolean.TRUE);
+            participantDAO.updateParticipant(p);
+            TimingDAO.getInstance().reprocessBib(p.getBib());
+        });
+        ResultsDAO.getInstance().reprocessAllCRs();
+        syncToRSUInBackground();
+    }
+
+    private void moveSelectedToWave(Wave w) {
+        List<Participant> selected = new ArrayList<>(participantTableView.getSelectionModel().getSelectedItems());
+        List<Participant> blocked = new ArrayList<>();
+        logger.debug("Moving {} participant(s) to {}", selected.size(), w.toString());
+
+        selected.forEach(p -> {
+            // RSU registrations can't be removed, so the move must keep every
+            // RSU registration in a race that is linked to an RSU event
+            if (!rsuDAO.allowsWaveChange(p, List.of(w))) {
+                logger.debug("Not moving {} to {}: it would drop an RSU registration", p.fullNameProperty().getValueSafe(), w.toString());
+                blocked.add(p);
+                return;
+            }
+            p.setWaves(w);
+            if (rsuDAO.isSetup().get()) p.setRegSyncNeeded(Boolean.TRUE);
+            participantDAO.updateParticipant(p);
+            TimingDAO.getInstance().reprocessBib(p.getBib());
+        });
+
+        if (blocked.size() < selected.size()) {
+            ResultsDAO.getInstance().reprocessAllCRs();
+            syncToRSUInBackground();
+        }
+
+        if (!blocked.isEmpty()) {
+            Alert alert = new Alert(AlertType.WARNING);
+            alert.setTitle("Move Not Supported");
+            alert.setHeaderText("Some participants were not moved");
+            alert.setContentText("When RSU Sync is enabled, a participant can only be moved to an event that is linked to a RunSignUp event, "
+                    + "and can not be removed from an event they are registered for in RunSignUp. \nUse the RSU dashboard to make this change for:\n"
+                    + blocked.stream().map(p -> p.fullNameProperty().getValueSafe()).collect(Collectors.joining("\n")));
+            alert.showAndWait();
+        }
+    }
+
+    // One background push to RSU for all of the pending changes
+    private void syncToRSUInBackground() {
+        if (rsuDAO.isSetup().get()) {
+            Thread.ofVirtual().start(() -> rsuDAO.syncToRSU());
+        }
+    }
+
     public void removeParticipant(Participant p) {
         if (rsuDAO.isSetup().get()) {
             Alert alert = new Alert(AlertType.ERROR);
@@ -932,12 +947,12 @@ public class FXMLParticipantController  {
             // If RSU is configured, make sure we are not deleting the runner
             // from any events. If we are, toss up a warning and bail.
             
-            if (rsuDAO.isSetup().get()  && editedParticipant.getWaveIDs().size() > waveComboBox.getCheckModel().getCheckedItems().size()){
+            if (rsuDAO.isSetup().get()  && !rsuDAO.allowsWaveChange(editedParticipant, waveComboBox.getCheckModel().getCheckedItems())){
                 logger.warn("Removing waves from a user not supported w/ RSU!" );
                 Alert alert = new Alert(AlertType.WARNING);
                 alert.setTitle("Removing Events Not Supported");
                 alert.setHeaderText("Removing Events Not Supported");
-                alert.setContentText("When RSU Sync is enabled, you can add a participant to an event or transfer them to a new event. Removing a participant from an event is not supported. \nYou must use the RSU dashboard to remove a participant from an event. ");
+                alert.setContentText("When RSU Sync is enabled, you can add a participant to an event or transfer them to a new event. Removing a participant from an event is not supported. \nThe new event must also be linked to a RunSignUp event. \nYou must use the RSU dashboard to remove a participant from an event. ");
                 alert.showAndWait();
                 return;
             }

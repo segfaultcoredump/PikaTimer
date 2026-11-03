@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.locks.ReentrantLock;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -231,7 +233,8 @@ public class RunSignUpDAO {
                 Map<Integer,Participant> userIDtoParticipantMap = new HashMap<>();
                 
                 partDAO.listParticipants().forEach(p -> {
-                    userIDtoParticipantMap.put(p.getRegUserID(), p);
+                    // locally created participants have no RSU user id, don't map them
+                    if (p.getRegUserID() != null) userIDtoParticipantMap.put(p.getRegUserID(), p);
                     p.getRegID2RaceIDDMap().keySet().forEach(reg -> {regIDtoParticipantMap.put(reg,p);});
                 
                 });
@@ -302,13 +305,15 @@ public class RunSignUpDAO {
                                                 for (int j = 0; j < results.length(); j++) {
                                                     JSONObject rsuReg = results.getJSONObject(j);
                                                                                                             
+                                                    Integer rsuRegID = rsuReg.optIntegerObject("registration_id");
+                                                    Integer rsuUserID = rsuReg.getJSONObject("user").optIntegerObject("user_id");
                                                     Participant p;
-                                                    if (regIDtoParticipantMap.containsKey(rsuReg.optIntegerObject("registration_id"))) {
-                                                        p = regIDtoParticipantMap.get(rsuReg.optIntegerObject("registration_id"));
-                                                        logger.trace("RSUSync: Found existing RSU RegistrationID {} for {}", rsuReg.optIntegerObject("registration_id"), p.fullNameProperty().getValue() );
-                                                    } else if (userIDtoParticipantMap.containsKey(rsuReg.getJSONObject("user").optIntegerObject("user_id"))) { 
-                                                        p = userIDtoParticipantMap.get(rsuReg.getJSONObject("user").optIntegerObject("user_id"));
-                                                        logger.trace("RSUSync: Found existing RSU UserID {} for {}", rsuReg.getJSONObject("user").optIntegerObject("user_id"), p.fullNameProperty().getValue() );
+                                                    if (regIDtoParticipantMap.containsKey(rsuRegID)) {
+                                                        p = regIDtoParticipantMap.get(rsuRegID);
+                                                        logger.trace("RSUSync: Found existing RSU RegistrationID {} for {}", rsuRegID, p.fullNameProperty().getValue() );
+                                                    } else if (rsuUserID != null && userIDtoParticipantMap.containsKey(rsuUserID)) {
+                                                        p = userIDtoParticipantMap.get(rsuUserID);
+                                                        logger.trace("RSUSync: Found existing RSU UserID {} for {}", rsuUserID, p.fullNameProperty().getValue() );
                                                     } else {
                                                         p = new Participant();
                                                         logger.trace("RSUSync: unable to find an existing registration or user, creating a new user....");
@@ -407,48 +412,44 @@ public class RunSignUpDAO {
                                                             }                                                            
                                                         } 
                                                         
-                                                        List<Wave> waveList = p.wavesObservableList();
-                                                        if (waveList.isEmpty()) {
-                                                            if (!multipleWaves) p.setWaves(defaultWave);
-                                                            else p.setWaves(partDAO.getWaveByBib(p.getBib()));
-                                                        } else {
-                                                            // merge / replace time
-                                                            logger.trace("syncFromRSU: Participant {} is already registered for {} other event(s)!",p.fullNameProperty().getValue(),waveList.size());
-                                                            
-                                                            if (!multipleWaves) {
-                                                                logger.trace("The new event does NOT have multiple waves...");
-                                                                if (!waveList.contains(defaultWave)) {
-                                                                    logger.debug("Adding participant to the {} event",defaultWave.getRace().getRaceName());
-                                                                    p.addWave(defaultWave);
-                                                                } else logger.debug("Participant was already in this wave!");
-                                                            } else {
-                                                                logger.trace("The new event DOES have multiple waves....");
-                                                                // This kinda sucks....
-                                                                // TODO: Fix this mess to properly move folks from one wave to the next
-                                                                Map<Race,Wave> existingRaceWaveMap = new HashMap();
-                                                                waveList.forEach(w -> existingRaceWaveMap.put(w.getRace(),w)); 
-                                                            
-                                                                Map<Race,Wave> raceWaveMap = new HashMap();
-                                                                partDAO.getWaveByBib(p.getBib()).forEach(w -> raceWaveMap.put(w.getRace(),w));
-                                                                
-                                                                if (existingRaceWaveMap.containsKey(race)){
-                                                                    Wave newWave = defaultWave;
-                                                                    if (raceWaveMap.containsKey(race)) newWave = raceWaveMap.get(race);
-                                                                    
-                                                                    if (newWave != existingRaceWaveMap.get(race)) {
-                                                                        waveList.remove(existingRaceWaveMap.get(race));
-                                                                        waveList.add(newWave);
-                                                                        p.setWaves(waveList);
-                                                                    }
-                                                                } else { 
-                                                                    if (raceWaveMap.containsKey(race)) waveList.add(raceWaveMap.get(race));
-                                                                    else waveList.add(defaultWave);
-                                                                    p.setWaves(waveList);
+                                                        // Work on a copy of the wave list. Never hand the participant's
+                                                        // own wave list back to setWaves().
+                                                        List<Wave> newWaves = new ArrayList<>(p.wavesObservableList());
+                                                        boolean wavesChanged = false;
+                                                        if (!newWaves.isEmpty()) logger.trace("syncFromRSU: Participant {} is already in {} wave(s)",p.fullNameProperty().getValue(),newWaves.size());
+
+                                                        // Was this registration previously in a different RSU event? (moved within RSU)
+                                                        Integer oldEvent = p.getRegID2RaceIDDMap().get(rsuRegID);
+                                                        if (oldEvent != null && !oldEvent.equals(event)) {
+                                                            Integer oldRaceID = rsuConfig.eventToRaceMap.get(oldEvent);
+                                                            logger.debug("RSUSync: RegID {} for {} moved from RSU event {} to {}", rsuRegID, p.fullNameProperty().getValueSafe(), oldEvent, event);
+                                                            if (oldRaceID != null && !oldRaceID.equals(-1) && !oldRaceID.equals(race.getID())) {
+                                                                if (otherRegInRace(p, rsuRegID, oldRaceID)) {
+                                                                    logger.debug("RSUSync: keeping the old race waves for {}, another registration still maps to race id {}", p.fullNameProperty().getValueSafe(), oldRaceID);
+                                                                } else {
+                                                                    logger.debug("RSUSync: removing {} from race id {}", p.fullNameProperty().getValueSafe(), oldRaceID);
+                                                                    wavesChanged |= newWaves.removeIf(w -> Objects.equals(w.getRace().getID(), oldRaceID));
                                                                 }
                                                             }
                                                         }
-                                                        
-                                                        p.getRegID2RaceIDDMap().put(rsuReg.optIntegerObject("registration_id"),event);
+
+                                                        // Make sure they are in the right wave for this race
+                                                        Wave targetWave = waveForRace(race, p.getBib(), defaultWave);
+                                                        Optional<Wave> existingWave = newWaves.stream().filter(w -> Objects.equals(w.getRace().getID(), race.getID())).findFirst();
+                                                        if (existingWave.isEmpty()) {
+                                                            logger.debug("RSUSync: adding {} to {} ({})", p.fullNameProperty().getValueSafe(), race.getRaceName(), targetWave.getWaveName());
+                                                            newWaves.add(targetWave);
+                                                            wavesChanged = true;
+                                                        } else if (multipleWaves && existingWave.get() != targetWave) {
+                                                            logger.debug("RSUSync: moving {} from wave {} to {}", p.fullNameProperty().getValueSafe(), existingWave.get().getWaveName(), targetWave.getWaveName());
+                                                            newWaves.remove(existingWave.get());
+                                                            newWaves.add(targetWave);
+                                                            wavesChanged = true;
+                                                        } else logger.trace("RSUSync: participant was already in this race/wave");
+
+                                                        if (wavesChanged) p.setWaves(newWaves);
+
+                                                        p.getRegID2RaceIDDMap().put(rsuRegID,event);
                                                            
                                                         
                                                         platformDone.countDown();
@@ -459,8 +460,8 @@ public class RunSignUpDAO {
                                                     if (p.getID() > 0) partDAO.updateParticipant(p);
                                                     else partDAO.addParticipant(p);
                                                     
-                                                    regIDtoParticipantMap.put(rsuReg.optIntegerObject("registration_id"), p);
-                                                    userIDtoParticipantMap.put(p.getRegUserID(), p);
+                                                    regIDtoParticipantMap.put(rsuRegID, p);
+                                                    if (p.getRegUserID() != null) userIDtoParticipantMap.put(p.getRegUserID(), p);
                                                     
                                                     updateMessage(p.fullNameProperty().getValueSafe());
                                                     
@@ -541,16 +542,30 @@ public class RunSignUpDAO {
                                                     if (regIDtoParticipantMap.containsKey(regID)) {
                                                         Participant p = regIDtoParticipantMap.get(regID);
                                                         logger.trace("RSUSync: Found existing RSU RegistrationID {} for {}", regID, p.fullNameProperty().toString() );
-                                                        
-                                                        // Remove the participant from the race/wave
-                                                        Set<Wave> waves = new HashSet();
-                                                        p.wavesObservableList().forEach(w -> {
-                                                            if (!Objects.equals(w.getRace().getID(), race.getID())) waves.add(w);
-                                                        });
-                                                        p.setWaves(waves);
-                                                        
+
+                                                        // If this registration now maps to a different event (it was moved),
+                                                        // it is still active. Leave it alone.
+                                                        Integer mappedEvent = p.getRegID2RaceIDDMap().get(regID);
+                                                        if (mappedEvent != null && !mappedEvent.equals(event)) {
+                                                            logger.debug("RSUSync: Removed RegID {} for {} is now mapped to RSU event {}, not {}. Skipping.", regID, p.fullNameProperty().getValueSafe(), mappedEvent, event);
+                                                            continue;
+                                                        }
+
                                                         // Cleanup the regid -> wave map
                                                         p.getRegID2RaceIDDMap().remove(regID);
+
+                                                        // Remove the participant from the race/wave unless another
+                                                        // registration still puts them in this race
+                                                        if (otherRegInRace(p, regID, race.getID())) {
+                                                            logger.debug("RSUSync: {} has another registration for {}, keeping them in the race", p.fullNameProperty().getValueSafe(), race.getRaceName());
+                                                        } else {
+                                                            Set<Wave> waves = new HashSet();
+                                                            p.wavesObservableList().forEach(w -> {
+                                                                if (!Objects.equals(w.getRace().getID(), race.getID())) waves.add(w);
+                                                            });
+                                                            logger.debug("RSUSync: removing {} from {}", p.fullNameProperty().getValueSafe(), race.getRaceName());
+                                                            p.setWaves(waves);
+                                                        }
 
                                                         // if they are no longer registered for anything, delete them
                                                         if (p.getWaveIDs().isEmpty()) {
@@ -671,12 +686,30 @@ public class RunSignUpDAO {
 
     }
 
+    // Only one push to RSU at a time. Overlapping runs would submit the same
+    // adds / transfers more than once.
+    private final ReentrantLock syncToRSULock = new ReentrantLock();
+
     public Boolean syncToRSU() {
         logger.debug("Init: syncToRSU()");
 
-        
-        Boolean noErrors = true; 
-        
+        if (!syncToRSULock.tryLock()) {
+            // Someone else is already pushing. Wait for them to finish and then
+            // run again so that anything flagged after they started is picked up.
+            logger.debug("syncToRSU(): another sync to RSU is in progress, waiting for it to finish");
+            syncToRSULock.lock();
+        }
+        try {
+            return doSyncToRSU();
+        } finally {
+            syncToRSULock.unlock();
+        }
+    }
+
+    private Boolean doSyncToRSU() {
+
+        Boolean noErrors = true;
+
         if (rsuConfig.getBiDiSync()) {
         
             // Look for new participants and create them
@@ -691,16 +724,22 @@ public class RunSignUpDAO {
             logger.debug("RunSignUpDAO::syncToRSU() swapRSUEvents() returned {}",noErrors);
 
             // Look for deleted participants and delete them
-            List<Participant> toBeDeleted = new ArrayList();
-            partDAO.listParticipants().forEach(p -> {
-                
-                if (p.getWaveIDs().isEmpty()) {
-                    toBeDeleted.add(p);
-                    logger.debug("Participant {} is in no races. Marking for deletion.",p.fullNameProperty().getValue());
-                }
-            });
-            if (! toBeDeleted.isEmpty()) partDAO.blockingRemoveParticipants(toBeDeleted);
-            
+            // Only do this if everything above succeeded so we don't drop a local
+            // participant whose RSU changes are still pending.
+            if (noErrors) {
+                List<Participant> toBeDeleted = new ArrayList();
+                partDAO.listParticipants().forEach(p -> {
+
+                    if (p.getWaveIDs().isEmpty()) {
+                        toBeDeleted.add(p);
+                        logger.debug("Participant {} is in no races. Marking for deletion.",p.fullNameProperty().getValue());
+                    }
+                });
+                if (! toBeDeleted.isEmpty()) partDAO.blockingRemoveParticipants(toBeDeleted);
+            } else {
+                logger.debug("syncToRSU(): errors pushing to RSU, skipping the removal of participants with no races");
+            }
+
             // if no issues, clear the rsuSyncNeeded flag
             if (noErrors){
                 partDAO.listParticipants().forEach(p -> {
@@ -722,7 +761,6 @@ public class RunSignUpDAO {
            
         List<Registration> transfers = new ArrayList();
         Map<Integer,List<Registration>> adds = new ConcurrentHashMap();
-        List<Registration> removes = new ArrayList();
         
         Boolean isOK = true; 
         
@@ -746,7 +784,12 @@ public class RunSignUpDAO {
                     logger.trace("Checking rsuRegID {} -> {}",reg,p.getRegID2RaceIDDMap().get(reg));
                     Integer rsuEventID = p.getRegID2RaceIDDMap().get(reg);
                     Integer pikaRaceID = rsuConfig.getRSUEventMap().get(rsuEventID);
-                    Race race = raceDAO.getRaceByID(pikaRaceID);
+                    Race race = (pikaRaceID == null || pikaRaceID.equals(-1)) ? null : raceDAO.getRaceByID(pikaRaceID);
+                    if (race == null) {
+                        logger.warn("swapRSUEvents(): RSU RegID {} for {} is in RSU event {} which is not mapped to a Pika race. Skipping.",
+                                reg, p.fullNameProperty().getValueSafe(), rsuEventID);
+                        continue;
+                    }
                     races.add(race); // we use this in the "events to add" below
                     logger.debug("Checking if we are still in {}...", race.getRaceName());
                     Boolean isValid = false;
@@ -781,9 +824,11 @@ public class RunSignUpDAO {
                         Registration r = new Registration(regIDsToRemove.removeFirst(), rsuEventsToAdd.removeFirst(),null,p);
                         transfers.add(r);
                     }
+                    // RSU does not permit deleting registrations via the API.
+                    // Leave any unpaired registrations in place.
                     for(Integer a: regIDsToRemove) {
-                        Registration r = new Registration(a, null, null, p);
-                        removes.add(r);
+                        logger.warn("swapRSUEvents(): {} is no longer in the race for RSU RegID {} (event {}), but RSU registrations cannot be removed via the API. Leaving it in place.",
+                                p.fullNameProperty().getValueSafe(), a, p.getRegID2RaceIDDMap().get(a));
                     }
                     for (Integer a: rsuEventsToAdd){
                         if (!adds.containsKey(a)) adds.put(a, new ArrayList());
@@ -794,7 +839,7 @@ public class RunSignUpDAO {
             }
         });
 
-        logger.trace("swapRSUEvents(): participant scan finished: transfers: {} adds: {} removes: {}",transfers.size(),adds.size(),removes.size());
+        logger.trace("swapRSUEvents(): participant scan finished: transfers: {} adds: {}",transfers.size(),adds.size());
                 
         // Process the transfers, adds, and deletes
         
@@ -845,37 +890,41 @@ public class RunSignUpDAO {
                     logger.trace("RAW RSU switch-participant response.body(): {}",response.body());
                     // pull in the response to snag the new registration ID's
                     // and then update the participant records
-                    if (response.body().startsWith("{")) { 
-                        try {
-                            JSONObject rsuResponse = new JSONObject(response.body());
-                            logger.trace("RSU switch-participant Response: {} ",rsuResponse.toString(4));
-                            if (!rsuResponse.has("participants")) {
-                                logger.debug("No participants returned.");
-                            } else {
-                                JSONArray results = rsuResponse.getJSONArray("participants");
-                                logger.trace(results.toString(4));
+                    // RSU returns the new registration ids in the same order as the request
+                    // (the registration id changes on a switch). If anything looks off we keep
+                    // the existing mappings rather than guess.
+                    try {
+                        JSONObject rsuResponse = new JSONObject(response.body());
+                        logger.trace("RSU switch-participant Response: {} ",rsuResponse.toString(4));
+                        if (rsuResponse.has("error") || rsuResponse.has("error_details")) {
+                            isOK = false;
+                            logger.error("RSU switch-participant-events returned an error: {}", response.body());
+                        } else if (!rsuResponse.has("participants")) {
+                            isOK = false;
+                            logger.error("RSU switch-participant-events returned no participants for {} transfers: {}", transfers.size(), response.body());
+                        } else {
+                            JSONArray results = rsuResponse.getJSONArray("participants");
+                            logger.trace(results.toString(4));
 
+                            if (results.length() != transfers.size()) {
+                                isOK = false;
+                                logger.error("RSU switch-participant-events: sent {} transfers but got {} results back. Not updating registration ids.", transfers.size(), results.length());
+                            } else {
                                 for (int j = 0; j < results.length(); j++) {
-                                    JSONObject rsuReg = results.getJSONObject(j);
-                                    Integer newRegID = rsuReg.getInt("registration_id");
+                                    Integer newRegID = results.getJSONObject(j).getInt("registration_id");
                                     Registration r = transfers.get(j);
                                     Participant p = r.participant;
-                                    p.getRegID2RaceIDDMap().remove(r.rsuRegID);
+                                    if (!newRegID.equals(r.rsuRegID)) p.getRegID2RaceIDDMap().remove(r.rsuRegID);
                                     p.getRegID2RaceIDDMap().put(newRegID,r.newRSUEventID);
                                     logger.debug("RSU Switch Event: Old rsuID: {} New rsuID: {} New EventID: {} Participant: {}", r.rsuRegID, newRegID, r.newRSUEventID, p.fullNameProperty().getValueSafe());
                                     partDAO.updateParticipant(p);
-                                } 
-                            }      
-                        } catch (Exception e){
-                            isOK = false;
-                            logger.error("Exception in RSU participant transfer: {}",e.getMessage(),e);
+                                }
+                            }
                         }
+                    } catch (Exception e){
+                        isOK = false;
+                        logger.error("Exception in RSU participant transfer: {} Response: {}",e.getMessage(), response.body(), e);
                     }
-                    
-                    transfers.forEach(r -> {
-                        r.participant.getRegID2RaceIDDMap().remove(r.rsuRegID);
-                        partDAO.updateParticipant(r.participant);
-                    });
 
                 } else {
                     logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
@@ -951,138 +1000,81 @@ public class RunSignUpDAO {
                 logger.debug("RSUSync: No pending uploads");
             } else {
                 for(Integer event: updatesMap.keySet()){
-                    StringBuilder rsuURL = new StringBuilder();
-                    rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
-                    rsuURL.append("/participants?format=json");
+                    // Send each add as its own request so that the response (new
+                    // registration id or error) maps unambiguously to one participant.
+                    // RSU does not document per-item positions in batch error responses.
+                    JSONArray eventAdds = updatesMap.get(event);
+                    List<Registration> a = adds.get(event);
+                    for (int idx = 0; idx < eventAdds.length(); idx++) {
+                        Participant part = a.get(idx).participant;
 
-                    // log it now before we tack on the key and secret
-                    logger.debug("Add participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
+                        StringBuilder rsuURL = new StringBuilder();
+                        rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
+                        rsuURL.append("/participants?format=json");
 
-                    JSONObject postData = new JSONObject();
-                    postData.put("participants", updatesMap.get(event));
+                        // log it now before we tack on the key and secret
+                        logger.debug("Add participant request for race_id={} and event_id={} for {}: {}", rsuConfig.rsuRaceID, event, part.fullNameProperty().getValueSafe(), rsuURL.toString());
 
-                    StringBuilder postString = new StringBuilder();
-                    postString.append("event_id=").append(event);
-                    postString.append("&restrict_potential_dup=F&clear_null_corrals=F&request_format=json");
-                    postString.append("&request=").append(postData.toString());
+                        JSONObject postData = new JSONObject();
+                        postData.put("participants", new JSONArray().put(eventAdds.get(idx)));
 
+                        StringBuilder postString = new StringBuilder();
+                        postString.append("event_id=").append(event);
+                        postString.append("&restrict_potential_dup=F&clear_null_corrals=F&request_format=json");
+                        postString.append("&request=").append(postData.toString());
 
-                    logger.debug("Update Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
-                    HttpRequest request = authorizedRequest(rsuURL, currentAuth())
-                            .header("Content-Type", "application/x-www-form-urlencoded")
-                            .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
-                            .build();
-                    request.bodyPublisher().get().toString();
-                    HttpClient client = HttpClient.newHttpClient();
-                    try {
-                        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                        if (response.statusCode() == 200) {
-                            logger.debug("RSU add Participants Response: {}",response.body());
-                            JSONObject rsuResponse = new JSONObject(response.body());
-                            
-                            if (rsuResponse.has("participants")) {
-                                JSONArray adds_response_array = rsuResponse.getJSONArray("participants");
+                        logger.debug("Add Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
+                        HttpRequest request = authorizedRequest(rsuURL, currentAuth())
+                                .header("Content-Type", "application/x-www-form-urlencoded")
+                                .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
+                                .build();
+                        HttpClient client = HttpClient.newHttpClient();
+                        try {
+                            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                            if (response.statusCode() == 200) {
+                                logger.debug("RSU add Participants Response: {}",response.body());
+                                JSONObject rsuResponse = new JSONObject(response.body());
 
-                                List<Registration> a = adds.get(event);
-                                if (a.size() == adds_response_array.length()) {
-                                    for (int j = 0; j < adds_response_array.length(); j++) {
-                                        JSONObject rsuReg = adds_response_array.getJSONObject(j);
-                                        a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("registration_id"), event);
-                                        partDAO.updateParticipant(a.get(j).participant);
-                                    }
-                                } else {
-                                    logger.error("Issue in adding participants to event: Add list size does not equal response! {} adds and {} returned!",a.size(),adds_response_array.length());
-                                }
-                            } else {
-                                logger.debug("Error in RSU Response, looking for dup regID matches");
-                                if (rsuResponse.has("error_details")) {
+                                if (rsuResponse.has("participants") && rsuResponse.getJSONArray("participants").length() == 1) {
+                                    Integer newRegID = rsuResponse.getJSONArray("participants").getJSONObject(0).getInt("registration_id");
+                                    part.getRegID2RaceIDDMap().put(newRegID, event);
+                                    partDAO.updateParticipant(part);
+                                    logger.debug("RSU Add: {} added to RSU event {} with RegID {}", part.fullNameProperty().getValueSafe(), event, newRegID);
+                                } else if (rsuResponse.has("error_details")) {
+                                    // Look for a regID match (517) for this single participant
                                     JSONArray rsuError = rsuResponse.getJSONArray("error_details");
-                                    List<Registration> a = adds.get(event);
+                                    boolean matched = false;
                                     for (int j = 0; j < rsuError.length(); j++) {
-                                        JSONObject rsuReg = rsuError.getJSONObject(j);
-                                        if (rsuReg.getInt("error_code") == 517) { // reg id match
-                                            logger.debug("We have a regID match! Adjusting...");
-                                            a.get(j).participant.getRegID2RaceIDDMap().put(rsuReg.getInt("detailed_desc"), event);
-                                            a.get(j).participant.setRegSyncNeeded(false);
-                                            partDAO.updateParticipant(a.get(j).participant);
+                                        JSONObject rsuErr = rsuError.getJSONObject(j);
+                                        if (rsuErr.optInt("error_code") == 517 && rsuErr.optString("detailed_desc").matches("^\\d+$")) { // reg id match
+                                            Integer matchRegID = Integer.valueOf(rsuErr.optString("detailed_desc"));
+                                            logger.debug("RSU Add: {} matched existing RegID {} in event {}", part.fullNameProperty().getValueSafe(), matchRegID, event);
+                                            part.getRegID2RaceIDDMap().put(matchRegID, event);
+                                            partDAO.updateParticipant(part);
+                                            matched = true;
                                         }
                                     }
+                                    if (!matched) {
+                                        logger.error("RSU Add: error adding {} to RSU event {}: {}", part.fullNameProperty().getValueSafe(), event, response.body());
+                                        isOK = false;
+                                    }
+                                } else {
+                                    logger.error("RSU Add: unexpected response adding {} to RSU event {}: {}", part.fullNameProperty().getValueSafe(), event, response.body());
+                                    isOK = false;
                                 }
+                            } else {
+                                logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                                isOK = false;
                             }
-                        } else {
-                            logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                        } catch (Exception ex) {
+                            logger.warn("Exception in swapRSUEvents adds: {}",ex.getMessage(),ex);
                             isOK = false;
                         }
-                    } catch (Exception ex) {
-                        logger.warn("Exception in updateParticipants: {}",ex.getMessage(),ex);
-                        isOK = false;
                     }
                 }
             }
         }
-        
-        //////////////
-        // Removes
-        //////////////
-        if (! removes.isEmpty()) {
-            
-            JSONArray removesJSONArray = new JSONArray();
-            removes.forEach(r -> {
-                JSONObject o = new JSONObject();
-                o.put("registration_id", r.rsuRegID);
-                removesJSONArray.put(o);
-            });
 
-            JSONObject removesPostData = new JSONObject();
-            removesPostData.put("registrations", removesJSONArray);
-
-        
-
-            StringBuilder rsuURL = new StringBuilder();
-            rsuURL.append("https://runsignup.com/Rest/race/").append(rsuConfig.rsuRaceID);
-            rsuURL.append("/delete-participants?format=json");
-
-            // log it now before we tack on the key and secret
-            logger.debug("Delete Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
-
-            StringBuilder postString = new StringBuilder();
-            postString.append("race_id=").append(rsuConfig.rsuRaceID);
-            postString.append("&transfer_bibs=T&request_format=json");
-            postString.append("&request=").append(removesPostData.toString());
-
-
-            logger.debug("Delete Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
-            HttpRequest request = authorizedRequest(rsuURL, currentAuth())
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
-                    .build();
-            request.bodyPublisher().get().toString();
-            HttpClient client = HttpClient.newHttpClient();
-            try {
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-                if (response.statusCode() == 200) {
-                    // TODO: Look for error response because RSU sends them with 200's :-/ 
-                    logger.trace("RSU delete-participants Response: {}",response.body());
-                    
-                    removes.forEach(r -> {
-                        r.participant.getRegID2RaceIDDMap().remove(r.rsuRegID);
-                        partDAO.updateParticipant(r.participant);
-                    });
-
-                } else {
-                    logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
-                    // TODO: Alert Dialog Box
-                    isOK = false;
-                }
-            } catch (Exception ex) {
-                logger.warn("Exception in removeDeletedParticipants: {}", ex.getMessage(),ex);
-                // TODO: Alert Dialog Box
-                isOK = false;
-            }
-
-        }            
-                    
         logger.trace("swapRSUEvents complete. ");
         return isOK;
         
@@ -1261,10 +1253,22 @@ public class RunSignUpDAO {
                     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
                     if (response.statusCode() == 200) {
-                        // TODO: Catch restrict_potential_dup issues 
+                        // TODO: Catch restrict_potential_dup issues
                         logger.debug("RSU updateParticipants Response: {}",response.body());
+                        // RSU can return errors with a 200
+                        try {
+                            JSONObject rsuResponse = new JSONObject(response.body());
+                            if (rsuResponse.has("error") || rsuResponse.has("error_details")) {
+                                logger.warn("RSU updateParticipants returned an error for event {}: {}", event, response.body());
+                                noIssues.set(false);
+                            }
+                        } catch (Exception jex) {
+                            logger.warn("RSU updateParticipants: unable to parse the response for event {}: {}", event, response.body());
+                            noIssues.set(false);
+                        }
                     } else {
                         logger.warn("RSU error Response of {} {}",response.statusCode(),response.body());
+                        noIssues.set(false);
                     }
                 } catch (Exception ex) {
                     logger.warn("Exception in updateParticipants: {}",ex.getMessage(),ex);
@@ -2597,6 +2601,73 @@ public class RunSignUpDAO {
         }
     }
     
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Sync helpers
+    //
+    ////////////////////////////////////////////////////////////////////////
+
+    /**
+     * Is the Pika race linked to an RSU event?
+     */
+    public boolean isRaceMappedToRSU(Race r) {
+        if (r == null || !isSetup().get()) return false;
+        RSUConfig c = getRSUConfig();
+        return c.raceToEventMap != null && c.raceToEventMap.get(r.getID()) != null && !c.raceToEventMap.get(r.getID()).equals(-1);
+    }
+
+    /**
+     * RSU registrations can not be removed via the API. A change to a
+     * participant's waves is only allowed if every RSU registration can either
+     * stay in its race or be transferred to another race that is linked to an
+     * RSU event.
+     */
+    public boolean allowsWaveChange(Participant p, Collection<Wave> newWaves) {
+        if (p == null || !isSetup().get() || p.getRegID2RaceIDDMap().isEmpty()) return true;
+        RSUConfig c = getRSUConfig();
+
+        // Pika races that the participant currently has RSU registrations for
+        Set<Integer> registeredRaces = new HashSet<>();
+        p.getRegID2RaceIDDMap().values().forEach(ev -> {
+            Integer raceID = c.eventToRaceMap == null ? null : c.eventToRaceMap.get(ev);
+            if (raceID != null && !raceID.equals(-1)) registeredRaces.add(raceID);
+        });
+
+        // Pika races in the new set of waves that are linked to an RSU event
+        Set<Integer> newMappedRaces = new HashSet<>();
+        newWaves.forEach(w -> { if (w != null && isRaceMappedToRSU(w.getRace())) newMappedRaces.add(w.getRace().getID()); });
+
+        boolean ok = newMappedRaces.size() >= registeredRaces.size();
+        logger.debug("allowsWaveChange: {} has RSU registrations for races {}, new RSU linked races {}: {}",
+                p.fullNameProperty().getValueSafe(), registeredRaces, newMappedRaces, ok ? "allowed" : "blocked");
+        return ok;
+    }
+
+    /**
+     * Does the participant have an RSU registration (other than excludeRegID)
+     * that maps to the given Pika race?
+     */
+    private boolean otherRegInRace(Participant p, Integer excludeRegID, Integer pikaRaceID) {
+        for (Map.Entry<Integer,Integer> e : p.getRegID2RaceIDDMap().entrySet()) {
+            if (Objects.equals(e.getKey(), excludeRegID)) continue;
+            if (Objects.equals(rsuConfig.eventToRaceMap.get(e.getValue()), pikaRaceID)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The wave in the given race for this bib, or the default wave if the
+     * bib does not map to a wave in this race.
+     */
+    private Wave waveForRace(Race race, String bib, Wave defaultWave) {
+        if (race.getWaves().size() <= 1 || bib == null || bib.isBlank()) return defaultWave;
+        for (Wave w : partDAO.getWaveByBib(bib)) {
+            if (Objects.equals(w.getRace().getID(), race.getID())) return w;
+        }
+        logger.trace("waveForRace: bib {} does not map to a wave in {}, using the default wave {}", bib, race.getRaceName(), defaultWave.getWaveName());
+        return defaultWave;
+    }
+
     record Registration(Integer rsuRegID, Integer newRSUEventID, Integer newPikaRaceID, Participant participant) { };
 
 }

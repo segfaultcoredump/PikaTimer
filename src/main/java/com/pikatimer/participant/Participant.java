@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -593,14 +594,16 @@ public class Participant {
     
     public void setWaves(List<Wave> w) {
         logger.debug("SetWaves(List) called with " + w.size());
-        waves.setAll(w);
+        // copy first: ObservableList.setAll() clears before adding, so
+        // passing our own waves list (or a view of it) would empty it.
+        waves.setAll(new ArrayList<>(w));
         waveIDSet = new HashSet();
         waves.stream().forEach(n -> {waveIDSet.add(n.getID());});
         Platform.runLater(() -> wavesChangedCounterProperty.setValue(wavesChangedCounterProperty.get()+1));
     }
     public void setWaves(Set<Wave> w){
         logger.debug("SetWaves(Set) called with " + w.size());
-        waves.setAll(w);
+        waves.setAll(new ArrayList<>(w));
         waveIDSet = new HashSet();
         waves.stream().forEach(n -> {waveIDSet.add(n.getID());});
         Platform.runLater(() -> wavesChangedCounterProperty.setValue(wavesChangedCounterProperty.get()+1));

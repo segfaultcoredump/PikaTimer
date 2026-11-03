@@ -218,8 +218,12 @@ public class RunSignUpDAO {
                 updateProgress(0, 100);
 
                 // if we are useing a username / password, (re)generate the tmp_key and tmp_secret
-                if (!rsuConfig.rsuLoginType.equals("API")) {
+                // if we are using OAuth, make sure the access token is still good
+                logger.debug("syncFromRSU: using login type {}", rsuConfig.rsuLoginType);
+                if (RSUConfig.LOGIN_PASSWORD.equals(rsuConfig.rsuLoginType)) {
                     updateRSUKeys();
+                } else if (RSUConfig.LOGIN_OAUTH.equals(rsuConfig.rsuLoginType)) {
+                    ensureFreshToken(false);
                 }
                 
                 
@@ -271,18 +275,8 @@ public class RunSignUpDAO {
                                 
                                 // log it now before we tack on the key and secret
                                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
-                                
-                                if (rsuConfig.rsuLoginType.equals("API")) {
-                                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-                                } else {
-                                    updateRSUKeys();
-                                    rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                                    rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-                                }
-                                
-                                HttpRequest request = HttpRequest.newBuilder()
-                                        .uri(URI.create(rsuURL.toString()))
+
+                                HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                                         .build();
 
                                 HttpClient client = HttpClient.newHttpClient();
@@ -479,10 +473,11 @@ public class RunSignUpDAO {
                                             page++;
                                         } else {
                                             logger.error("Error in RSU Participant request: {} ", response.body());
-                                            updateRSUKeys();
+                                            handleAuthFailure();
                                         }
                                     } else {
                                         logger.error("Error in RSU response: {} ", response.body());
+                                        if (response.statusCode() == 401 || response.statusCode() == 403) handleAuthFailure();
                                     }
                                 } catch (Exception ex) {
                                     logger.error("Exception in HttpClient response: ", ex);
@@ -491,7 +486,7 @@ public class RunSignUpDAO {
                         } catch (Exception ex) {
                             logger.debug("RSU sync Exception: " + ex.getMessage());
                         }
-                        
+
                         updateProgress(++eventsProcessed, eventsToProcess);
                     }
                 }
@@ -520,17 +515,7 @@ public class RunSignUpDAO {
                                 // log it now before we tack on the key and secret
                                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
-                                if (rsuConfig.rsuLoginType.equals("API")) {
-                                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-                                } else {
-                                    updateRSUKeys();
-                                    rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                                    rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-                                }
-
-                                HttpRequest request = HttpRequest.newBuilder()
-                                        .uri(URI.create(rsuURL.toString()))
+                                HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                                         .build();
 
                                 HttpClient client = HttpClient.newHttpClient();
@@ -588,10 +573,11 @@ public class RunSignUpDAO {
                                             page++;
                                         } else {
                                             logger.error("Error in RSU Participant request: {} ", response.body());
-                                            updateRSUKeys();
+                                            handleAuthFailure();
                                         }
                                     } else {
                                         logger.error("Error in RSU response: {} ", response.body());
+                                        if (response.statusCode() == 401 || response.statusCode() == 403) handleAuthFailure();
                                     }
                                 } catch (Exception ex) {
                                     logger.error("Exception in HttpClient response: ", ex);
@@ -838,16 +824,6 @@ public class RunSignUpDAO {
             // log it now before we tack on the key and secret
             logger.debug("Swap Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
 
-            if (rsuConfig.rsuLoginType.equals("API")) {
-                rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-            } else {
-                updateRSUKeys();
-                rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-            }
-
-
             StringBuilder postString = new StringBuilder();
             postString.append("race_id=").append(rsuConfig.rsuRaceID);
             postString.append("&transfer_bibs=T&request_format=json");
@@ -855,8 +831,7 @@ public class RunSignUpDAO {
 
 
             logger.debug("Transfer Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(rsuURL.toString()))
+            HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
                     .build();
@@ -983,16 +958,6 @@ public class RunSignUpDAO {
                     // log it now before we tack on the key and secret
                     logger.debug("Add participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
-                    if (rsuConfig.rsuLoginType.equals("API")) {
-                        rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                        rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-                    } else {
-                        updateRSUKeys();
-                        rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                        rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-                    }
-
-
                     JSONObject postData = new JSONObject();
                     postData.put("participants", updatesMap.get(event));
 
@@ -1003,8 +968,7 @@ public class RunSignUpDAO {
 
 
                     logger.debug("Update Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .uri(URI.create(rsuURL.toString()))
+                    HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                             .header("Content-Type", "application/x-www-form-urlencoded")
                             .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
                             .build();
@@ -1081,16 +1045,6 @@ public class RunSignUpDAO {
             // log it now before we tack on the key and secret
             logger.debug("Delete Participant request for race_id={}: {}", rsuConfig.rsuRaceID, rsuURL.toString());
 
-            if (rsuConfig.rsuLoginType.equals("API")) {
-                rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-            } else {
-                updateRSUKeys();
-                rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-            }
-
-
             StringBuilder postString = new StringBuilder();
             postString.append("race_id=").append(rsuConfig.rsuRaceID);
             postString.append("&transfer_bibs=T&request_format=json");
@@ -1098,8 +1052,7 @@ public class RunSignUpDAO {
 
 
             logger.debug("Delete Participant request for race_id={}\n {}", rsuConfig.rsuRaceID,postString.toString());
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(rsuURL.toString()))
+            HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
                     .build();
@@ -1288,16 +1241,6 @@ public class RunSignUpDAO {
                 // log it now before we tack on the key and secret
                 logger.debug("Participant request for race_id={} and event_id={}: {}", rsuConfig.rsuRaceID, event, rsuURL.toString());
 
-                if (rsuConfig.rsuLoginType.equals("API")) {
-                    rsuURL.append("&api_key=").append(rsuConfig.rsuKey);
-                    rsuURL.append("&api_secret=").append(rsuConfig.rsuSecret);
-                } else {
-                    updateRSUKeys();
-                    rsuURL.append("&tmp_key=").append(rsuConfig.rsuTempKey);
-                    rsuURL.append("&tmp_secret=").append(rsuConfig.rsuTempSecret);
-                }
-
-
                 JSONObject postData = new JSONObject();
                 postData.put("participants", updatesMap.get(event));
 
@@ -1308,8 +1251,7 @@ public class RunSignUpDAO {
 
 
                 logger.debug("Update Participant request for race_id={} and event_id={}: {} \n {}", rsuConfig.rsuRaceID, event ,postString.toString());
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(rsuURL.toString()))
+                HttpRequest request = authorizedRequest(rsuURL, currentAuth())
                         .header("Content-Type", "application/x-www-form-urlencoded")
                         .POST(HttpRequest.BodyPublishers.ofString(postString.toString()))
                         .build();
@@ -1426,9 +1368,28 @@ public class RunSignUpDAO {
         // RSU Login Type
         if (rsuConf.rsuLoginType != null) {
             setupData.put("rsuLoginType", rsuConf.rsuLoginType);
+            logger.debug("RSU Wizard: login type {} pre-filled from the event DB", rsuConf.rsuLoginType);
         } else {
             setupData.put("rsuLoginType", pikaPrefs.get("rsuLoginType", ""));
+            logger.debug("RSU Wizard: login type '{}' pre-filled from the global preferences", setupData.get("rsuLoginType"));
         }
+
+        // RSU OAuth tokens (event DB only) and username (event DB, then global prefs)
+        if (RSUConfig.LOGIN_OAUTH.equals(rsuConf.rsuLoginType) && rsuConf.rsuRefreshToken != null && !rsuConf.rsuRefreshToken.isBlank()) {
+            setupData.put("rsuAccessToken", rsuConf.rsuAccessToken == null ? "" : rsuConf.rsuAccessToken);
+            setupData.put("rsuRefreshToken", rsuConf.rsuRefreshToken);
+            setupData.put("rsuTokenExpires", rsuConf.rsuTokenExpires.toString());
+            logger.debug("RSU Wizard: existing OAuth tokens found in the event DB (access={}, refresh={}, expires={})",
+                    RSUOAuthClient.mask(rsuConf.rsuAccessToken), RSUOAuthClient.mask(rsuConf.rsuRefreshToken), Instant.ofEpochSecond(rsuConf.rsuTokenExpires));
+        } else {
+            logger.debug("RSU Wizard: no existing OAuth tokens in the event DB");
+        }
+        if (rsuConf.rsuOAuthUser != null && !rsuConf.rsuOAuthUser.isBlank()) {
+            setupData.put("rsuOAuthUser", rsuConf.rsuOAuthUser);
+        } else {
+            setupData.put("rsuOAuthUser", pikaPrefs.get("rsuOAuthUser", ""));
+        }
+        logger.debug("RSU Wizard: default OAuth user '{}'", setupData.get("rsuOAuthUser"));
 
         // Event Date
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -1479,29 +1440,62 @@ public class RunSignUpDAO {
         rsuLoginGrid.setVgap(10);
         rsuLoginGrid.setHgap(10);
 
+        final String loginV1Label = "API Key/Secret (v1)";
+        final String loginV2Label = "API Key/Secret (v2)";
+        final String loginOAuthLabel = "RunSignUp Login (OAuth)";
+
         rsuLoginGrid.add(new Label("Login Method:"), 0, row);
         ComboBox<String> rsuLoginTypeComboBox = new ComboBox<>();
-        rsuLoginTypeComboBox.getItems().addAll("API Key/Secret (v1)","API Key/Secret (v2)");
-        if (setupData.get("rsuLoginType").equals("API")) {
-            rsuLoginTypeComboBox.getSelectionModel().select("API Key/Secret (v1)");
+        rsuLoginTypeComboBox.getItems().addAll(loginV1Label, loginV2Label, loginOAuthLabel);
+        if (RSUConfig.LOGIN_API_V1.equals(setupData.get("rsuLoginType")) || RSUConfig.LOGIN_PASSWORD.equals(setupData.get("rsuLoginType"))) {
+            rsuLoginTypeComboBox.getSelectionModel().select(loginV1Label);
+        } else if (RSUConfig.LOGIN_OAUTH.equals(setupData.get("rsuLoginType"))) {
+            rsuLoginTypeComboBox.getSelectionModel().select(loginOAuthLabel);
         } else {
-            rsuLoginTypeComboBox.getSelectionModel().select("API Key/Secret (v2)");
+            rsuLoginTypeComboBox.getSelectionModel().select(loginV2Label);
         }
+        logger.debug("RSU Wizard: initial login method selection: {}", rsuLoginTypeComboBox.getSelectionModel().getSelectedItem());
         GridPane.setHgrow(rsuLoginTypeComboBox, Priority.ALWAYS);
         rsuLoginGrid.add(rsuLoginTypeComboBox, 1, row++);
 
-        rsuLoginGrid.add(new Label("Key:"), 0, row);
+        Label rsuKeyLabel = new Label("Key:");
+        rsuLoginGrid.add(rsuKeyLabel, 0, row);
         TextField rsuUsernameTextField = createTextField("rsuKey");
         rsuUsernameTextField.setText(setupData.get("rsuKey"));
         GridPane.setHgrow(rsuUsernameTextField, Priority.ALWAYS);
         rsuLoginGrid.add(rsuUsernameTextField, 1, row++);
 
-        rsuLoginGrid.add(new Label("Secret:"), 0, row);
+        Label rsuSecretLabel = new Label("Secret:");
+        rsuLoginGrid.add(rsuSecretLabel, 0, row);
         PasswordField rsuPasswordTextField = new PasswordField();
         GridPane.setHgrow(rsuPasswordTextField, Priority.ALWAYS);
         rsuPasswordTextField.setText(setupData.get("rsuSecret"));
         GridPane.setHgrow(rsuPasswordTextField, Priority.ALWAYS);
         rsuLoginGrid.add(rsuPasswordTextField, 1, row++);
+
+        // OAuth: Login button + current account
+        Label rsuAccountLabel = new Label("Account:");
+        rsuLoginGrid.add(rsuAccountLabel, 0, row);
+        Label oauthUserLabel = new Label();
+        if (setupData.containsKey("rsuRefreshToken")) {
+            oauthUserLabel.setText("Logged in as: " + (setupData.get("rsuOAuthUser").isBlank() ? "(unknown)" : setupData.get("rsuOAuthUser")));
+        } else if (!setupData.get("rsuOAuthUser").isBlank()) {
+            oauthUserLabel.setText("Not logged in (last used: " + setupData.get("rsuOAuthUser") + ")");
+        } else {
+            oauthUserLabel.setText("Not logged in");
+        }
+        Button oauthLoginButton = new Button("Login with RunSignUp");
+        if (!RSUOAuthClient.isConfigured()) {
+            oauthLoginButton.setDisable(true);
+            oauthUserLabel.setText("OAuth login is not available in this build");
+        }
+        Pane oauthSpring = new Pane();
+        HBox.setHgrow(oauthSpring, Priority.ALWAYS);
+        HBox oauthHBox = new HBox(oauthUserLabel, oauthSpring, oauthLoginButton);
+        oauthHBox.setSpacing(4);
+        oauthHBox.setAlignment(Pos.CENTER_LEFT);
+        GridPane.setHgrow(oauthHBox, Priority.ALWAYS);
+        rsuLoginGrid.add(oauthHBox, 1, row++);
 
         rsuLoginGrid.add(new Label("Status:"), 0, row);
         Button validateButton = new Button("Validate");
@@ -1513,6 +1507,27 @@ public class RunSignUpDAO {
         validateHBox.setAlignment(Pos.CENTER_LEFT);
         rsuLoginGrid.add(validateHBox, 1, row++);
 
+        // Show the key/secret fields or the OAuth login based on the login method
+        Runnable updateLoginFields = () -> {
+            boolean oauth = loginOAuthLabel.equals(rsuLoginTypeComboBox.getSelectionModel().getSelectedItem());
+            for (javafx.scene.Node n : List.of(rsuKeyLabel, rsuUsernameTextField, rsuSecretLabel, rsuPasswordTextField)) {
+                n.setVisible(!oauth);
+                n.setManaged(!oauth);
+            }
+            rsuAccountLabel.setVisible(oauth);
+            rsuAccountLabel.setManaged(oauth);
+            oauthHBox.setVisible(oauth);
+            oauthHBox.setManaged(oauth);
+        };
+        updateLoginFields.run();
+
+        rsuLoginTypeComboBox.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
+            logger.debug("RSU Wizard: login method changed from {} to {}", oldValue, newValue);
+            pane1OkayToGo.setValue(false);
+            loginSuccessLabel.setText("Unchecked");
+            updateLoginFields.run();
+        });
+
         // If the username or password fields change, force a re-validation
         rsuUsernameTextField.textProperty().addListener((observable, oldValue, newValue) -> {
             pane1OkayToGo.setValue(false);
@@ -1521,112 +1536,116 @@ public class RunSignUpDAO {
             pane1OkayToGo.setValue(false);
         });
 
-        validateButton.setOnAction((e) -> {
+        oauthLoginButton.setOnAction((e) -> {
+            logger.debug("RSU Wizard: starting OAuth browser login");
+            pane1OkayToGo.setValue(false);
+            oauthLoginButton.setDisable(true);
+            validateButton.setDisable(true);
+            loginSuccessLabel.setText("Waiting for the RunSignUp login in your browser...");
 
-            // Are we using an api_key/secret or a username / password
-            if (rsuLoginTypeComboBox.getSelectionModel().getSelectedItem().contains("Username")) {
-                StringBuilder postData = new StringBuilder();
-                postData.append("email=");
-                postData.append(URLEncoder.encode(rsuUsernameTextField.getText(), StandardCharsets.UTF_8));
-                postData.append("&password=");
-                postData.append(URLEncoder.encode(rsuPasswordTextField.getText(), StandardCharsets.UTF_8));
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("https://runsignup.com/Rest/login?format=json&supports_nb=T"))
-                        .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(HttpRequest.BodyPublishers.ofString(postData.toString()))
-                        .build();
-
-                HttpClient client = HttpClient.newHttpClient();
-
-                try {
-                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-                    if (response.statusCode() == 200) {
-                        JSONObject rsuResponse = new JSONObject(response.body());
-                        if (rsuResponse.has("tmp_key")) {
-                            pane1OkayToGo.setValue(true);
-                            loginSuccessLabel.setText("Valid");
-                            logger.debug("RSU Response: {}", response.body());
-
-                            setupData.put("rsuLoginType", "PASSWORD");
-                            setupData.put("rsuKey", rsuUsernameTextField.getText());
-                            setupData.put("rsuSecret", rsuPasswordTextField.getText());
-                            setupData.put("rsuTempKey", rsuResponse.getString("tmp_key"));
-                            setupData.put("rsuTempSecret", rsuResponse.getString("tmp_secret"));
-                            logger.debug(" RSU Temp Key/Secret: {} / {}", rsuResponse.get("tmp_key"), rsuResponse.get("tmp_secret"));
-                        } else {
-                            logger.error("Error in RSU Login: {} ", response.body());
-                            pane1OkayToGo.setValue(false);
-                            loginSuccessLabel.setText("Invalid Username or Password!");
-                        }
-                    } else {
-                        logger.error("Error in RSU Login: {} ", response.body());
-                        pane1OkayToGo.setValue(false);
-                        loginSuccessLabel.setText("Invalid Username or Password!");
-                    }
-
-                } catch (Exception ex) {
-                    logger.error("Exception in HttpClient response: ", ex);
-                    pane1OkayToGo.setValue(false);
-                    loginSuccessLabel.setText("Error in RSU Login Request");
+            Task<Map<String,String>> oauthTask = new Task<>() {
+                @Override
+                protected Map<String,String> call() throws Exception {
+                    RSUOAuthClient.TokenResult tokens = RSUOAuthClient.login();
+                    Map<String,String> result = new HashMap<>();
+                    result.put("rsuAccessToken", tokens.accessToken());
+                    result.put("rsuRefreshToken", tokens.refreshToken() == null ? "" : tokens.refreshToken());
+                    result.put("rsuTokenExpires", Long.toString(tokens.expiresAtEpoch()));
+                    result.put("rsuOAuthUser", RSUOAuthClient.lookupUser(tokens.accessToken()));
+                    String check = checkRSULogin(new RSUAuth(RSUConfig.LOGIN_OAUTH, null, null, tokens.accessToken(), null, null), setupData.get("eventDate"));
+                    if (check != null) result.put("error", check);
+                    return result;
                 }
+            };
+            oauthTask.setOnSucceeded(ev -> {
+                Map<String,String> result = oauthTask.getValue();
+                oauthLoginButton.setDisable(false);
+                validateButton.setDisable(false);
+                setupData.put("rsuAccessToken", result.get("rsuAccessToken"));
+                setupData.put("rsuRefreshToken", result.get("rsuRefreshToken"));
+                setupData.put("rsuTokenExpires", result.get("rsuTokenExpires"));
+                if (!result.get("rsuOAuthUser").isBlank()) setupData.put("rsuOAuthUser", result.get("rsuOAuthUser"));
+                oauthUserLabel.setText("Logged in as: " + (setupData.get("rsuOAuthUser").isBlank() ? "(unknown)" : setupData.get("rsuOAuthUser")));
+                if (result.containsKey("error")) {
+                    logger.debug("RSU Wizard: OAuth login succeeded but validation failed: {}", result.get("error"));
+                    loginSuccessLabel.setText(result.get("error"));
+                } else {
+                    logger.debug("RSU Wizard: OAuth login succeeded for user '{}'", setupData.get("rsuOAuthUser"));
+                    setupData.put("rsuLoginType", RSUConfig.LOGIN_OAUTH);
+                    loginSuccessLabel.setText("Valid");
+                    pane1OkayToGo.setValue(true);
+                }
+            });
+            oauthTask.setOnFailed(ev -> {
+                Throwable t = oauthTask.getException();
+                logger.debug("RSU Wizard: OAuth login failed: {}", t == null ? "unknown" : t.getMessage(), t);
+                oauthLoginButton.setDisable(false);
+                validateButton.setDisable(false);
+                loginSuccessLabel.setText("Login failed: " + (t == null ? "unknown error" : t.getMessage()));
+            });
+            Thread oauthThread = new Thread(oauthTask);
+            oauthThread.setDaemon(true);
+            oauthThread.start();
+        });
+
+        validateButton.setOnAction((e) -> {
+            String selected = rsuLoginTypeComboBox.getSelectionModel().getSelectedItem();
+            logger.debug("RSU Wizard: validating login method {}", selected);
+            pane1OkayToGo.setValue(false);
+
+            if (loginOAuthLabel.equals(selected)) {
+                // Validate using the existing tokens (refreshing them if needed)
+                if (!setupData.containsKey("rsuRefreshToken") || setupData.get("rsuRefreshToken").isBlank()) {
+                    logger.debug("RSU Wizard: no OAuth tokens to validate, login required");
+                    loginSuccessLabel.setText("Click 'Login with RunSignUp' to log in");
+                    return;
+                }
+                long expires = Long.parseLong(setupData.getOrDefault("rsuTokenExpires", "0"));
+                long remaining = expires - Instant.now().getEpochSecond();
+                logger.debug("RSU Wizard: existing OAuth access token expires in {}s", remaining);
+                if (remaining < 86400 || setupData.getOrDefault("rsuAccessToken", "").isBlank()) {
+                    try {
+                        logger.debug("RSU Wizard: refreshing OAuth access token");
+                        RSUOAuthClient.TokenResult t = RSUOAuthClient.refresh(setupData.get("rsuRefreshToken"));
+                        setupData.put("rsuAccessToken", t.accessToken());
+                        setupData.put("rsuRefreshToken", t.refreshToken());
+                        setupData.put("rsuTokenExpires", Long.toString(t.expiresAtEpoch()));
+                    } catch (Exception ex) {
+                        logger.debug("RSU Wizard: OAuth refresh failed: {}", ex.getMessage());
+                        setupData.remove("rsuRefreshToken");
+                        setupData.remove("rsuAccessToken");
+                        oauthUserLabel.setText("Not logged in");
+                        loginSuccessLabel.setText("Login expired. Click 'Login with RunSignUp'");
+                        return;
+                    }
+                }
+                String check = checkRSULogin(new RSUAuth(RSUConfig.LOGIN_OAUTH, null, null, setupData.get("rsuAccessToken"), null, null), setupData.get("eventDate"));
+                if (check == null) {
+                    setupData.put("rsuLoginType", RSUConfig.LOGIN_OAUTH);
+                    loginSuccessLabel.setText("Valid");
+                    pane1OkayToGo.setValue(true);
+                } else {
+                    loginSuccessLabel.setText(check);
+                }
+                logger.debug("RSU Wizard: OAuth validation result: {}", check == null ? "Valid" : check);
             } else {
                 // There is no login equivalent for the key/secret
                 // so we will just make a call to /Rest/races/ and
                 // see how many we get back
-                // get the list of from RSU
-                // https://runsignup.com/Rest/races?
-                // tmp_key=KEY&tmp_secret=SECRET
-                // &format=json&include_event_days=F&page=1&results_per_page=50&sort=name+ASC
-                // &start_date=2024-05-27&end_date=2024-05-27
-
-                StringBuilder requestURL = new StringBuilder();
-                requestURL.append("https://runsignup.com/Rest/races");
-                requestURL.append("?api_key=").append(rsuUsernameTextField.getText());
-                requestURL.append("&api_secret=").append(rsuPasswordTextField.getText());
-                requestURL.append("&format=json").append("&include_event_days=T&only_partner_races=T");
-                requestURL.append("&page=1&results_per_page=50&sort=name+ASC");
-                requestURL.append("&start_date=").append(setupData.get("eventDate"));
-                requestURL.append("&end_date=").append(setupData.get("eventDate"));
-
-                logger.debug("RSU Get Races Request URL: {}", requestURL.toString());
-
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(requestURL.toString()))
-                        .build();
-
-                HttpClient client = HttpClient.newHttpClient();
-
-                try {
-                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                    logger.debug("RSU Response: {} ", response.body());
-
-                    if (response.statusCode() == 200) {
-                        JSONObject rsuResponse = new JSONObject(response.body());
-                        if (rsuResponse.has("races")) {
-                            int responseSize = rsuResponse.getJSONArray("races").length();
-                            if (responseSize > 0 && responseSize <= 50) {
-                                pane1OkayToGo.setValue(true);
-                                loginSuccessLabel.setText("Valid");
-                                setupData.put("rsuLoginType", "API");
-                                setupData.put("rsuKey", rsuUsernameTextField.getText());
-                                setupData.put("rsuSecret", rsuPasswordTextField.getText());
-                            } else {
-                                loginSuccessLabel.setText("Invalid API Secret / Key: No races for " + setupData.get("eventDate"));
-                            }
-                        } else {
-                            logger.error("Error in RSU Login: {} ", response.body());
-                            loginSuccessLabel.setText("Invalid API Secret / Key");
-                        }
-                    } else {
-                        logger.error("Error in RSU Login: {} ", response.body());
-                        loginSuccessLabel.setText("Error in connecting to RunSignUp");
-                    }
-                } catch (Exception ex) {
-                    logger.error("Exception in HttpClient response: ", ex);
+                String type = loginV1Label.equals(selected) ? RSUConfig.LOGIN_API_V1 : RSUConfig.LOGIN_API_V2;
+                RSUAuth auth = new RSUAuth(type, rsuUsernameTextField.getText(), rsuPasswordTextField.getText(), null, null, null);
+                String check = checkRSULogin(auth, setupData.get("eventDate"));
+                if (check == null) {
+                    pane1OkayToGo.setValue(true);
+                    loginSuccessLabel.setText("Valid");
+                    setupData.put("rsuLoginType", type);
+                    setupData.put("rsuKey", rsuUsernameTextField.getText());
+                    setupData.put("rsuSecret", rsuPasswordTextField.getText());
+                } else {
+                    loginSuccessLabel.setText(check);
                 }
+                logger.debug("RSU Wizard: {} validation result: {}", type, check == null ? "Valid" : check);
             }
-
         });
 
         final WizardPane rsuLoginWizardPane = new WizardPane() {
@@ -1711,24 +1730,15 @@ public class RunSignUpDAO {
                 // &start_date=2024-05-27&end_date=2024-05-27
                 StringBuilder requestURL = new StringBuilder();
                 requestURL.append("https://runsignup.com/Rest/races");
-
-                if (setupData.get("rsuLoginType").equals("API")) {
-                    requestURL.append("?api_key=").append(setupData.get("rsuKey"));
-                    requestURL.append("&api_secret=").append(setupData.get("rsuSecret"));
-                    requestURL.append("&only_partner_races=T");
-                } else {
-                    requestURL.append("?tmp_key=").append(setupData.get("rsuTempKey"));
-                    requestURL.append("&tmp_secret=").append(setupData.get("rsuTempSecret"));
-                }
-                requestURL.append("&format=json").append("&include_event_days=T");
+                requestURL.append("?format=json").append("&include_event_days=T");
+                if (isAPIKeyLogin(setupData.get("rsuLoginType"))) requestURL.append("&only_partner_races=T");
                 requestURL.append("&page=1&results_per_page=50&sort=name+ASC");
                 requestURL.append("&start_date=").append(setupData.get("eventDate"));
                 requestURL.append("&end_date=").append(setupData.get("eventDate"));
 
                 logger.debug("RSU Get Races Request URL: {}", requestURL.toString());
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(requestURL.toString()))
+                HttpRequest request = authorizedRequest(requestURL, wizardAuth(setupData))
                         .build();
 
                 HttpClient client = HttpClient.newHttpClient();
@@ -1889,21 +1899,13 @@ public class RunSignUpDAO {
                 StringBuilder requestURL = new StringBuilder();
                 requestURL.append("https://runsignup.com/Rest/race/");
                 requestURL.append(setupData.get("race_id"));
-                if (setupData.get("rsuLoginType").equals("API")) {
-                    requestURL.append("?api_key=").append(setupData.get("rsuKey"));
-                    requestURL.append("&api_secret=").append(setupData.get("rsuSecret"));
-                } else {
-                    requestURL.append("?tmp_key=").append(setupData.get("rsuTempKey"));
-                    requestURL.append("&tmp_secret=").append(setupData.get("rsuTempSecret"));
-                }
-                requestURL.append("&format=json").append("&future_events_only=F&most_recent_events_only=F");
+                requestURL.append("?format=json").append("&future_events_only=F&most_recent_events_only=F");
                 requestURL.append("&race_event_days_id=").append(setupData.get("race_event_days_id"));
                 requestURL.append("&include_questions=T");
 
                 logger.debug("RSU Get Race Request URL: {}", requestURL.toString());
 
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(requestURL.toString()))
+                HttpRequest request = authorizedRequest(requestURL, wizardAuth(setupData))
                         .build();
 
                 HttpClient client = HttpClient.newHttpClient();
@@ -2268,17 +2270,49 @@ public class RunSignUpDAO {
         wizard.showAndWait().ifPresent(result -> {
             if (result == ButtonType.FINISH) {
 
-                logger.debug("setupData: {} ", setupData);
+                if (logger.isDebugEnabled()) {
+                    Map<String,String> masked = new HashMap<>(setupData);
+                    for (String k : List.of("rsuSecret", "rsuAccessToken", "rsuRefreshToken", "rsuTempKey", "rsuTempSecret")) {
+                        if (masked.containsKey(k)) masked.put(k, RSUOAuthClient.mask(masked.get(k)));
+                    }
+                    logger.debug("setupData: {} ", masked);
+                }
 
-                // Save the rsu Username/Password to the global prefs
-                pikaPrefs.set("rsuLoginType", setupData.get("rsuLoginType"));
-                pikaPrefs.set("rsuKey", setupData.get("rsuKey"));
-                pikaPrefs.setObfuscated("rsuSecret", setupData.get("rsuSecret"));
+                String loginType = setupData.get("rsuLoginType");
+                rsuConf.rsuLoginType = loginType;
 
-                // Save the Username/Password/LoginType to the race db
-                rsuConf.rsuSecret = setupData.get("rsuSecret");
-                rsuConf.rsuKey = setupData.get("rsuKey");
-                rsuConf.rsuLoginType = setupData.get("rsuLoginType");
+                if (RSUConfig.LOGIN_OAUTH.equals(loginType)) {
+                    // Save the login type and RSU username to the global prefs (tokens stay in the event DB)
+                    pikaPrefs.set("rsuLoginType", loginType);
+                    pikaPrefs.set("rsuOAuthUser", setupData.getOrDefault("rsuOAuthUser", ""));
+                    logger.debug("RSU Wizard: saved global prefs rsuLoginType={} rsuOAuthUser={}", loginType, setupData.get("rsuOAuthUser"));
+
+                    // Save the tokens to the event db
+                    rsuConf.rsuAccessToken = setupData.get("rsuAccessToken");
+                    rsuConf.rsuRefreshToken = setupData.get("rsuRefreshToken");
+                    rsuConf.rsuTokenExpires = Long.valueOf(setupData.getOrDefault("rsuTokenExpires", "0"));
+                    rsuConf.rsuOAuthUser = setupData.get("rsuOAuthUser");
+                    logger.debug("RSU Wizard: saving OAuth tokens to event DB (access={}, refresh={}, expires={}, user={})",
+                            RSUOAuthClient.mask(rsuConf.rsuAccessToken), RSUOAuthClient.mask(rsuConf.rsuRefreshToken),
+                            Instant.ofEpochSecond(rsuConf.rsuTokenExpires), rsuConf.rsuOAuthUser);
+                } else {
+                    // Save the rsu Key/Secret to the global prefs
+                    pikaPrefs.set("rsuLoginType", loginType);
+                    pikaPrefs.set("rsuKey", setupData.get("rsuKey"));
+                    pikaPrefs.setObfuscated("rsuSecret", setupData.get("rsuSecret"));
+                    logger.debug("RSU Wizard: saved global prefs rsuLoginType={} rsuKey={} rsuSecret={}",
+                            loginType, setupData.get("rsuKey"), RSUOAuthClient.mask(setupData.get("rsuSecret")));
+
+                    // Save the Key/Secret to the race db
+                    rsuConf.rsuSecret = setupData.get("rsuSecret");
+                    rsuConf.rsuKey = setupData.get("rsuKey");
+
+                    // clear out any old OAuth tokens
+                    rsuConf.rsuAccessToken = null;
+                    rsuConf.rsuRefreshToken = null;
+                    rsuConf.rsuTokenExpires = 0L;
+                    logger.debug("RSU Wizard: saving {} key {} to event DB", loginType, setupData.get("rsuKey"));
+                }
 
                 rsuConf.rsuRaceID = Integer.valueOf(setupData.get("rsuRaceID"));
                 
@@ -2326,6 +2360,198 @@ public class RunSignUpDAO {
         textField.setId(id);
         GridPane.setHgrow(textField, Priority.ALWAYS);
         return textField;
+    }
+
+    ////////////////////////////////////////////////////////////////////////
+    //
+    // Authentication helpers
+    //
+    ////////////////////////////////////////////////////////////////////////
+
+    // Credentials for a single RSU request
+    record RSUAuth(String type, String key, String secret, String accessToken, String tempKey, String tempSecret) { }
+
+    private long lastForcedRefresh = 0L;
+    private boolean reauthAlertShown = false;
+
+    private static boolean isAPIKeyLogin(String type) {
+        return RSUConfig.LOGIN_API_V1.equals(type) || RSUConfig.LOGIN_API_V2.equals(type);
+    }
+
+    /**
+     * Credentials from the saved RSUConfig. For OAuth, refreshes the
+     * access token if needed. For the legacy username/password, refreshes
+     * the tmp_key/tmp_secret.
+     */
+    private RSUAuth currentAuth() {
+        String type = rsuConfig.rsuLoginType;
+        if (RSUConfig.LOGIN_OAUTH.equals(type)) {
+            ensureFreshToken(false);
+        } else if (RSUConfig.LOGIN_PASSWORD.equals(type)) {
+            updateRSUKeys();
+        }
+        return new RSUAuth(type, rsuConfig.rsuKey, rsuConfig.rsuSecret, rsuConfig.rsuAccessToken, rsuConfig.rsuTempKey, rsuConfig.rsuTempSecret);
+    }
+
+    /**
+     * Credentials from the in-progress setup wizard data
+     */
+    private RSUAuth wizardAuth(Map<String,String> setupData) {
+        return new RSUAuth(setupData.get("rsuLoginType"), setupData.get("rsuKey"), setupData.get("rsuSecret"),
+                setupData.get("rsuAccessToken"), setupData.get("rsuTempKey"), setupData.get("rsuTempSecret"));
+    }
+
+    /**
+     * Appends the auth parameters to the url and returns a request builder
+     * with any required auth headers already set.
+     */
+    private HttpRequest.Builder authorizedRequest(StringBuilder url, RSUAuth auth) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder();
+        String type = auth.type() == null ? RSUConfig.LOGIN_API_V1 : auth.type();
+        String logURL = url.toString();
+        char sep = url.indexOf("?") >= 0 ? '&' : '?';
+
+        switch (type) {
+            case RSUConfig.LOGIN_API_V2 -> {
+                url.append(sep).append("rsu_api_key=").append(URLEncoder.encode(nz(auth.key()), StandardCharsets.UTF_8));
+                builder.header("X-RSU-API-SECRET", nz(auth.secret()));
+                logURL += sep + "rsu_api_key=" + nz(auth.key());
+                logger.debug("RSU request auth: v2 API key, headers set: X-RSU-API-SECRET={}", RSUOAuthClient.mask(auth.secret()));
+            }
+            case RSUConfig.LOGIN_OAUTH -> {
+                builder.header("Authorization", "Bearer " + nz(auth.accessToken()));
+                logger.debug("RSU request auth: OAuth, headers set: Authorization=Bearer {}", RSUOAuthClient.mask(auth.accessToken()));
+            }
+            case RSUConfig.LOGIN_PASSWORD -> {
+                url.append(sep).append("tmp_key=").append(nz(auth.tempKey()));
+                url.append("&tmp_secret=").append(nz(auth.tempSecret()));
+                logURL += sep + "tmp_key=" + RSUOAuthClient.mask(auth.tempKey()) + "&tmp_secret=" + RSUOAuthClient.mask(auth.tempSecret());
+                logger.debug("RSU request auth: legacy username/password tmp_key/tmp_secret");
+            }
+            default -> {
+                url.append(sep).append("api_key=").append(URLEncoder.encode(nz(auth.key()), StandardCharsets.UTF_8));
+                url.append("&api_secret=").append(URLEncoder.encode(nz(auth.secret()), StandardCharsets.UTF_8));
+                logURL += sep + "api_key=" + nz(auth.key()) + "&api_secret=" + RSUOAuthClient.mask(auth.secret());
+                logger.debug("RSU request auth: v1 API key/secret");
+            }
+        }
+        logger.debug("RSU request URL: {}", logURL);
+
+        return builder.uri(URI.create(url.toString()));
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+    /**
+     * Make sure the OAuth access token is valid. Refreshes it if it expires
+     * within the next 24 hours (or if forced) and saves the new tokens.
+     * Returns false if we no longer have a usable token.
+     */
+    private synchronized boolean ensureFreshToken(boolean force) {
+        long now = Instant.now().getEpochSecond();
+        long remaining = rsuConfig.rsuTokenExpires - now;
+        boolean haveToken = rsuConfig.rsuAccessToken != null && !rsuConfig.rsuAccessToken.isBlank();
+        logger.debug("RSU OAuth: access token expires at {} ({}s remaining), force={}",
+                Instant.ofEpochSecond(rsuConfig.rsuTokenExpires), remaining, force);
+
+        if (!force && haveToken && remaining > 86400) return true;
+
+        if (force && now - lastForcedRefresh < 60) {
+            logger.debug("RSU OAuth: forced refresh skipped, last forced refresh was {}s ago", now - lastForcedRefresh);
+            return haveToken;
+        }
+        if (force) lastForcedRefresh = now;
+
+        logger.debug("RSU OAuth: refreshing access token (force={})", force);
+        try {
+            RSUOAuthClient.TokenResult t = RSUOAuthClient.refresh(rsuConfig.rsuRefreshToken);
+            rsuConfig.rsuAccessToken = t.accessToken();
+            rsuConfig.rsuRefreshToken = t.refreshToken();
+            rsuConfig.rsuTokenExpires = t.expiresAtEpoch();
+            reauthAlertShown = false;
+            logger.debug("RSU OAuth: refresh succeeded, new expiration {}", Instant.ofEpochSecond(t.expiresAtEpoch()));
+            if (rsuConfig.getID() != null) saveRSUConfig();
+            return true;
+        } catch (Exception ex) {
+            logger.error("RSU OAuth: unable to refresh the access token: {}", ex.getMessage());
+            if (!force && haveToken && remaining > 0) {
+                logger.debug("RSU OAuth: refresh failed but the current access token is still valid for {}s", remaining);
+                return true;
+            }
+            if (!reauthAlertShown) {
+                reauthAlertShown = true;
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(AlertType.WARNING);
+                    alert.setTitle("RunSignUp Login Required");
+                    alert.setHeaderText("Your RunSignUp login has expired");
+                    alert.setContentText("PikaTimer was unable to renew the RunSignUp login. Please re-run the RunSignUp setup wizard to log in again.");
+                    alert.show();
+                });
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Called when RSU rejects a request. Renew the credentials if we can.
+     */
+    private void handleAuthFailure() {
+        logger.debug("RSU request failed, checking credentials for login type {}", rsuConfig.rsuLoginType);
+        if (RSUConfig.LOGIN_OAUTH.equals(rsuConfig.rsuLoginType)) {
+            ensureFreshToken(true);
+        } else if (RSUConfig.LOGIN_PASSWORD.equals(rsuConfig.rsuLoginType)) {
+            updateRSUKeys();
+        }
+    }
+
+    private synchronized void saveRSUConfig() {
+        logger.debug("RunSignUpDAO: saving RSU config");
+        Session s = HibernateUtil.getSessionFactory().getCurrentSession();
+        boolean startedTx = false;
+        if (!s.getTransaction().isActive()) {
+            s.beginTransaction();
+            startedTx = true;
+        }
+        s.saveOrUpdate(rsuConfig);
+        if (startedTx) s.getTransaction().commit();
+    }
+
+    /**
+     * Validate the credentials by asking RSU for the races on the event date.
+     * Returns null if valid, otherwise a message for the user.
+     */
+    private String checkRSULogin(RSUAuth auth, String eventDate) {
+        StringBuilder requestURL = new StringBuilder();
+        requestURL.append("https://runsignup.com/Rest/races");
+        requestURL.append("?format=json").append("&include_event_days=T");
+        if (isAPIKeyLogin(auth.type())) requestURL.append("&only_partner_races=T");
+        requestURL.append("&page=1&results_per_page=50&sort=name+ASC");
+        requestURL.append("&start_date=").append(eventDate);
+        requestURL.append("&end_date=").append(eventDate);
+
+        HttpRequest request = authorizedRequest(requestURL, auth).build();
+        try {
+            HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            logger.debug("RSU login check response status {}: {}", response.statusCode(), response.body());
+            if (response.statusCode() != 200) {
+                logger.error("Error in RSU Login: {} ", response.body());
+                return (response.statusCode() == 401 || response.statusCode() == 403) ? "Invalid credentials" : "Error in connecting to RunSignUp";
+            }
+            JSONObject rsuResponse = new JSONObject(response.body());
+            if (!rsuResponse.has("races")) {
+                logger.error("Error in RSU Login: {} ", response.body());
+                return isAPIKeyLogin(auth.type()) ? "Invalid API Secret / Key" : "RunSignUp login was rejected";
+            }
+            int responseSize = rsuResponse.getJSONArray("races").length();
+            logger.debug("RSU login check found {} races for {}", responseSize, eventDate);
+            if (responseSize == 0) return "Valid login, but no races found for " + eventDate;
+            return null;
+        } catch (Exception ex) {
+            logger.error("Exception in HttpClient response: ", ex);
+            return "Error in RSU Login Request";
+        }
     }
 
     private void updateRSUKeys() {

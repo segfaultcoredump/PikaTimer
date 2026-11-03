@@ -42,6 +42,30 @@ import org.hibernate.annotations.GenericGenerator;
 @DynamicUpdate
 @Table(name="RSUConfig")
 public class RSUConfig {
+
+    ////////////////////////////////////////////////////////////////////////
+    // OAuth2 (PKCE) client configuration
+    // TODO: Update these once the values have been issued by RunSignUp
+    ////////////////////////////////////////////////////////////////////////
+    public static String OAUTH_CLIENT_ID = "";
+    // RSU's spec lists client_secret as required on the token endpoints.
+    // If left blank it will be omitted from the token requests.
+    public static String OAUTH_CLIENT_SECRET = "";
+    // Must exactly match the redirect URI registered with RSU.
+    // The local callback listener binds to the host/port/path in this URI.
+    public static String OAUTH_REDIRECT_URI = "http://127.0.0.1:53682/rsu/oauth/callback";
+
+    public static final String OAUTH_AUTHORIZE_URL = "https://api.runsignup.com/Profile/OAuth2/RequestGrant";
+    public static final String OAUTH_TOKEN_URL = "https://api.runsignup.com/rest/v2/auth/auth-code-redemption.json";
+    public static final String OAUTH_REFRESH_URL = "https://api.runsignup.com/rest/v2/auth/refresh-token.json";
+    public static final String OAUTH_SCOPE = "rsu_api_read rsu_api_write";
+
+    // Login Types (persisted in the rsuLoginType column)
+    public static final String LOGIN_API_V1 = "API";        // legacy api_key / api_secret
+    public static final String LOGIN_API_V2 = "API_V2";     // rsu_api_key + X-RSU-API-SECRET header
+    public static final String LOGIN_OAUTH = "OAUTH";       // OAuth2 Bearer token
+    public static final String LOGIN_PASSWORD = "PASSWORD"; // legacy username/password -> tmp_key/tmp_secret
+
     Integer id;
     String rsuKey;
     String rsuSecret;
@@ -50,7 +74,13 @@ public class RSUConfig {
     String rsuTempKey;
     String rsuTempSecret;
     Long rsuTempTimestamp=0L;
-    
+
+    // OAuth2 tokens
+    String rsuAccessToken;
+    String rsuRefreshToken;
+    Long rsuTokenExpires = 0L;
+    String rsuOAuthUser;
+
     Integer rsuRaceID;
     
     Long rsuLastSync = 0L;
@@ -108,6 +138,38 @@ public class RSUConfig {
         //logger.debug("Participant UUID is now " + uuidProperty.get());
     }
     
+    @Column(name="rsuAccessToken")
+    public String getRSUAccessToken() {
+        return rsuAccessToken;
+    }
+    public void setRSUAccessToken(String t) {
+        this.rsuAccessToken = t;
+    }
+
+    @Column(name="rsuRefreshToken")
+    public String getRSURefreshToken() {
+        return rsuRefreshToken;
+    }
+    public void setRSURefreshToken(String t) {
+        this.rsuRefreshToken = t;
+    }
+
+    @Column(name="rsuTokenExpires")
+    public Long getRSUTokenExpires() {
+        return rsuTokenExpires;
+    }
+    public void setRSUTokenExpires(Long ts) {
+        this.rsuTokenExpires = (ts == null) ? 0L : ts;
+    }
+
+    @Column(name="rsuOAuthUser")
+    public String getRSUOAuthUser() {
+        return rsuOAuthUser;
+    }
+    public void setRSUOAuthUser(String u) {
+        this.rsuOAuthUser = u;
+    }
+
     @Column(name="rsuRaceID")
     public Integer getRSURaceID() {
        // logger.debug("Participant UUID is " + uuidProperty.get());

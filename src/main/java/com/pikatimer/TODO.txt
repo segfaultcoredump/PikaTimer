@@ -1,7 +1,7 @@
 TODO for 2.0 Release
 
 General:
-    jdeploy for installer binaries
+    DONE: jdeploy for installer binaries
 
 Race:
 
@@ -84,7 +84,7 @@ Timing:
 
 Participants:
     Rework Participant import wizard
-    Bidirectional sync w/ RSU
+    IN PROGRESS: Bidirectional sync w/ RSU
         -- Participant attributes
         -- Switch / add RSU events if moved or added to a different race
     Clean up import (Title Case or Upper Case names, etc)

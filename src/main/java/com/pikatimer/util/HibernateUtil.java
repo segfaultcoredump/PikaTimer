@@ -168,7 +168,6 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.jdbc.batch_size","100"); 
         
         cfg.setProperty("hibernate.enable_lazy_load_no_trans", "true");
-        cfg.setProperty("hibernate.dialect","org.hibernate.dialect.H2Dialect");
         cfg.setProperty("hibernate.current_session_context_class", "thread");
         
         cfg.setProperty("hibernate.c3p0.max_size", "4");

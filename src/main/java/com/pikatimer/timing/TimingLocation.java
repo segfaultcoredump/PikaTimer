@@ -41,16 +41,15 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.util.Callback;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.Transient;
-import org.hibernate.annotations.Cascade;
-import org.hibernate.annotations.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.CascadeType;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
@@ -154,9 +153,8 @@ public class TimingLocation {
     }
 
     // We keep two lists, one observable for JavaFX, one regular for Hibernate
-    @OneToMany(mappedBy="timingLocation",fetch = FetchType.EAGER)
+    @OneToMany(mappedBy="timingLocation",cascade=CascadeType.REMOVE,fetch = FetchType.EAGER)
     @Fetch(FetchMode.SELECT)
-    @Cascade(CascadeType.DELETE)
     public List<TimingLocationInput> getInputs() {
         //return associatedSplits.sorted((Split o1, Split o2) -> o1.getPosition().compareTo(o2.getPosition()));
         return timingInputList;

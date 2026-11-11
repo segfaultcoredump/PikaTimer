@@ -22,10 +22,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.application.Platform;
-import org.hibernate.Query;
+import org.hibernate.query.Query;
 import org.hibernate.Session;
-import org.hibernate.type.LongType;
-import org.hibernate.type.StringType;
+import org.hibernate.type.StandardBasicTypes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +57,7 @@ public class EventDAO {
         Session s = HibernateUtil.getSessionFactory().getCurrentSession();
         s.beginTransaction();
         // sql to set the name and date
-        Query query = s.createSQLQuery("UPDATE EVENT set EVENT_NAME = :name, EVENT_DATE = :date WHERE ID = :id");
+        Query query = s.createNativeQuery("UPDATE EVENT set EVENT_NAME = :name, EVENT_DATE = :date WHERE ID = :id");
         query.setParameter("id", 1);
         query.setParameter("name", event.getEventName());
         //query.setParameter("date", event.getEventDate());
@@ -78,7 +77,7 @@ public class EventDAO {
         Session s = HibernateUtil.getSessionFactory().getCurrentSession();
         s.beginTransaction();
         // sql to set the name and date
-        Query query = s.createSQLQuery("INSERT into EVENT (ID, EVENT_NAME, EVENT_DATE) values (:id, :name, :date)");
+        Query query = s.createNativeQuery("INSERT into EVENT (ID, EVENT_NAME, EVENT_DATE) values (:id, :name, :date)");
         query.setParameter("id", 1);
         query.setParameter("name", event.getEventName());
         //query.setParameter("date", event.getEventDate());
@@ -94,10 +93,10 @@ public class EventDAO {
         Session s = HibernateUtil.getSessionFactory().getCurrentSession();
 
         s.beginTransaction();
-        Query query = s.createSQLQuery("SELECT * FROM EVENT")
-                .addScalar("ID", LongType.INSTANCE)
-                .addScalar("EVENT_NAME", StringType.INSTANCE)
-                .addScalar("EVENT_DATE", StringType.INSTANCE);
+        Query query = s.createNativeQuery("SELECT * FROM EVENT")
+                .addScalar("ID", StandardBasicTypes.LONG)
+                .addScalar("EVENT_NAME", StandardBasicTypes.STRING)
+                .addScalar("EVENT_DATE", StandardBasicTypes.STRING);
         //.addScalar("EVENT_DATE", DateType.INSTANCE);
 
         List<Object[]> results = query.list();

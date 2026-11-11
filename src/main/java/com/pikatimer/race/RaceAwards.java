@@ -27,21 +27,20 @@ import java.util.stream.Collectors;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.util.Pair;
-import javax.persistence.CascadeType;
-import javax.persistence.CollectionTable;
-import javax.persistence.Column;
-import javax.persistence.ElementCollection;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.MapKeyColumn;
-import javax.persistence.MapsId;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
-import javax.persistence.OrderColumn;
-import javax.persistence.Table;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderColumn;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
@@ -89,8 +88,6 @@ public class RaceAwards {
     }
     
     @OneToOne(mappedBy = "awards")
-    @MapsId
-    @JoinColumn(name="race_id")  
     public Race getRace() {
         return race;
     }
@@ -100,7 +97,6 @@ public class RaceAwards {
     
 
     
-    @ElementCollection(fetch = FetchType.EAGER)
     @OneToMany(mappedBy="raceAward",cascade={CascadeType.PERSIST, CascadeType.REMOVE},fetch = FetchType.EAGER)
     @Fetch(FetchMode.SELECT)
     @OrderColumn(name = "category_priority")
@@ -225,7 +221,6 @@ public class RaceAwards {
     @MapKeyColumn(name="attribute")
     @Column(name="attribute_value")
     @CollectionTable(name="race_awards_attributes", joinColumns=@JoinColumn(name="race_id"))
-    @OrderColumn(name = "index_id")
     public Map<String, String> getAttributes() {
         return attributes;
     }

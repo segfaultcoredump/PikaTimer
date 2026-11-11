@@ -37,7 +37,7 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
-import org.hibernate.Query;
+import org.hibernate.query.Query;
 import org.hibernate.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -351,7 +351,7 @@ public class TimingDAO {
             Session s=HibernateUtil.getSessionFactory().getCurrentSession();
             s.beginTransaction();
             // sql to set the name and date
-            Query query = s.createSQLQuery("INSERT into TIMING_LOCATION (TIMING_LOCATION_ID, TIMING_LOCATION_NAME) values (:id, :name)");
+            Query query = s.createNativeQuery("INSERT into TIMING_LOCATION (TIMING_LOCATION_ID, TIMING_LOCATION_NAME) values (:id, :name)");
             query.setParameter("id", 1);
             query.setParameter("name", "Start");
             query.executeUpdate();

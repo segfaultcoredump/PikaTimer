@@ -127,11 +127,9 @@ public class CookedTimeData {
     
     @Column(name="timing_loc_id") 
     public Integer getTimingLocationId() {
-        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return timingLocationId;
     }
     public void setTimingLocationId(Integer i) {
-        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.timingLocationId = i;
     }
 //    public StringProperty timingLocationNameProperty() {
@@ -140,21 +138,17 @@ public class CookedTimeData {
     
     @Column(name="timing_loc_input_id") 
     public Integer getTimingLocationInputId() {
-        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return timingLocationInputId;
     }
     public void setTimingLocationInputId(Integer i) {
-        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.timingLocationInputId = i;
     }
     
     @Column(name="ignore_time") 
     public Boolean getIgnoreTime() {
-        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return ignoreTimeBoolean.getValue();
     }
     public void setIgnoreTime(Boolean i) {
-        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.ignoreTimeBoolean.setValue(i);
     }
     public BooleanProperty ignoreTimeProperty() {
@@ -163,11 +157,9 @@ public class CookedTimeData {
     
     @Column(name="backup_time") 
     public Boolean getBackupTime() {
-        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return backupTimeBoolean.getValue();
     }
     public void setBackupTime(Boolean i) {
-        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.backupTimeBoolean.setValue(i);
     }
     public BooleanProperty backupTimeProperty() {

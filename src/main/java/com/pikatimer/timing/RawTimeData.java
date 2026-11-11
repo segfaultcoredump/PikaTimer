@@ -88,11 +88,9 @@ public class RawTimeData {
     
     @Column(name="timing_loc_input_id") 
     public Integer getTimingLocationInputId() {
-        logger.trace("RawTimeData: Returning timingLocationInputId of " + timingLocationInputId);
         return timingLocationInputId;
     }
     public void setTimingLocationInputId(Integer i) {
-        logger.trace("RawTimeData: Setting timingLocationInputId to " + i);
         this.timingLocationInputId = i;
     }
 

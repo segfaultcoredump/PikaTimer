@@ -113,20 +113,11 @@ public class ResultsDAO {
 
                 @Override 
                 public Void call() {
-                   final List<Result> results = new ArrayList(); 
-
-                   Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-                   s.beginTransaction();
                    logger.debug("ResultsDAO: Runing the getResults querry");
-
-                    try {  
-                        results.addAll(s.createQuery("from Result").list());
-                    } catch (Exception e) {
-                        logger.debug(e.getMessage());
-                    } 
-                    s.getTransaction().commit();  
+                   final List<Result> results = HibernateUtil.loadReadOnly("from Result");
                     
-                    final CountDownLatch doneLatch = new CountDownLatch(results.size());
+                    // Group by race so that each race's list gets a single addAll
+                    final Map<Integer,List<Result>> loadedByRace = new HashMap<>();
                     results.stream().forEach(r -> {
                         //resultsMap.put(r.getBib() + " " + r.getRaceID(), r);
                         
@@ -139,16 +130,13 @@ public class ResultsDAO {
                         
                         if(!raceResultsMap.containsKey(r.getRaceID())) raceResultsMap.put(r.getRaceID(), FXCollections.observableArrayList(Result.extractor()));
                         
-                        
-                        Platform.runLater(() -> {
-                            //raceResultsMap.get(r.getRaceID()).remove(r);
-                            if(!r.isEmpty()){
-                                raceResultsMap.get(r.getRaceID()).add(r);
-                                logger.trace("ResultsDAO read from DB added " + r.getBib() + " from race " + r.getRaceID() + " new total " + raceResultsMap.get(r.getRaceID()).size() );
-                            }
-                            doneLatch.countDown();
-                        });
-
+                        if(!r.isEmpty()) loadedByRace.computeIfAbsent(r.getRaceID(), k -> new ArrayList<>()).add(r);
+                    });
+                    
+                    final CountDownLatch doneLatch = new CountDownLatch(1);
+                    Platform.runLater(() -> {
+                        loadedByRace.forEach((raceId, list) -> raceResultsMap.get(raceId).addAll(list));
+                        doneLatch.countDown();
                     });
                     logger.debug("Waiting for raceResultsMap to get updated...");
                     try {
@@ -189,7 +177,7 @@ public class ResultsDAO {
                             } 
                             
                             try {
-                                s = HibernateUtil.getSessionFactory().getCurrentSession();
+                                Session s = HibernateUtil.getSessionFactory().getCurrentSession();
                                 s.beginTransaction();
                                 int count = 0;
                                 Iterator<Result> addIterator = pendingResults.iterator();

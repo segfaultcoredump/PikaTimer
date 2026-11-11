@@ -44,10 +44,18 @@ import com.pikatimer.timing.Split;
 import com.pikatimer.timing.TimeOverride;
 import com.pikatimer.timing.TimingLocation;
 import com.pikatimer.timing.TimingLocationInput;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
+import org.hibernate.query.Query;
 import org.hibernate.service.ServiceRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -59,11 +67,14 @@ import org.hibernate.service.ServiceRegistry;
  */
 public class HibernateUtil {
 
+    private static final Logger logger = LoggerFactory.getLogger(HibernateUtil.class);
     private static SessionFactory sessionFactory;
     private static ServiceRegistry serviceRegistry;
     
     
-    public static SessionFactory getSessionFactory() {
+    // synchronized: several DAOs ask for the factory from different threads
+    // at startup and we only ever want one factory / connection pool.
+    public static synchronized SessionFactory getSessionFactory() {
         if (sessionFactory == null) {
             // loads configuration and mappings
             Configuration configuration = getConfiguration();
@@ -76,6 +87,37 @@ public class HibernateUtil {
         }
          
         return sessionFactory;
+    }
+    
+    /**
+     * Bulk-load entities that will be used detached. The session is read-only
+     * with manual flushing, so Hibernate keeps no snapshot of the loaded state
+     * and does not dirty-check every entity when the transaction commits.
+     */
+    public static <T> List<T> loadReadOnly(String hql) {
+        return loadReadOnly(hql, Map.of());
+    }
+    
+    public static <T> List<T> loadReadOnly(String hql, Map<String,Object> params) {
+        List<T> list = new ArrayList<>();
+        Session s = getSessionFactory().getCurrentSession();
+        s.beginTransaction();
+        try {
+            s.setDefaultReadOnly(true);
+            s.setHibernateFlushMode(FlushMode.MANUAL);
+            Query<T> query = s.createQuery(hql);
+            params.forEach(query::setParameter);
+            list = query.list();
+            s.getTransaction().commit();
+        } catch (Exception e) {
+            logger.error("Unable to load \"{}\"", hql, e);
+            try {
+                s.getTransaction().rollback();
+            } catch (Exception rollbackEx) {
+                logger.debug("Rollback failed", rollbackEx);
+            }
+        }
+        return list;
     }
     
     public void close() throws Exception{
@@ -122,12 +164,11 @@ public class HibernateUtil {
         cfg.setProperty("hibernate.connection.url",Pikatimer.getJDBCUrl());
         cfg.setProperty("hibernate.connection.username", "sa");
         cfg.setProperty("hibernate.connection.password", "");
-        cfg.setProperty("hibernate.show_sql", "true");
+        cfg.setProperty("hibernate.show_sql", "false");
         cfg.setProperty("hibernate.jdbc.batch_size","100"); 
         
         cfg.setProperty("hibernate.enable_lazy_load_no_trans", "true");
         cfg.setProperty("hibernate.dialect","org.hibernate.dialect.H2Dialect");
-        cfg.setProperty("hibernate.cache.provider_class","org.hibernate.cache.NoCacheProvider");
         cfg.setProperty("hibernate.current_session_context_class", "thread");
         
         cfg.setProperty("hibernate.c3p0.max_size", "4");

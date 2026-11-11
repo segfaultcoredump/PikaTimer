@@ -45,6 +45,8 @@ import javax.persistence.MapKeyColumn;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.GenericGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -242,6 +244,7 @@ public class Result {
     }
     
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT) // one query for the whole load instead of one per row
     @MapKeyColumn(name="split_id")
     @Column(name="split_time",nullable=false)
     @CollectionTable(name="split_results", joinColumns=@JoinColumn(name="result_id"))
@@ -281,10 +284,6 @@ public class Result {
     public void recalcTimeProperties(){
         if (pendingRecalc){
             
-            logger.trace("Result::recalcTimeProperties for bib " + bib.get());
-            logger.trace(" StartDuration: " + startDuration.toString());
-            logger.trace(" waveStartDuration: " + waveStartDuration.toString());
-            logger.trace(" finishDuration: " + finishDuration.toString());
 
             if (!startDuration.equals(startDurationProperty.get())) startDurationProperty.set(startDuration);
             if (!waveStartDuration.equals(waveStartDurationProperty.get())) waveStartDurationProperty.set(waveStartDuration);
@@ -335,7 +334,6 @@ public class Result {
             });
             
             revision.set(revision.get() + 1);
-            logger.trace("Result revision is now " + revision.getValue().toString());
             pendingRecalc = false;
         }
     }

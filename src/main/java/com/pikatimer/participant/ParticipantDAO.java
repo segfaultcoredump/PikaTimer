@@ -142,17 +142,11 @@ public class ParticipantDAO {
                 
             @Override 
             public Void call() {
-                final List<Participant> list;// = new ArrayList<>();
-                final List<CustomAttribute> attributeList;
-
-
-                Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-                s.beginTransaction();
                 logger.debug("ParticipantDAO:: refreshParticipantsList Runing the Query");
 
                 try {  
-                    list=s.createQuery("from Participant").list();
-                    attributeList=s.createQuery("from CustomAttribute").list();
+                    final List<Participant> list = HibernateUtil.loadReadOnly("from Participant");
+                    final List<CustomAttribute> attributeList = HibernateUtil.loadReadOnly("from CustomAttribute");
 
                     logger.debug("ParticipantDAO::refreshParticipantsList found " + list.size() + " Participants");
                     //if(!participantsList.isEmpty()) participantsList.clear();
@@ -171,7 +165,6 @@ public class ParticipantDAO {
                 } catch (Exception e) {
                     logger.debug(e.getMessage());
                 } 
-                s.getTransaction().commit();
                 participantsLoadedLatch.countDown();
                 return null;
             }

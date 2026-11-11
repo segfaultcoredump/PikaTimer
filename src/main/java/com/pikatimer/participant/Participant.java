@@ -63,6 +63,8 @@ import javax.persistence.MapKeyColumn;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.GenericGenerator;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -195,6 +197,7 @@ public class Participant {
     
     
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT) // one query for the whole load instead of one per row
     @MapKeyColumn(name="attribute_id")
     @Column(name="attribute_value")
     @CollectionTable(name="participant_attributes", joinColumns=@JoinColumn(name="participant_id"))
@@ -582,6 +585,7 @@ public class Participant {
     }
             
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT) // one query for the whole load instead of one per row
     @Column(name="wave_id", nullable=false)
     @CollectionTable(name="part2wave", joinColumns=@JoinColumn(name="participant_id"))
 //    @OrderColumn(name = "index_id")
@@ -688,6 +692,7 @@ public class Participant {
     }
     
     @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT) // one query for the whole load instead of one per row
     @MapKeyColumn(name="regID")
     @Column(name="raceID")
     @CollectionTable(name="participant_regeventmap", joinColumns=@JoinColumn(name="partID"))

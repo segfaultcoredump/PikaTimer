@@ -86,7 +86,6 @@ public class Bib2ChipMap {
     @Column(name="bib")
     @CollectionTable(name="bib2chipmap", joinColumns=@JoinColumn(name="bib2chip_id"))
     public Map<String, String> getChip2BibMap() {
-        logger.trace("getChip2BibMap() called. Returning " + chip2bibMap.size() + " mappings.");
         return chip2bibMap;
     }
     public void setChip2BibMap(Map<String,String> chip2bib) {
@@ -97,20 +96,16 @@ public class Bib2ChipMap {
         } else {
             chip2bibMap = new HashMap();
         }
-        logger.trace("setChip2bibMap called with " + chip2bibMap.size() + " mappings");
     } 
     
     public String getBibFromChip(String Chip) {
-        logger.trace("getBibFromChip called for \"" + Chip +"\"");
 
         if(customMapProperty.getValue() && chip2bibMap.size() > 0 ) {
-            logger.trace("Using a mapping");
 
             if (chip2bibMap.containsKey(Chip)) return chip2bibMap.get(Chip);
             else if ("0".equals(Chip)) return Chip; // special chip of "0" 
             return "Unmapped " + Chip;
         } else {
-            logger.trace("Not using a mapping" + customMapProperty.getValue().toString());
 
             return Chip;
         }

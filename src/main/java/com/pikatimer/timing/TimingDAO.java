@@ -88,21 +88,9 @@ public class TimingDAO {
         return rawTimeQueue; 
     }
     public Collection getRawTimes(TimingLocationInput tli) {
-        List<RawTimeData> list = new ArrayList<>();
-        Set<RawTimeData> set = new HashSet<>(); 
-
-        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-        s.beginTransaction();
         logger.debug("Runing the getRawTimes Query for " + tli.getLocationName());
         
-        try {  
-            list=s.createQuery("from RawTimeData where timingLocationInputId = :tli_id").setParameter("tli_id", tli.getID()).list();
-        } catch (Exception e) {
-            logger.debug(e.getMessage());
-        } 
-        s.getTransaction().commit(); 
-        
-        return list; 
+        return HibernateUtil.loadReadOnly("from RawTimeData where timingLocationInputId = :tli_id", Map.of("tli_id", tli.getID()));
     }
     
       
@@ -151,18 +139,8 @@ public class TimingDAO {
             Task fetchCookedFromDB = new Task<Void>() {
                 
                 @Override public Void call() {
-                   final List<CookedTimeData> cookedTimes = new ArrayList(); 
-                   
-                   Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-                   s.beginTransaction();
                    logger.debug("Runing the getCookedTimes querry");
-
-                    try {  
-                        cookedTimes.addAll(s.createQuery("from CookedTimeData").list());
-                    } catch (Exception e) {
-                        logger.debug(e.getMessage());
-                    } 
-                    s.getTransaction().commit();  
+                   final List<CookedTimeData> cookedTimes = HibernateUtil.loadReadOnly("from CookedTimeData");
                     
                     Platform.runLater(() -> {
                         cookedTimeList.addAll(cookedTimes);
@@ -601,17 +579,8 @@ public class TimingDAO {
     public Bib2ChipMap getBib2ChipMap() {
         if (bib2ChipMap != null) return bib2ChipMap;
         
-        List<Bib2ChipMap> mapList = new ArrayList();
-        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-        s.beginTransaction();
         logger.debug("Runing the getBib2ChipMap querry");
-
-         try {  
-             mapList = s.createQuery("from Bib2ChipMap").list();
-         } catch (Exception e) {
-             logger.debug(e.getMessage());
-         } 
-         s.getTransaction().commit();  
+        List<Bib2ChipMap> mapList = HibernateUtil.loadReadOnly("from Bib2ChipMap");
          if(mapList.size()>0) {
              bib2ChipMap = mapList.get(0);
          } else {
@@ -649,18 +618,8 @@ public class TimingDAO {
             Task fetchOverrideFromDB = new Task<Void>() {
                 
                 @Override public Void call() {
-                   final List<TimeOverride> dbOverrides = new ArrayList(); 
-                   
-                   Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-                   s.beginTransaction();
                    logger.debug("Runing the getOverrides querry");
-
-                    try {  
-                        dbOverrides.addAll(s.createQuery("from TimeOverride").list());
-                    } catch (Exception e) {
-                        logger.debug(e.getMessage());
-                    } 
-                    s.getTransaction().commit();  
+                   final List<TimeOverride> dbOverrides = HibernateUtil.loadReadOnly("from TimeOverride");
                     
                     Platform.runLater(() -> {
                         overrideList.addAll(dbOverrides);

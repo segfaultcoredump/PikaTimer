@@ -151,8 +151,15 @@ public class FXMLopenEventController {
                                         if (pending.length > 0) backup_needed = true;
 
                                 } catch (FlywaySqlScriptException sql_ex){
-                                    logger.info("Pending metadata update, saving a copy");
-                                    FileUtils.copyFile(dbFile, new File(dbFile.getAbsolutePath() + ".pre_" + Pikatimer.VERSION +"_update.pika"));
+                                    backup_needed = true;
+                                }
+                                if (backup_needed) {
+                                    // keep the oldest copy if we have already saved one for this version
+                                    File backupFile = new File(dbFile.getAbsolutePath() + ".pre_" + Pikatimer.VERSION +"_update.pika");
+                                    if (!backupFile.exists()) {
+                                        logger.info("Pending metadata update, saving a copy");
+                                        FileUtils.copyFile(dbFile, backupFile);
+                                    }
                                 }
                             }
                             //flyway.setDataSource(jdbcURL, "sa", null);

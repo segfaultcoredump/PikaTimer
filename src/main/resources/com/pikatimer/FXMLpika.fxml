@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 <?import java.net.URL?>
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressIndicator?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.layout.AnchorPane?>
@@ -49,6 +50,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                   <Font size="24.0" />
                </font></Label>
             <Pane prefWidth="50.0" HBox.hgrow="SOMETIMES" />
+            <HBox fx:id="busyIndicator" alignment="CENTER" spacing="5.0" visible="false">
+               <children>
+                  <ProgressIndicator maxHeight="18.0" maxWidth="18.0" prefHeight="18.0" prefWidth="18.0" />
+                  <Label text="Recalculating..." />
+               </children>
+            </HBox>
             <Label fx:id="eventDate" alignment="CENTER_RIGHT" contentDisplay="RIGHT" minHeight="-Infinity" minWidth="-Infinity" prefWidth="161.0" text="MM/DD/YYYY" textAlignment="RIGHT" HBox.hgrow="SOMETIMES">
                <padding>
                   <Insets left="5.0" />

@@ -29,6 +29,7 @@ import com.pikatimer.timing.TimeOverride;
 import com.pikatimer.timing.TimeOverrideType;
 import com.pikatimer.timing.TimingDAO;
 import com.pikatimer.util.DurationFormatter;
+import com.pikatimer.util.FxBulk;
 import com.pikatimer.util.HTTPServices;
 import com.pikatimer.util.HibernateUtil;
 import static java.lang.Boolean.FALSE;
@@ -48,10 +49,15 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.ReadOnlyBooleanProperty;
+import javafx.beans.property.ReadOnlyBooleanWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -74,6 +80,18 @@ public class ResultsDAO {
     private static final BlockingQueue<String> resultsQueue = new ArrayBlockingQueue(100000);
     private static final BlockingQueue<Result> checkForCRQueue = new ArrayBlockingQueue(100000);
     private Map<Integer,ObservableList<Result>> raceResultsMap;
+    // What is currently in each race's ObservableList. Only touched on the JavaFX thread.
+    private final Map<Integer,Set<Result>> raceResultsMembers = new HashMap<>();
+    
+    // How long to keep collecting bibs for one pass while a bulk change is still arriving
+    private static final long MAX_SETTLE_MILLIS = 2000;
+    
+    private static final AtomicInteger busyCount = new AtomicInteger();
+    private static final ReadOnlyBooleanWrapper busy = new ReadOnlyBooleanWrapper(false);
+    
+    // A result that just went through processBib, the times it ended up with, 
+    // and if those times differ from what it had before. 
+    private record ProcessedBib(Result result, Result.TimeSnapshot times, boolean changed) {}
     private static final Map<String,Map<Integer,Result>> resultsMap = new ConcurrentHashMap<>(); 
     private static final TimingDAO timingDAO = TimingDAO.getInstance();
     private static final ParticipantDAO participantDAO = ParticipantDAO.getInstance();
@@ -96,6 +114,19 @@ public class ResultsDAO {
     
     public BlockingQueue<String> getResultsQueue(){
         return resultsQueue;
+    }
+    
+    /**
+     * True while a large recalculation is being worked on, so the UI can say so.
+     */
+    public ReadOnlyBooleanProperty busyProperty(){
+        return busy.getReadOnlyProperty();
+    }
+    public void beginBusy(){
+        if (busyCount.getAndIncrement() == 0) Platform.runLater(() -> busy.set(busyCount.get() > 0));
+    }
+    public void endBusy(){
+        if (busyCount.decrementAndGet() == 0) Platform.runLater(() -> busy.set(busyCount.get() > 0));
     }
     
     public ObservableList<Result> getResults(Integer raceID) {
@@ -135,7 +166,10 @@ public class ResultsDAO {
                     
                     final CountDownLatch doneLatch = new CountDownLatch(1);
                     Platform.runLater(() -> {
-                        loadedByRace.forEach((raceId, list) -> raceResultsMap.get(raceId).addAll(list));
+                        loadedByRace.forEach((raceId, list) -> {
+                            raceResultsMembers.computeIfAbsent(raceId, k -> new HashSet<>()).addAll(list);
+                            raceResultsMap.get(raceId).addAll(list);
+                        });
                         doneLatch.countDown();
                     });
                     logger.debug("Waiting for raceResultsMap to get updated...");
@@ -155,74 +189,99 @@ public class ResultsDAO {
                             logger.debug("ResultsDAO ProcessNewResult Thread: Waiting for more bibs to process...");
                             pendingBibs.add(resultsQueue.take());
                             logger.debug("ResultsDAO ProcessNewResult Thread: The wait is over...");
-                            Thread.sleep(100); // Times rarely come in 1 at a time
-
-                            //resultsQueue.drainTo(pendingBibs,299);  // 500 total
-                            resultsQueue.drainTo(pendingBibs);
+                            
+                            // Times rarely come in 1 at a time. For live timing we wait 
+                            // 100ms and go. If a bulk change is still streaming in 
+                            // (import, reprocess, etc) keep collecting so that each 
+                            // bib is recalculated once and not once per partial batch. 
+                            long settleDeadline = System.currentTimeMillis() + MAX_SETTLE_MILLIS;
+                            int drained;
+                            do {
+                                Thread.sleep(100); 
+                                drained = resultsQueue.drainTo(pendingBibs);
+                            } while ((timingDAO.isBusy() || (drained > 0 && pendingBibs.size() > FxBulk.UPDATE_THRESHOLD)) 
+                                    && System.currentTimeMillis() < settleDeadline);
                             
                             logger.debug("ResultsDAO ProcessNewResult Thread: Processing: " + pendingBibs.size());
+                            
+                            final boolean bulk = pendingBibs.size() > FxBulk.UPDATE_THRESHOLD;
+                            if (bulk) beginBusy();
 
-                            List<Result> pendingResults = new ArrayList();
+                            final List<ProcessedBib> processed = new ArrayList();
                             try {
                                 pendingBibs.stream().forEach(pb -> {
-                                    processBib(pb);
-                                    if (!resultsMap.get(pb).keySet().isEmpty()) {
-                                        logger.trace("ResultsDAO ProcessNewResult Thread: resultsMap has " + resultsMap.get(pb).size() + " entries");
-                                        pendingResults.addAll(resultsMap.get(pb).values());
-                                    }
-                                    
-                                });
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            } 
-                            
-                            try {
-                                Session s = HibernateUtil.getSessionFactory().getCurrentSession();
-                                s.beginTransaction();
-                                int count = 0;
-                                Iterator<Result> addIterator = pendingResults.iterator();
-                                while (addIterator.hasNext()) {
-                                    Result c = addIterator.next();
-                                    if (c.isEmpty() && c.getID() != null) {    
-                                        logger.trace("Deleting " + c.getBib());
-                                        s.delete(c);    
-                                        resultsMap.get(c.getBib()).remove(c.getRaceID());
-                                    } else {                    
-                                        logger.trace("Saving " + c.getBib());
-                                        s.saveOrUpdate(c);                                        
-                                    }
-                                    if (++count % 20 == 0) {
-                                        //flush a batch of updates and release memory:
-                                        s.flush();
-                                        s.clear();
-                                    }
-                                }
-                                s.getTransaction().commit();                                
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            } 
-                            
-                            pendingResults.stream().forEach(r -> {
-                                if(!raceResultsMap.containsKey(r.getRaceID())) raceResultsMap.put(r.getRaceID(), FXCollections.observableArrayList(Result.extractor()));
-                            });
-                            Platform.runLater(() -> {
-                                pendingResults.stream().forEach(r -> {
-                                    //This causes the AAIOB error due to a java bug until we fix the extractor and the tableview to only display properties
-                                    //if (r.isEmpty() && raceResultsMap.get(r.getRaceID()).contains(r)) raceResultsMap.get(r.getRaceID()).remove(r);
-                                    
-                                    if(!r.isEmpty()){
-                                        if (!raceResultsMap.get(r.getRaceID()).contains(r)) {
-                                            r.recalcTimeProperties();
-                                            raceResultsMap.get(r.getRaceID()).add(r);
-                                            logger.trace("ResultsDAO new/updated result added " + r.getBib() + " from race " + r.getRaceID() + " new total " + raceResultsMap.get(r.getRaceID()).size() );
-                                        } else r.recalcTimeProperties();
-                                    } else if (raceResultsMap.get(r.getRaceID()).contains(r)){
-                                        raceResultsMap.get(r.getRaceID()).remove(r);
+                                    try {
+                                        // What did we have before we started?
+                                        Map<Integer,Result.TimeSnapshot> before = new HashMap();
+                                        Map<Integer,Result> existing = resultsMap.get(pb);
+                                        if (existing != null) existing.forEach((raceID, r) -> before.put(raceID, r.snapshot()));
+
+                                        processBib(pb);
+
+                                        resultsMap.get(pb).forEach((raceID, r) -> {
+                                            Result.TimeSnapshot after = r.snapshot();
+                                            Result.TimeSnapshot was = before.get(raceID);
+                                            boolean changed = (was == null) ? !after.isEmpty() : !was.equals(after);
+                                            // Not yet in the DB but should be
+                                            if (r.getID() == null && !after.isEmpty()) changed = true;
+                                            // In the DB but should not be
+                                            if (r.getID() != null && after.isEmpty()) changed = true;
+                                            processed.add(new ProcessedBib(r, after, changed));
+                                        });
+                                    } catch (Exception e) {
+                                        logger.error("ResultsDAO ProcessNewResult Thread: Unable to process bib {}", pb, e);
                                     }
                                 });
 
-                            });
-                            pendingResults.stream().forEach(r -> {
+                                // Only touch the database for the results that actually changed.
+                                List<Result> changedResults = processed.stream().filter(pb -> pb.changed()).map(pb -> pb.result()).collect(Collectors.toList());
+                                logger.debug("ResultsDAO ProcessNewResult Thread: " + changedResults.size() + " of " + processed.size() + " results changed");
+                                if (!changedResults.isEmpty()) {
+                                    try {
+                                        Session s = HibernateUtil.getSessionFactory().getCurrentSession();
+                                        s.beginTransaction();
+                                        int count = 0;
+                                        Iterator<Result> addIterator = changedResults.iterator();
+                                        while (addIterator.hasNext()) {
+                                            Result c = addIterator.next();
+                                            if (c.isEmpty() && c.getID() != null) {    
+                                                logger.trace("Deleting " + c.getBib());
+                                                s.delete(c);    
+                                                resultsMap.get(c.getBib()).remove(c.getRaceID());
+                                            } else {                    
+                                                logger.trace("Saving " + c.getBib());
+                                                s.saveOrUpdate(c);                                        
+                                            }
+                                            if (++count % 100 == 0) {
+                                                //flush a batch of updates and release memory:
+                                                s.flush();
+                                                s.clear();
+                                            }
+                                        }
+                                        s.getTransaction().commit();                                
+                                    } catch (Exception e) {
+                                        logger.error("ResultsDAO ProcessNewResult Thread: Unable to save results", e);
+                                    } 
+                                }
+
+                                processed.stream().forEach(pb -> {
+                                    Integer raceID = pb.result().getRaceID();
+                                    if(!raceResultsMap.containsKey(raceID)) raceResultsMap.put(raceID, FXCollections.observableArrayList(Result.extractor()));
+                                });
+                            } finally {
+                                // Every result we looked at gets refreshed in the UI, even 
+                                // if the times are the same, since a status change
+                                // (DNF, DQ, etc) also lands here and the counters need to see it. 
+                                Platform.runLater(() -> {
+                                    try {
+                                        publishResults(processed);
+                                    } finally {
+                                        if (bulk) endBusy();
+                                    }
+                                });
+                            }
+                            
+                            processed.stream().filter(pb -> pb.changed()).map(pb -> pb.result()).forEach(r -> {
                                 if (!r.isEmpty() && r.getFinish()>0) {
                                     String raceName = "";
                                     Race race = RaceDAO.getInstance().getRaceByID(r.getRaceID());
@@ -241,11 +300,14 @@ public class ResultsDAO {
                                     HTTPServices.getInstance().publishEvent("RESULT", json);
                                 }
                             });
-                            pendingResults.forEach(r -> checkForCRQueue.add(r));
+                            processed.forEach(pb -> checkForCRQueue.add(pb.result()));
                             
                             Thread.sleep(100); 
                         } catch (InterruptedException ex) {
                             logger.debug("Interrupted",ex);
+                        } catch (Exception ex) {
+                            // Don't let one bad batch kill the processing thread
+                            logger.error("ResultsDAO ProcessNewResult Thread: Unexpected exception", ex);
                         }
                         
                         
@@ -318,6 +380,71 @@ public class ResultsDAO {
     }
     
     
+    /**
+     * Push a batch of recalculated results into the per-race ObservableLists. 
+     * Must run on the JavaFX thread. 
+     * 
+     * A few results are updated in place, which keeps the table selection. A 
+     * big batch quietly updates the properties and then replaces the list 
+     * content in one shot so that the tables sort once and not once per result.
+     */
+    private void publishResults(List<ProcessedBib> processed){
+        Map<Integer,List<ProcessedBib>> byRace = new HashMap();
+        processed.forEach(pb -> byRace.computeIfAbsent(pb.result().getRaceID(), k -> new ArrayList()).add(pb));
+        
+        byRace.forEach((raceID, batch) -> {
+            ObservableList<Result> list = raceResultsMap.get(raceID);
+            Set<Result> members = raceResultsMembers.computeIfAbsent(raceID, k -> new HashSet<>());
+            
+            if (batch.size() <= FxBulk.UPDATE_THRESHOLD) {
+                batch.forEach(pb -> {
+                    Result r = pb.result();
+                    if (!pb.times().isEmpty()) {
+                        r.applyTimeProperties(pb.times(), true);
+                        if (members.add(r)) {
+                            list.add(r);
+                            logger.trace("ResultsDAO new/updated result added " + r.getBib() + " from race " + raceID + " new total " + list.size() );
+                        }
+                    } else if (members.remove(r)) {
+                        list.remove(r);
+                    }
+                });
+            } else {
+                Set<Result> removed = new HashSet();
+                List<Result> added = new ArrayList();
+                batch.forEach(pb -> {
+                    Result r = pb.result();
+                    if (!pb.times().isEmpty()) {
+                        r.applyTimeProperties(pb.times(), false);
+                        if (members.add(r)) added.add(r);
+                    } else if (members.remove(r)) {
+                        removed.add(r);
+                    }
+                });
+                logger.debug("ResultsDAO bulk publish for race " + raceID + ": " + batch.size() + " results, " + added.size() + " new, " + removed.size() + " removed");
+                FxBulk.replace(list, removed::contains, added);
+            }
+        });
+    }
+    
+    /**
+     * A stable copy of a race's results for code that runs off of the JavaFX 
+     * thread. The ObservableList itself is only safe to walk on the JavaFX thread.
+     */
+    public List<Result> copyResults(Integer raceID){
+        ObservableList<Result> list = getResults(raceID);
+        if (Platform.isFxApplicationThread()) return new ArrayList(list);
+        
+        FutureTask<List<Result>> copy = new FutureTask<>(() -> new ArrayList<Result>(list));
+        Platform.runLater(copy);
+        try {
+            return copy.get(30, TimeUnit.SECONDS);
+        } catch (Exception ex) {
+            logger.warn("ResultsDAO::copyResults: Unable to get a copy of the results for race " + raceID, ex);
+            return new ArrayList();
+        }
+    }
+    
     public void reprocessAllCRs(){
         raceDAO.listRaces().forEach(r -> reprocessAllCRs(r));
     }
@@ -333,7 +460,7 @@ public class ResultsDAO {
         // without looping throgh everything anyway or getting really complex
         // with pre-computing things to save half a second of time. 
         
-        List<Result> results = getResults(race.getID());
+        List<Result> results = copyResults(race.getID());
         List<CourseRecord> crs = race.getCourseRecords();
         
         crs.forEach(cr -> {
@@ -1083,7 +1210,7 @@ public class ResultsDAO {
                     List<ProcessedResult> results = new ArrayList();
 
                     // get the current results list
-                    getResults(r.getID()).forEach(res -> {
+                    copyResults(r.getID()).forEach(res -> {
                         
                         // If there is no participant, then bail. 
                         // TODO: Maybe add an option to create a participant on the fly, but

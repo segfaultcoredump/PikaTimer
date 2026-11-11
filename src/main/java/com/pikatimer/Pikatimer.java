@@ -157,6 +157,13 @@ public class Pikatimer extends Application {
         primaryStage.getScene().getWindow().addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, event -> {webServer.stopHTTPService();});
         
         primaryStage.setOnCloseRequest((WindowEvent t) -> {
+            // Raw and cooked times are saved by background threads. Let them 
+            // finish before we pull the plug. 
+            try {
+                if (jdbcURL != null) com.pikatimer.timing.TimingDAO.getInstance().flushPendingWrites();
+            } catch (Throwable ex) {
+                logger.warn("Unable to flush the pending times on exit", ex);
+            }
             Platform.exit();
             System.exit(0);
         });

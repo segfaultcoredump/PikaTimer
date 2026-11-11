@@ -719,7 +719,7 @@ public class AwardCategory {
                         }
                         return true;
                     }).collect(Collectors.toList());
-            } else part = ResultsDAO.getInstance().getResults(race.getID()).stream()
+            } else part = ResultsDAO.getInstance().copyResults(race.getID()).stream()
                 .filter(p -> {
                     for(int i=0; i< processFilters.size(); i++){
                         if (processFilters.get(i).filter(ParticipantDAO.getInstance().getParticipantByBib(p.getBib()),race) == false) return false;

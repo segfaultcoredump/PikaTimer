@@ -132,7 +132,7 @@ public class FXMLTimingController {
     @FXML private TableView<CookedTimeData> timeTableView;
     @FXML private TableColumn bibColumn;
     @FXML private TableColumn<CookedTimeData,String> chipColumn;
-    @FXML private TableColumn timeColumn;
+    @FXML private TableColumn<CookedTimeData,Duration> timeColumn;
     @FXML private TableColumn<CookedTimeData,String> nameColumn;
     @FXML private TableColumn<CookedTimeData,String> locationColumn;
     @FXML private TableColumn<CookedTimeData,String> inputColumn;
@@ -295,8 +295,17 @@ public class FXMLTimingController {
         chipColumn.setComparator(new AlphanumericComparator());
         chipColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
         
-        timeColumn.setCellValueFactory(new PropertyValueFactory<>("timestampString"));
-        timeColumn.setComparator(new AlphanumericComparator());
+        // Sort on the Duration itself (the default comparator uses its natural 
+        // order) and only turn it into text for the cells that are on the screen. 
+        timeColumn.setCellValueFactory(c -> c.getValue().timestampProperty());
+        timeColumn.setCellFactory(column -> new TableCell<CookedTimeData,Duration>() {
+            @Override
+            protected void updateItem(Duration d, boolean empty) {
+                super.updateItem(d, empty);
+                if (d == null || empty) setText(null);
+                else setText(DurationFormatter.durationToString(d, 3));
+            }
+        });
         timeColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
         
         nameColumn.setCellValueFactory(cellData -> {

@@ -22,13 +22,16 @@ import com.pikatimer.util.HTTPServices;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.beans.Observable;
 import javafx.beans.property.BooleanProperty;
@@ -92,6 +95,7 @@ public class TimingLocationInput implements TimingListener{
     private final Semaphore processRead = new Semaphore(1);
 
     private final IntegerProperty readCountProperty = new SimpleIntegerProperty();
+    private final AtomicBoolean readCountUpdatePending = new AtomicBoolean(false);
     private Set<RawTimeData> rawTimeSet;
     
     
@@ -204,7 +208,7 @@ public class TimingLocationInput implements TimingListener{
                 
                 rawTimeSet.addAll(timingDAO.getRawTimes(this));
                 logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
-                readCountProperty.set(rawTimeSet.size());
+                updateReadCount();
             } 
         }
         
@@ -322,13 +326,25 @@ public class TimingLocationInput implements TimingListener{
         inputTextField = t;
     }
 
+    // Keep the read count on the screen current without flooding the JavaFX 
+    // thread. No matter how fast the reads come in, at most one update is
+    // ever waiting to run. 
+    private void updateReadCount() {
+        if (readCountUpdatePending.compareAndSet(false, true)) {
+            Platform.runLater(() -> {
+                readCountUpdatePending.set(false);
+                readCountProperty.set(rawTimeSet == null ? 0 : rawTimeSet.size());
+            });
+        }
+    }
+    
     @Override
     public void processRead(RawTimeData r) {
+        boolean locked = false;
         try {
             logger.trace("TimingLocationInput.processRead called" );
-            logger.trace("processRead() ProcessRead.aquire()");
             processRead.acquire();
-            logger.trace("Got it... ");
+            locked = true;
 
             // Mark it as our own
             r.setTimingLocationInputId(IDProperty.getValue());
@@ -339,31 +355,26 @@ public class TimingLocationInput implements TimingListener{
             // if so, just return
             if (rawTimeSet.contains(r)) {
                 logger.trace("TimingLocationInput.processRead: Duplicate " + r.getChip() + " " + r.getTimestamp().toString()); 
-                processRead.release();
                 return;
             }
             //if not, save it to our local stash of times. 
-            timingDAO.saveRawTimes(r); 
             rawTimeSet.add(r);
+            timingDAO.saveRawTimes(r); 
 
-            Platform.runLater(() -> {
-                readCountProperty.set(rawTimeSet.size());
-            });
+            updateReadCount();
 
-            processRead.release();
-
+            // Stay locked for this so that a reprocess can't sneak in between 
+            // the read being stashed and the cooked time being queued. 
             processReadStage2(r);
         } catch (InterruptedException ex) {
             logger.warn("Interrupted: ",ex);
+        } finally {
+            if (locked) processRead.release();
         }
-        
-        
-        
     }
     
-    public void processReadStage2(RawTimeData r){
-        // Create a cooked time
-        logger.trace("Stage 2 processing of raw id " + r.getID()); 
+    // Turn a raw read into a cooked time that is ready for the TimingLocation
+    private CookedTimeData buildCookedTime(RawTimeData r){
         CookedTimeData c = new CookedTimeData();
                 
         // mark it as our own
@@ -390,6 +401,13 @@ public class TimingLocationInput implements TimingListener{
         } else {
             c.setBib(r.getChip()); 
         }
+        return c;
+    }
+    
+    public void processReadStage2(RawTimeData r){
+        // Create a cooked time
+        logger.trace("Stage 2 processing of raw id " + r.getID()); 
+        CookedTimeData c = buildCookedTime(r);
         
         // if we are an announcer location, announce the arrival of the bib
         if (isAnnouncer.get()) HTTPServices.getInstance().publishEvent("ANNOUNCER", c.getBib());
@@ -399,14 +417,37 @@ public class TimingLocationInput implements TimingListener{
         timingLocation.cookTime(c);
     }
     
+    /**
+     * Build a fresh set of cooked times from every raw read we are holding. 
+     * Nothing is saved or announced, the caller (TimingDAO.reprocessReads) owns 
+     * what happens to them. 
+     */
+    List<CookedTimeData> cookAllReads(){
+        List<CookedTimeData> cooked = new ArrayList();
+        getRawTimeSet().forEach(r -> {
+            CookedTimeData c = buildCookedTime(r);
+            if (timingLocation.prepareCookedTime(c)) cooked.add(c);
+        });
+        return cooked;
+    }
+    
+    // Used by a reprocess to hold off new reads until it is done
+    void pauseReads() throws InterruptedException {
+        processRead.acquire();
+    }
+    boolean tryPauseReads() {
+        return processRead.tryAcquire();
+    }
+    void resumeReads() {
+        processRead.release();
+    }
+    
     public void clearLocalReads() {
         stopReader();
         // blow away the rawTimeSet
         if (rawTimeSet != null && !rawTimeSet.isEmpty()) {
             rawTimeSet.clear();
-            Platform.runLater(() -> {
-                readCountProperty.set(rawTimeSet.size());
-            });
+            updateReadCount();
         }
     }
     
@@ -430,51 +471,7 @@ public class TimingLocationInput implements TimingListener{
     
     public void reprocessReads() {
         logger.debug("TimingLocationInput::reprocessReads() for " + this.getLocationName());
-        TimingLocationInput tli = this; 
-        
-
-        // start a background thread for this 
-
-        Task task;
-        task = new Task<Void>() {
-            @Override public Void call() {
-                try {
-                    // set the processReadSemaphore to pause the processRead()
-                    logger.debug("TimingLocationInput::reprocessReads() Task started for " + tli.getLocationName());
-                    processRead.acquire();
-
-                    // clear out all cooked times for our location
-                    
-                    logger.debug("TimingLocationInput::reprocessReads() Task deleting times for " + tli.getLocationName());
-
-                    timingDAO.blockingClearCookedTimes(tli);
-                    
-                    logger.debug("TimingLocationInput::reprocessReads() Task reprocessing " + getRawTimeSet().size() + " reads at " + tli.getLocationName() + ".");
-
-                    getRawTimeSet().stream().forEach( r -> {
-                        // for everything in our rawTimeSet, reprocess the read 
-
-                        tli.processReadStage2(r);
-                        // setting the skew or ignore flag as needed
-
-                    });
-
-                    //resume processing of new times. 
-                    logger.debug("TimingLocationInput::reprocessReads() Task done for " + tli.getLocationName() + ".");
-
-                    processRead.release();
-                } catch (Exception ex) {
-                    logger.debug("TimingLocationInput::reprocessReads() exception for {}",tli.getLocationName(),ex);
-
-                }
-                //when done, resume processRead()
-                return null;
-            }
-        };
-         // Run this in a thread.... 
-        Thread reporcessTimes = new Thread(task);
-            reporcessTimes.setDaemon(true);
-            reporcessTimes.start();
+        timingDAO.reprocessReads(List.of(this));
     }
 
     public void stopReader() {
@@ -569,7 +566,7 @@ public class TimingLocationInput implements TimingListener{
 
             rawTimeSet.addAll(timingDAO.getRawTimes(this));
             logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
-            readCountProperty.set(rawTimeSet.size());
+            updateReadCount();
         } 
         
         return rawTimeSet;

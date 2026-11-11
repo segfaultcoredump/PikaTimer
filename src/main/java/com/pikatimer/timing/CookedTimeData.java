@@ -22,6 +22,8 @@ import java.util.Objects;
 import javafx.beans.Observable;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -50,6 +52,8 @@ public class CookedTimeData {
     
     private Duration timestamp;
     private final StringProperty timestampStringProperty = new SimpleStringProperty();
+    // The same time as a Duration so that tables can sort on the value and not the text
+    private final ReadOnlyObjectWrapper<Duration> timestampProperty = new ReadOnlyObjectWrapper<>();
     private final StringProperty bibProperty = new SimpleStringProperty();
     private final StringProperty chipProperty = new SimpleStringProperty();
     //private StringProperty participantNameProperty = new SimpleStringProperty();
@@ -83,6 +87,7 @@ public class CookedTimeData {
         if(c != null) {
             timestamp = Duration.ofNanos(c);
             timestampStringProperty.setValue(DurationFormatter.durationToString(timestamp,3)); 
+            timestampProperty.set(timestamp);
         }
     }
     
@@ -93,7 +98,10 @@ public class CookedTimeData {
     public void setTimestamp(Duration d) {
         this.timestamp = d;
         timestampStringProperty.setValue(DurationFormatter.durationToString(timestamp,3)); 
-        
+        timestampProperty.set(timestamp);
+    }
+    public ReadOnlyObjectProperty<Duration> timestampProperty(){
+        return timestampProperty.getReadOnlyProperty();
     }
     public StringProperty timestampStringProperty(){
         return timestampStringProperty;

@@ -17,10 +17,14 @@
 package com.pikatimer;
 
 import com.pikatimer.event.Event;
+import com.pikatimer.results.ResultsDAO;
+import javafx.animation.PauseTransition;
 import javafx.beans.binding.Bindings;
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.control.TabPane;
+import javafx.scene.layout.HBox;
+import javafx.util.Duration;
 
 
 /**
@@ -34,6 +38,7 @@ public class FXMLpikaController   {
     @FXML private Label eventName;
     @FXML private Label eventDate;
     @FXML private TabPane mainTabPane; 
+    @FXML private HBox busyIndicator;
     /**
      * Initializes the controller class.
      */
@@ -43,6 +48,20 @@ public class FXMLpikaController   {
         eventName.textProperty().bind(Bindings.concat("PikaTimer: ").concat(event.eventNameProperty()));
         eventDate.textProperty().bind(event.eventDateStringProperty());
         event.setMainTabPane(mainTabPane);
+        
+        // Let the user know when a large recalculation is in progress. 
+        // Hiding is delayed a bit so that it does not flicker between the 
+        // stages of a single operation (reprocess the times, then the results). 
+        PauseTransition hideBusy = new PauseTransition(Duration.millis(500));
+        hideBusy.setOnFinished(e -> busyIndicator.setVisible(false));
+        ResultsDAO.getInstance().busyProperty().addListener((obs, wasBusy, isBusy) -> {
+            if (isBusy) {
+                hideBusy.stop();
+                busyIndicator.setVisible(true);
+            } else {
+                hideBusy.playFromStart();
+            }
+        });
     }
     
     

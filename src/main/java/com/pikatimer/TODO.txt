@@ -28,17 +28,18 @@ Race:
  
     auto-save on text field updates (always edit table cell factory?)
 
-    Done: Duration TextFormatter
-    Done: Decimal TextFormatter
-    Done: LocalTime TextFormatter
+    VERIFY: 
+        Done: Duration TextFormatter
+        Done: Decimal TextFormatter
+        Done: LocalTime TextFormatter
 
     Recalc race results if start/finish timing splits changed
 
 
 
 Awards:
-    Sex -> Name mapping add/delete button does not do anything
-    Award Eligible participant attribute
+    Sex -> Name mapping add/delete button does not do anything?
+    Award Eligible participant attribute filter
 
 BUGS: 
     Better FTPS exception handling loop
@@ -80,6 +81,7 @@ Timing:
         --PikaRelay client
         --Generic bib/chip -> time importer
         --Select Timer Web App: Simple keypad with enter button, directly feeds to Pika
+        --Video Capture -> Time Entry Web App: Use OCR to record when we see a bib
 
 
 Participants:

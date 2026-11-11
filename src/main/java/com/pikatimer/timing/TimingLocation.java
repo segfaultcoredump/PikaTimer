@@ -195,6 +195,22 @@ public class TimingLocation {
     }
     
     public void cookTime(CookedTimeData c) {
+        if (!prepareCookedTime(c)) return;
+        
+        // Move to the timing location
+        timingDAO.saveCookedTime(c); 
+        
+        // if we are an announcer location, announce the arrival of the bib
+        if (isAnnouncer.get()) HTTPServices.getInstance().publishEvent("ANNOUNCER", c.getBib());
+    }
+    
+    /**
+     * Apply the location's filters, mark the time as belonging to this 
+     * location, and take care of any auto-assignment to a race. 
+     * 
+     * @return false if the time was filtered out and should be dropped
+     */
+    boolean prepareCookedTime(CookedTimeData c) {
         synchronized(cookedTimeReady){
             if (!cookedTimeReady.get()) {
                 autoAssignRaceProperty();
@@ -204,12 +220,12 @@ public class TimingLocation {
         // Filter it
         if (!filterStartDuration.isZero() && c.getTimestamp().compareTo(filterStartDuration) < 0) {
             logger.trace("Filtering: " + c.getTimestamp() + " is less than " + filterStartDuration);
-            return;
+            return false;
         }
         if (!filterEndDuration.isZero() && c.getTimestamp().compareTo(filterEndDuration) > 0) {
             logger.trace("Filtering: " + c.getTimestamp() + " is more than " + filterEndDuration);
 
-            return;
+            return false;
         } 
         
         c.setTimingLocationId(this.getID());
@@ -232,11 +248,7 @@ public class TimingLocation {
             }
         }
         
-        // Move to the timing location
-        timingDAO.saveCookedTime(c); 
-        
-        // if we are an announcer location, announce the arrival of the bib
-        if (isAnnouncer.get()) HTTPServices.getInstance().publishEvent("ANNOUNCER", c.getBib());
+        return true;
     }
     
     @Column(name="filterStartDuration")
@@ -270,10 +282,9 @@ public class TimingLocation {
     }
     
     public void reprocessReads() {
-        timingInputs.forEach(t -> {
-            logger.debug("TimingLocation::reprocessReads: " + t.getLocationName());
-            t.reprocessReads();
-        });
+        logger.debug("TimingLocation::reprocessReads: " + getLocationName());
+        // All of the inputs in one pass
+        timingDAO.reprocessReads(new ArrayList(timingInputs));
     }
     
     @Column(name="announcer")

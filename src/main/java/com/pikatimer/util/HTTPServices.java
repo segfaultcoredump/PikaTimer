@@ -285,7 +285,7 @@ public class HTTPServices {
             JSONObject o = new JSONObject();
             ResultsDAO resDAO = ResultsDAO.getInstance();
             RaceDAO.getInstance().listRaces().forEach(r -> {
-                resDAO.getResults(r.getID()).forEach(res -> {
+                resDAO.copyResults(r.getID()).forEach(res -> {
 
                     if (!res.isEmpty() && res.getFinish()>0) {
                         String race = "";

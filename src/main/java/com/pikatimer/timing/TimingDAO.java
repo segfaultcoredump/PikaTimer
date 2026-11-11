@@ -17,6 +17,7 @@
 package com.pikatimer.timing;
 
 import com.pikatimer.results.ResultsDAO;
+import com.pikatimer.util.FxBulk;
 import com.pikatimer.util.HibernateUtil;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,6 +33,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import javafx.application.Platform;
 //import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -62,13 +65,67 @@ public class TimingDAO {
     private static ObservableList<TimeOverride> overrideList;
     private  Map<String,List<TimeOverride>> overrideMap = new ConcurrentHashMap(); 
 
+    // Held by whoever is persisting or replacing cooked times. Cooked times never 
+    // leave the cookedTimeQueue unless this is held, so a bulk replace can 
+    // reliably pull out anything that is still pending for the inputs it is redoing. 
     Semaphore cookedTimeProcessorSemaphore = new Semaphore(1);
+    // One permit per "there is something in the cookedTimeQueue" notification
+    private final Semaphore cookedTimeSignal = new Semaphore(0);
+    
+    // Same idea for the raw times
+    private final Object rawTimeLock = new Object();
+    private final Semaphore rawTimeSignal = new Semaphore(0);
+    private boolean rawTimeWriterStarted = false;
+    
+    // Number of bulk operations (reprocess, clear) that are in flight
+    private static final AtomicInteger bulkOperations = new AtomicInteger();
     private static final CountDownLatch locationsLoadedLatch = new CountDownLatch(1);
 
+    // The lists in the cookedTimeBibMap are never modified once they are in the 
+    // map. A change swaps in a new list, so a reader on another thread always
+    // has a stable list to work with. 
     public List<CookedTimeData> getCookedTimesByBib(String bib) {
-        if (cookedTimeBibMap.containsKey(bib))
-            return cookedTimeBibMap.get(bib); 
+        List<CookedTimeData> times = cookedTimeBibMap.get(bib);
+        if (times != null) return times; 
         return new ArrayList();
+    }
+    
+    private void addToBibMap(CookedTimeData c) {
+        cookedTimeBibMap.compute(c.getBib(), (bib, old) -> {
+            List<CookedTimeData> updated = (old == null) ? new ArrayList() : new ArrayList(old);
+            updated.add(c);
+            return updated;
+        });
+    }
+    
+    private void removeFromBibMap(CookedTimeData c) {
+        cookedTimeBibMap.computeIfPresent(c.getBib(), (bib, old) -> {
+            List<CookedTimeData> updated = new ArrayList(old);
+            updated.remove(c);
+            return updated;
+        });
+    }
+    
+    // Removes everything that matches and returns the bibs that lost a time
+    private Set<String> removeFromBibMap(Predicate<CookedTimeData> remove) {
+        Set<String> bibs = new HashSet();
+        cookedTimeBibMap.replaceAll((bib, old) -> {
+            if (old.stream().noneMatch(remove)) return old;
+            bibs.add(bib);
+            List<CookedTimeData> updated = new ArrayList(old);
+            updated.removeIf(remove);
+            return updated;
+        });
+        return bibs;
+    }
+    
+    /**
+     * True while cooked times are still on their way: either a bulk operation 
+     * is running or there are times waiting to be saved. The results 
+     * processor uses this to avoid recalculating from a half finished picture. 
+     */
+    public boolean isBusy() {
+        return bulkOperations.get() > 0 || !cookedTimeQueue.isEmpty();
     }
         
         
@@ -94,24 +151,108 @@ public class TimingDAO {
     }
     
       
+    /**
+     * Queue a raw time to be saved. A background thread writes whatever has 
+     * piled up in a single transaction, so importing a file with tens of 
+     * thousands of reads is a handful of commits and not one per read. 
+     */
     public void saveRawTimes(RawTimeData r) {
-        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-        s.beginTransaction();
-        s.save(r);
-        s.getTransaction().commit();
+        startRawTimeWriter();
+        try {
+            rawTimeQueue.put(r); // blocks if the writer is way behind
+            rawTimeSignal.release();
+        } catch (InterruptedException ex) {
+            logger.warn("Interrupted!",ex);
+            Thread.currentThread().interrupt();
+        }
+    }
+    
+    /**
+     * Give the background writers a chance to finish saving anything that is 
+     * still queued up. Called when the application is closing. 
+     */
+    public void flushPendingWrites() {
+        long deadline = System.currentTimeMillis() + 5000;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                if (rawTimeQueue.isEmpty() && cookedTimeQueue.isEmpty()) {
+                    // Wait out a batch that is in the middle of being written
+                    synchronized(rawTimeLock) { }
+                    if (cookedTimeProcessorSemaphore.tryAcquire(Math.max(1, deadline - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        cookedTimeProcessorSemaphore.release();
+                    }
+                    if (rawTimeQueue.isEmpty() && cookedTimeQueue.isEmpty()) return;
+                }
+                Thread.sleep(20);
+            }
+            logger.warn("TimingDAO::flushPendingWrites: gave up waiting with " + rawTimeQueue.size() + " raw and " + cookedTimeQueue.size() + " cooked times unsaved");
+        } catch (InterruptedException ex) {
+            logger.warn("Interrupted!",ex);
+        }
+    }
+    
+    private synchronized void startRawTimeWriter() {
+        if (rawTimeWriterStarted) return;
+        rawTimeWriterStarted = true;
+        
+        Thread rawTimeWriterThread = new Thread(() -> {
+            while(true) {
+                try {
+                    rawTimeSignal.acquire();
+                    Thread.sleep(10); // Times rarely come in 1 at a time
+                    rawTimeSignal.drainPermits();
+                    
+                    synchronized(rawTimeLock) {
+                        List<RawTimeData> pending = new ArrayList();
+                        rawTimeQueue.drainTo(pending);
+                        if (pending.isEmpty()) continue;
+                        logger.debug("RawTimeWriter Thread: Saving: " + pending.size());
+                        
+                        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
+                        s.beginTransaction();
+                        try {
+                            int count = 0;
+                            for (RawTimeData r: pending) {
+                                s.save(r);
+                                if ( ++count % 100 == 0 ) {
+                                    //flush a batch of updates and release memory:
+                                    s.flush();
+                                    s.clear();
+                                }
+                            }
+                            s.getTransaction().commit();
+                        } catch (Exception e) {
+                            logger.error("RawTimeWriter Thread: Unable to save " + pending.size() + " raw times", e);
+                            try { s.getTransaction().rollback(); } catch (Exception e2) { logger.debug("Rollback failed", e2); }
+                        }
+                    }
+                } catch (InterruptedException ex) {
+                    logger.warn("Interrupted!",ex);
+                }
+            }
+        });
+        rawTimeWriterThread.setName("Thread-RawTimeWriterThread");
+        rawTimeWriterThread.setDaemon(true);
+        rawTimeWriterThread.start();
     }
     
     public void clearRawTimes(TimingLocationInput tli) {
-        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-        s.beginTransaction();
-        logger.debug("Deleting all raw times for " + tli.getLocationName());
-        
-        try {  
-            s.createQuery("delete from RawTimeData where timingLocationInputId = :tli_id").setParameter("tli_id", tli.getID()).executeUpdate();
-        } catch (Exception e) {
-            logger.debug(e.getMessage());
-        } 
-        s.getTransaction().commit(); 
+        // Holding the lock means the writer is not in the middle of a batch, and 
+        // anything still waiting to be written for this input can be tossed
+        synchronized(rawTimeLock) {
+            rawTimeQueue.removeIf(r -> Objects.equals(r.getTimingLocationInputId(), tli.getID()));
+            
+            Session s=HibernateUtil.getSessionFactory().getCurrentSession();
+            s.beginTransaction();
+            logger.debug("Deleting all raw times for " + tli.getLocationName());
+
+            try {  
+                s.createQuery("delete from RawTimeData where timingLocationInputId = :tli_id").setParameter("tli_id", tli.getID()).executeUpdate();
+            } catch (Exception e) {
+                logger.debug(e.getMessage());
+            } 
+            s.getTransaction().commit(); 
+        }
         
         tli.clearLocalReads();
         // Now go and clean up the cooked times too
@@ -145,10 +286,16 @@ public class TimingDAO {
                     Platform.runLater(() -> {
                         cookedTimeList.addAll(cookedTimes);
                     });
+                    Map<String,List<CookedTimeData>> loaded = new java.util.HashMap();
                     cookedTimes.stream().forEach(c -> {
-                        if (!cookedTimeBibMap.containsKey(c.getBib())) cookedTimeBibMap.put(c.getBib(), new ArrayList());
-                        if (!c.ignoreTimeProperty().get()) cookedTimeBibMap.get(c.getBib()).add(c);
+                        List<CookedTimeData> bibTimes = loaded.computeIfAbsent(c.getBib(), k -> new ArrayList());
+                        if (!c.ignoreTimeProperty().get()) bibTimes.add(c);
                     });
+                    loaded.forEach((bib, times) -> cookedTimeBibMap.merge(bib, times, (a, b) -> {
+                        List<CookedTimeData> both = new ArrayList(a);
+                        both.addAll(b);
+                        return both;
+                    }));
                     
                     return null; 
                 }
@@ -165,31 +312,32 @@ public class TimingDAO {
                     while(true) {
                         List<CookedTimeData> pending = new ArrayList();
                         List<CookedTimeData> newTimes = new ArrayList();
+                        boolean locked = false;
                         try {
-                            cookedTimeProcessorSemaphore.acquire();
-                            pending.add(cookedTimeQueue.take());
-                        
-                            //cookedTimeQueue.drainTo(pending,499);  // 500 total
+                            // Wait for something to show up, but leave it in the queue 
+                            // until we hold the semaphore. 
+                            cookedTimeSignal.acquire();
                             Thread.sleep(10); // Times rarely come in 1 at a time
+                            cookedTimeSignal.drainPermits();
+                            
+                            cookedTimeProcessorSemaphore.acquire();
+                            locked = true;
+                            
                             cookedTimeQueue.drainTo(pending);
+                            if (pending.isEmpty()) continue;
                             logger.debug("ProcessNewCooked Thread: Processing: " + pending.size());
 
-                            int i=1;
                             Session s=HibernateUtil.getSessionFactory().getCurrentSession();
                             s.beginTransaction();
                             int count = 0;
                             Iterator<CookedTimeData> addIterator = pending.iterator();
                             while (addIterator.hasNext()) {
                                 CookedTimeData c = addIterator.next();
-//                                if (c.getID() != null ) // previously saved
-//                                    Platform.runLater(() -> {
-//                                        cookedTimeList.remove(c); // remove for now to prevent duplicate entries
-//                                    });
                                 if (c.getID() == null) newTimes.add(c);
                                 
                                 s.saveOrUpdate(c); 
                                 
-                                if ( ++count % 20 == 0 ) {
+                                if ( ++count % 100 == 0 ) {
                                     //flush a batch of updates and release memory:
                                     s.flush();
                                     s.clear();
@@ -199,20 +347,30 @@ public class TimingDAO {
                             s.getTransaction().commit(); 
 
                             Platform.runLater(() -> {
-                                cookedTimeList.addAll(newTimes);
+                                FxBulk.addAll(cookedTimeList, newTimes);
                             });
+                            Set<String> bibs = new HashSet();
                             pending.stream().forEach(c -> {
-                                if (!cookedTimeBibMap.containsKey(c.getBib())) cookedTimeBibMap.put(c.getBib(), new ArrayList());
-                                if (c.ignoreTimeProperty().get()) cookedTimeBibMap.get(c.getBib()).remove(c);
-                                else cookedTimeBibMap.get(c.getBib()).add(c);
-                                resultsQueue.add(c.getBib());
+                                if (c.ignoreTimeProperty().get()) removeFromBibMap(c);
+                                else addToBibMap(c);
+                                bibs.add(c.getBib());
                             });
+                            resultsQueue.addAll(bibs);
                             
-                            Thread.sleep(100); // This will limit us to being able to process about 5000 times / second
+                        } catch (InterruptedException ex) {
+                            logger.warn("Interrupted!",ex);
+                        } catch (Exception ex) {
+                            // Don't let one bad batch kill the processing thread
+                            logger.error("ProcessNewCooked Thread: Unable to process " + pending.size() + " times", ex);
+                        } finally {
+                            if (locked) cookedTimeProcessorSemaphore.release();
+                        }
+                        
+                        try {
+                            Thread.sleep(100); // Let more times pile up so we work in batches
                         } catch (InterruptedException ex) {
                             logger.warn("Interrupted!",ex);
                         }
-                        cookedTimeProcessorSemaphore.release();
                     }
 
                 }
@@ -231,6 +389,7 @@ public class TimingDAO {
     
     public void saveCookedTime(CookedTimeData c) {
         cookedTimeQueue.add(c); 
+        cookedTimeSignal.release();
     }
     
     public void clearAllCookedTimes() {
@@ -281,42 +440,176 @@ public class TimingDAO {
     
     void blockingClearCookedTimes(TimingLocationInput tli) {
         if (Platform.isFxApplicationThread()) logger.debug("clockingClearCookedTimes called on FxApplicationThread!!!");
-        List<CookedTimeData> toRemoveList = new ArrayList<>();
-        cookedTimeList.stream().forEach(c -> { 
-            if (Objects.equals(c.getTimingLocationInputId(), tli.getID()) ) {
-                toRemoveList.add(c);
-                if (cookedTimeBibMap.get(c.getBib()) != null) cookedTimeBibMap.get(c.getBib()).remove(c);
-            }
-         });
-        Platform.runLater(() -> {
-            cookedTimeList.removeAll(toRemoveList); 
-        });
-        toRemoveList.stream().forEach(c -> {
-            if (!cookedTimeBibMap.containsKey(c.getBib())) cookedTimeBibMap.get(c.getBib()).remove(c);
-            resultsQueue.add(c.getBib());
-        });
+        getCookedTimes(); // make sure the list exists
+        
+        final Integer tliID = tli.getID();
+        final Predicate<CookedTimeData> fromThisInput = c -> Objects.equals(c.getTimingLocationInputId(), tliID);
+        
+        bulkOperations.incrementAndGet();
+        resultsDAO.beginBusy();
+        boolean locked = false;
+        try {
+            cookedTimeProcessorSemaphore.acquire();
+            locked = true;
+            
+            // Anything still waiting to be saved for this input is no longer wanted
+            cookedTimeQueue.removeIf(fromThisInput);
+            
+            // Ignored times are not in the map and do not feed into a result, so 
+            // the bibs that come back are the only ones that need to be recalculated. 
+            Set<String> bibs = removeFromBibMap(fromThisInput);
 
-        Session s=HibernateUtil.getSessionFactory().getCurrentSession();
-        s.beginTransaction();
-        logger.debug("Deleting all cooked times for " + tli.getLocationName());
+            Session s=HibernateUtil.getSessionFactory().getCurrentSession();
+            s.beginTransaction();
+            logger.debug("Deleting all cooked times for " + tli.getLocationName());
 
-        try {  
-            s.createQuery("delete from CookedTimeData where timingLocationInputId = :tli_id").setParameter("tli_id", tli.getID()).executeUpdate();
-        } catch (Exception e) {
-            logger.debug(e.getMessage());
-        } 
-        s.getTransaction().commit(); 
-        logger.debug("Done deleting all cooked times for " + tli.getLocationName());
-
+            try {  
+                s.createQuery("delete from CookedTimeData where timingLocationInputId = :tli_id").setParameter("tli_id", tliID).executeUpdate();
+            } catch (Exception e) {
+                logger.debug(e.getMessage());
+            } 
+            s.getTransaction().commit(); 
+            logger.debug("Done deleting all cooked times for " + tli.getLocationName());
+            
+            // The observable list is only safe to walk on the JavaFX thread
+            Platform.runLater(() -> {
+                FxBulk.removeIf(cookedTimeList, fromThisInput); 
+            });
+            
+            resultsQueue.addAll(bibs);
+        } catch (InterruptedException ex) {
+            logger.warn("Interrupted!",ex);
+        } finally {
+            if (locked) cookedTimeProcessorSemaphore.release();
+            bulkOperations.decrementAndGet();
+            resultsDAO.endBusy();
+        }
+    }
     
+    /**
+     * Throw away the cooked times for a set of inputs and build them again from
+     * the raw reads those inputs are holding.
+     * 
+     * This is done as one operation: one transaction, one swap of the times 
+     * each bib has, one change to the observable list, and one request to 
+     * recalculate the bibs involved. Doing it a time at a time (or even an
+     * input at a time) makes the tables re-sort themselves over and over, 
+     * which is what used to lock up the UI. 
+     */
+    public void reprocessReads(Collection<TimingLocationInput> inputs) {
+        final List<TimingLocationInput> inputList = new ArrayList(inputs);
+        if (inputList.isEmpty()) return;
+        getCookedTimes(); // make sure the list and the processing thread exist
+        
+        bulkOperations.incrementAndGet();
+        resultsDAO.beginBusy();
+        
+        Thread reprocessThread = new Thread(() -> {
+            List<TimingLocationInput> paused = new ArrayList();
+            boolean locked = false;
+            try {
+                // Hold off any new reads while we work
+                for (TimingLocationInput tli: inputList) {
+                    tli.pauseReads();
+                    paused.add(tli);
+                }
+                cookedTimeProcessorSemaphore.acquire();
+                locked = true;
+                
+                final Set<Integer> inputIDs = new HashSet();
+                inputList.forEach(tli -> inputIDs.add(tli.getID()));
+                final Predicate<CookedTimeData> fromTheseInputs = c -> inputIDs.contains(c.getTimingLocationInputId());
+                
+                // Pending saves for these inputs are about to be redone from the raw reads
+                cookedTimeQueue.removeIf(fromTheseInputs);
+                
+                final List<CookedTimeData> newTimes = new ArrayList();
+                for (TimingLocationInput tli: inputList) {
+                    List<CookedTimeData> cooked = tli.cookAllReads();
+                    logger.debug("TimingDAO::reprocessReads: " + tli.getLocationName() + " produced " + cooked.size() + " times");
+                    newTimes.addAll(cooked);
+                }
+                
+                Session s=HibernateUtil.getSessionFactory().getCurrentSession();
+                s.beginTransaction();
+                try {
+                    s.createQuery("delete from CookedTimeData where timingLocationInputId in (:tli_ids)").setParameterList("tli_ids", inputIDs).executeUpdate();
+                    int count = 0;
+                    for (CookedTimeData c: newTimes) {
+                        s.save(c);
+                        if ( ++count % 100 == 0 ) {
+                            //flush a batch of updates and release memory:
+                            s.flush();
+                            s.clear();
+                        }
+                    }
+                    s.getTransaction().commit(); 
+                } catch (Exception e) {
+                    logger.error("TimingDAO::reprocessReads: Unable to save the reprocessed times", e);
+                    try { s.getTransaction().rollback(); } catch (Exception e2) { logger.debug("Rollback failed", e2); }
+                    return; // leave what we have in memory alone
+                }
+                
+                // Swap the times for each bib
+                Set<String> bibs = removeFromBibMap(fromTheseInputs);
+                Map<String,List<CookedTimeData>> newByBib = new java.util.HashMap();
+                newTimes.forEach(c -> newByBib.computeIfAbsent(c.getBib(), k -> new ArrayList()).add(c));
+                newByBib.forEach((bib, times) -> cookedTimeBibMap.merge(bib, times, (a, b) -> {
+                    List<CookedTimeData> both = new ArrayList(a);
+                    both.addAll(b);
+                    return both;
+                }));
+                bibs.addAll(newByBib.keySet());
+                
+                Platform.runLater(() -> {
+                    FxBulk.replace(cookedTimeList, fromTheseInputs, newTimes);
+                });
+                
+                resultsQueue.addAll(bibs);
+                logger.debug("TimingDAO::reprocessReads: done. " + newTimes.size() + " times for " + bibs.size() + " bibs");
+            } catch (InterruptedException ex) {
+                logger.warn("Interrupted!",ex);
+            } catch (Exception ex) {
+                logger.error("TimingDAO::reprocessReads: exception", ex);
+            } finally {
+                if (locked) cookedTimeProcessorSemaphore.release();
+                paused.forEach(tli -> tli.resumeReads());
+                bulkOperations.decrementAndGet();
+                resultsDAO.endBusy();
+            }
+        });
+        reprocessThread.setName("Thread-reprocessReads");
+        reprocessThread.setDaemon(true);
+        reprocessThread.start();
     }
     
     void clearCookedTimes(TimingLocationInput tli) {
+        // A reader will often clear its reads and then start right back up
+        // again (re-reading a file). Hold off any new reads for this input
+        // until the old times are gone so the cleanup can't take the new ones
+        // out along with the old.
+        //
+        // If the input is busy right now (a read or a reprocess is in flight)
+        // don't make the JavaFX thread wait for it, let the cleanup thread
+        // do the waiting instead.
+        final boolean pausedHere = tli.tryPauseReads();
+
         Task clearTimes = new Task<Void>() {
-                
+
             @Override public Void call() {
-                // Go and clean up the cooked times observable list
-                blockingClearCookedTimes(tli);
+                boolean paused = pausedHere;
+                try {
+                    if (!paused) {
+                        tli.pauseReads();
+                        paused = true;
+                    }
+                    // Go and clean up the cooked times observable list
+                    blockingClearCookedTimes(tli);
+                } catch (InterruptedException ex) {
+                    logger.warn("Interrupted!",ex);
+                } finally {
+                    if (paused) tli.resumeReads();
+                }
                 return null;
             }
         };
@@ -448,10 +741,12 @@ public class TimingDAO {
     }
     
     public void reprocessAllRawTimes(){
+        List<TimingLocationInput> inputs = new ArrayList();
         timingLocationList.forEach(t -> {
             logger.debug("TimingDAO::reprocessAllRawTimes: " + t.getLocationName());
-            t.reprocessReads();
+            inputs.addAll(t.inputsProperty());
         });
+        reprocessReads(inputs);
     }
     
 //    public void clearAll() {

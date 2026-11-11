@@ -281,61 +281,85 @@ public class Result {
         return splitPropertyMap.get(splitID);
     }
     
+    /**
+     * An immutable copy of the calculated times. The results thread hands one
+     * of these to the JavaFX thread so that the UI properties are never built
+     * from fields that are in the middle of being recalculated.
+     */
+    public record TimeSnapshot(Duration start, Duration waveStart, Duration finish, Map<Integer,Long> splits) {
+        public boolean isEmpty(){
+            return (finish == null || finish.isZero()) 
+                    && (start == null || start.isZero()) 
+                    && (splits == null || splits.isEmpty()); 
+        }
+    }
+    
+    public TimeSnapshot snapshot(){
+        return new TimeSnapshot(startDuration, waveStartDuration, finishDuration, new HashMap<>(splitMap));
+    }
+    
     public void recalcTimeProperties(){
         if (pendingRecalc){
-            
-
-            if (!startDuration.equals(startDurationProperty.get())) startDurationProperty.set(startDuration);
-            if (!waveStartDuration.equals(waveStartDurationProperty.get())) waveStartDurationProperty.set(waveStartDuration);
-            
-            Duration startOffset = Duration.ZERO;
-            if (splitMap.containsKey(0)) {
-                startOffset = Duration.ofNanos(splitMap.get(0)).minus(waveStartDuration);
-            }
-            
-            if (!startOffset.equals(startOffsetProperty.get())) startOffsetProperty.set(startOffset);
-            
-            if (finishDuration.isZero()) {
-                finishDurationProperty.setValue(Duration.ofNanos(Long.MAX_VALUE));
-                finishTODProperty.setValue(Duration.ofNanos(Long.MAX_VALUE));
-            }
-            else {
-                finishDurationProperty.setValue(finishDuration.minus(startDuration));
-                if (finishDuration.toDays()> 0) {
-                    finishTODProperty.setValue(finishDuration.minus(Duration.ofDays(finishDuration.toDays())));
-                } else finishTODProperty.setValue(finishDuration);
-            }
-
-            if (finishDuration.isZero()) finishGunDurationProperty.setValue(Duration.ofNanos(Long.MAX_VALUE));
-            else finishGunDurationProperty.setValue(finishDuration.minus(waveStartDuration));
-            
-            
-//            
-//            logger.debug(" chipTime: " + finishDurationProperty.get().toString());
-//            logger.debug(" gunTime: " + finishGunDurationProperty.get().toString());
-            
-            // now loop through and fix the splits...
-            // missing splits are set to MAX_VALUE
-            splitMap.keySet().forEach(splitID -> {
-                Duration d;
-                if (splitID != 0){
-                    d = Duration.ofNanos(splitMap.get(splitID)).minus(startDuration);
-                    if (d.isNegative()) d = Duration.ofNanos(Long.MAX_VALUE);
-                } else {
-                    d = Duration.ofNanos(splitMap.get(splitID));
-                }
-                if (splitPropertyMap.containsKey(splitID)) splitPropertyMap.get(splitID).set(d);
-                else splitPropertyMap.put(splitID, new SimpleObjectProperty(d));
-            });    
-            
-            splitPropertyMap.keySet().forEach(splitID -> {
-                if (!splitMap.containsKey(splitID)) splitPropertyMap.get(splitID).set(Duration.ofNanos(Long.MAX_VALUE));
-            
-            });
-            
-            revision.set(revision.get() + 1);
+            applyTimeProperties(snapshot(), true);
             pendingRecalc = false;
         }
+    }
+    
+    /**
+     * Push a snapshot of the times into the observable properties. 
+     * 
+     * bumpRevision controls whether the containing ObservableList is told that 
+     * this element was updated. Every such update makes a SortedList re-sort, 
+     * so bulk callers pass false and replace the list content once instead. 
+     */
+    public void applyTimeProperties(TimeSnapshot snap, boolean bumpRevision){
+        final Duration MISSING = Duration.ofNanos(Long.MAX_VALUE);
+        Duration start = snap.start();
+        Duration waveStart = snap.waveStart();
+        Duration finish = snap.finish();
+        Map<Integer,Long> splits = snap.splits();
+
+        if (!start.equals(startDurationProperty.get())) startDurationProperty.set(start);
+        if (!waveStart.equals(waveStartDurationProperty.get())) waveStartDurationProperty.set(waveStart);
+
+        Duration startOffset = Duration.ZERO;
+        if (splits.containsKey(0)) {
+            startOffset = Duration.ofNanos(splits.get(0)).minus(waveStart);
+        }
+
+        if (!startOffset.equals(startOffsetProperty.get())) startOffsetProperty.set(startOffset);
+
+        if (finish.isZero()) {
+            finishDurationProperty.setValue(MISSING);
+            finishTODProperty.setValue(MISSING);
+            finishGunDurationProperty.setValue(MISSING);
+        } else {
+            finishDurationProperty.setValue(finish.minus(start));
+            if (finish.toDays()> 0) {
+                finishTODProperty.setValue(finish.minus(Duration.ofDays(finish.toDays())));
+            } else finishTODProperty.setValue(finish);
+            finishGunDurationProperty.setValue(finish.minus(waveStart));
+        }
+
+        // now loop through and fix the splits...
+        // missing splits are set to MAX_VALUE
+        splits.forEach((splitID, nanos) -> {
+            Duration d;
+            if (splitID != 0){
+                d = Duration.ofNanos(nanos).minus(start);
+                if (d.isNegative()) d = MISSING;
+            } else {
+                d = Duration.ofNanos(nanos);
+            }
+            if (splitPropertyMap.containsKey(splitID)) splitPropertyMap.get(splitID).set(d);
+            else splitPropertyMap.put(splitID, new SimpleObjectProperty(d));
+        });    
+
+        splitPropertyMap.keySet().forEach(splitID -> {
+            if (!splits.containsKey(splitID)) splitPropertyMap.get(splitID).set(MISSING);
+        });
+
+        if (bumpRevision) revision.set(revision.get() + 1);
     }
     
     

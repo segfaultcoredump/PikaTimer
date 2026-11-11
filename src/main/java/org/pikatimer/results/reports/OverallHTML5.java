@@ -113,6 +113,7 @@ public class OverallHTML5 implements RaceReportType{
         race = rr.getRace();
         OverallJSON json = new OverallJSON();
         json.init(race);
+        json.setHtmlEscape(true); // our JS inserts the values directly into the page
         
         
         Event event = Event.getInstance();  // fun with singletons... 

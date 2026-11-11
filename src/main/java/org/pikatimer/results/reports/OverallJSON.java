@@ -16,10 +16,20 @@
  */
 package org.pikatimer.results.reports;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.SerializableString;
+import com.fasterxml.jackson.core.io.CharacterEscapes;
+import com.fasterxml.jackson.core.io.SerializedString;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.core.util.Separators;
 import org.pikatimer.participant.CustomAttribute;
+import org.pikatimer.participant.Participant;
 import org.pikatimer.participant.ParticipantDAO;
 import org.pikatimer.race.AwardCategory;
 import org.pikatimer.race.AwardWinner;
+import org.pikatimer.race.CourseRecord;
 import org.pikatimer.race.Race;
 import org.pikatimer.race.RaceDAO;
 import org.pikatimer.results.ProcessedResult;
@@ -31,28 +41,43 @@ import org.pikatimer.timing.Split;
 import org.pikatimer.timing.TimingDAO;
 import org.pikatimer.util.DurationFormatter;
 import org.pikatimer.util.Pace;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.text.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
 /**
+ * Overall results as a JSON array, one object per participant.
+ *
+ * All values are written as JSON strings. By default values are written raw
+ * (and JSON-escaped by Jackson). When embedded in the HTML5 report the values
+ * are rendered as HTML, so {@link #setHtmlEscape(boolean)} switches to
+ * HTML-entity-escaped values. In both modes the characters &lt; &gt; &amp; '
+ * and U+2028/U+2029 are written as \\uXXXX escapes so the output can be
+ * safely embedded in a &lt;script&gt; block.
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
 public class OverallJSON implements RaceReportType{
-   private static final Logger logger = LoggerFactory.getLogger(OverallJSON.class);
-   
+    private static final Logger logger = LoggerFactory.getLogger(OverallJSON.class);
+
+    private static final JsonFactory JSON_FACTORY = new JsonFactory();
+    private static final CharacterEscapes SCRIPT_SAFE_ESCAPES = new ScriptSafeEscapes();
+
     Race race;
-    
+
         // Defaults
     Boolean showDQ = true;
     Boolean inProgress = false;
@@ -66,13 +91,28 @@ public class OverallJSON implements RaceReportType{
     Boolean showGun = true;
     Boolean showAwards = true;
     Boolean showCourseRecords = true;
-    
+
     Boolean showCustomAttributes = false;
-    List<CustomAttribute> customAttributesList = new ArrayList();
-    
-    Map<String,Boolean> supportedOptions = new HashMap();
-    Map<String,CustomAttribute> flattenedCustomNames = new HashMap();
-    
+    List<CustomAttribute> customAttributesList = new ArrayList<>();
+
+    Map<String,Boolean> supportedOptions = new HashMap<>();
+    Map<String,CustomAttribute> flattenedCustomNames = new HashMap<>();
+
+    private boolean htmlEscape = false;
+
+    // Per-run state, set up at the start of process()
+    private String dispFormat;
+    private String dispTimestamp;
+    private String roundMode;
+    private Pace pace;
+    private Duration cutoffTime;
+    private String cutoffTimeString;
+    private boolean segmentsToShow;
+    private boolean penaltiesOrBonuses;
+    private boolean onCourseOCO;
+    private final Map<String,List<String>> awardWinnersByBibMap = new HashMap<>();
+    private final Map<String,Map<AwardCategory,AwardWinner>> awardWinnersDetailByBibMap = new HashMap<>();
+
     public OverallJSON(){
         supportedOptions.put("showDQ", true);
         supportedOptions.put("inProgress", false);
@@ -87,19 +127,40 @@ public class OverallJSON implements RaceReportType{
         supportedOptions.put("showAwards",true);
         supportedOptions.put("showCourseRecords", true);
     }
-    
-    private String escape(String s){
-        return StringEscapeUtils.escapeHtml4(s).replace("'", "\\'").replace("\t", " ").replace("\\R", " ");
-        //return s.replace("'", "\\'").replace("\t", " ").replace("\\R", " ");
+
+    /**
+     * When true, string values are HTML-entity-escaped and tabs/line breaks
+     * are flattened to spaces. Used by OverallHTML5, whose JavaScript inserts
+     * the values directly into the page. Defaults to false (raw values).
+     */
+    public void setHtmlEscape(boolean htmlEscape){
+        this.htmlEscape = htmlEscape;
     }
-    
+
+    /**
+     * Prepare a user-supplied string for output. Jackson handles all JSON
+     * escaping, so this only applies the optional HTML escaping.
+     */
+    private String text(String s){
+        if (s == null) return "";
+        if (!htmlEscape) return s;
+        return StringEscapeUtils.escapeHtml4(s).replaceAll("\\t|\\R", " ");
+    }
+
+    /**
+     * Build the custom attribute key. This must produce exactly the same keys
+     * as OverallHTML5.escapeAndFlatten() since the HTML5 DataTables column
+     * definitions reference "custom_" + key. So it keeps the original
+     * HTML-escape-then-flatten logic regardless of the htmlEscape setting.
+     */
     private String escapeAndFlatten(CustomAttribute a){
-        String s = escape(a.getName()).replace(" ", "_").replaceAll("[^A-Za-z0-9_]{1}", "_");
+        String s = StringEscapeUtils.escapeHtml4(a.getName()).replace("'", "\\'").replace("\t", " ").replace("\\R", " ")
+                .replace(" ", "_").replaceAll("[^A-Za-z0-9_]{1}", "_");
         if ((flattenedCustomNames.containsKey(s) && !flattenedCustomNames.get(s).equals(a)) || s.replace("_", "").isEmpty()) return a.getUUID().replaceAll("[^A-Za-z0-9_]", "_");
         flattenedCustomNames.put(s,a);
         return s;
     }
-    
+
     @Override
     public void init(Race r) {
         race = r;
@@ -109,16 +170,14 @@ public class OverallJSON implements RaceReportType{
     public Boolean optionSupport(String feature) {
         return supportedOptions.containsKey(feature);
     }
-    
+
     @Override
     public String process(List<ProcessedResult> prList, RaceReport rr) {
         logger.debug("OverallJSON.process() Called... ");
-        String report = new String();
-        
-        race = rr.getRace();
-        
-        supportedOptions.keySet().forEach(k -> supportedOptions.put(k, rr.getBooleanAttribute(k)));
 
+        race = rr.getRace();
+
+        supportedOptions.keySet().forEach(k -> supportedOptions.put(k, rr.getBooleanAttribute(k)));
 
         showDQ = supportedOptions.get("showDQ");
         inProgress = supportedOptions.get("inProgress");
@@ -132,384 +191,442 @@ public class OverallJSON implements RaceReportType{
         showAwards = supportedOptions.get("showAwards");
         showCourseRecords = supportedOptions.get("showCourseRecords");
         showCustomAttributes = supportedOptions.get("showCustomAttributes");
-        
-        String dispFormat = race.getStringAttribute("TimeDisplayFormat");
-        String dispTimestamp = race.getStringAttribute("TimeDisplayFormat").replace("[","").replace("}","");
-        String roundMode = race.getStringAttribute("TimeRoundingMode");
-        Pace pace = Pace.valueOf(race.getStringAttribute("PaceDisplayFormat"));
-        
+
+        dispFormat = race.getStringAttribute("TimeDisplayFormat");
+        dispTimestamp = race.getStringAttribute("TimeDisplayFormat").replace("[","").replace("}","");
+        roundMode = race.getStringAttribute("TimeRoundingMode");
+        pace = Pace.valueOf(race.getStringAttribute("PaceDisplayFormat"));
+
         // we use the splits to display the segment splits
         if (showSegmentSplits) showSplits = true;
-        
-        if (showCustomAttributes) customAttributesList= ParticipantDAO.getInstance().getCustomAttributes().stream().filter(a -> { 
+
+        if (showCustomAttributes) customAttributesList= ParticipantDAO.getInstance().getCustomAttributes().stream().filter(a -> {
             if (rr.getBooleanAttribute(a.getUUID()) != null )
                 return rr.getBooleanAttribute(a.getUUID());
             return false;
         }).collect(Collectors.toList());
         if (showCustomAttributes && customAttributesList.isEmpty()) showCustomAttributes = false;
-        
-        Duration cutoffTime = Duration.ofNanos(race.getRaceCutoff());
-        String cutoffTimeString = DurationFormatter.durationToString(cutoffTime, dispFormat, roundMode);
-        
-        
-        
-         Map<String,List<String>> awardWinnersByBibMap = new HashMap();
-         Map<String,Map<AwardCategory,AwardWinner>> awardWinnersDetailByBibMap = new HashMap();
+
+        cutoffTime = Duration.ofNanos(race.getRaceCutoff());
+        cutoffTimeString = formatTime(cutoffTime);
+
+        awardWinnersByBibMap.clear();
+        awardWinnersDetailByBibMap.clear();
         if (showAwards){
             Map<AwardCategory,Map<String,List<AwardWinner>>>  awardWinnersMap = race.getAwards().getAwardWinners(prList);
-            StringBuilder awardPrintout = new StringBuilder();
+            String dash = htmlEscape ? " &mdash; " : " \u2014 ";
             race.getAwards().awardCategoriesProperty().forEach(ac -> {
                 if (!ac.getVisibleOverall()) return;
                 Map<String,List<AwardWinner>> resultsMap = awardWinnersMap.get(ac);
                 List<String> categories = resultsMap.keySet().stream().sorted((k1,k2) -> k1.compareTo(k2)).collect(Collectors.toList());
                 categories.forEach(cat -> {
-                    String description = (escape(ac.getName()) + " &mdash; " +  escape(cat)).trim();
+                    String description = (text(ac.getName()) + dash +  text(cat)).trim();
                     resultsMap.get(cat).forEach(w -> {
-                        if (!awardWinnersByBibMap.containsKey(w.participant.getBib())) awardWinnersByBibMap.put(w.participant.getBib(), new ArrayList());
-                        awardWinnersByBibMap.get(w.participant.getBib()).add(w.awardPlace + getOrdinal(w.awardPlace) + " " + description + " (Time: " + DurationFormatter.durationToString(w.awardTime, dispFormat, roundMode) + ")");
-                        if (!awardWinnersDetailByBibMap.containsKey(w.participant.getBib())) awardWinnersDetailByBibMap.put(w.participant.getBib(), new HashMap());
-                        awardWinnersDetailByBibMap.get(w.participant.getBib()).put(ac, w);
+                        String bib = w.participant.getBib();
+                        awardWinnersByBibMap.computeIfAbsent(bib, k -> new ArrayList<>())
+                                .add(w.awardPlace + getOrdinal(w.awardPlace) + " " + description + " (Time: " + formatTime(w.awardTime) + ")");
+                        awardWinnersDetailByBibMap.computeIfAbsent(bib, k -> new LinkedHashMap<>()).put(ac, w);
                     });
                 });
             });
         }
-        
-        
-        
-        report =    "[\n";
-        
 
-         
-        final StringBuilder chars = new StringBuilder();
-        
-        final Boolean  segmentsToShow = race.raceSegmentsProperty().stream().anyMatch(s -> !s.getHidden());
-        final Boolean  penaltiesOrBonuses = prList.stream().anyMatch(s -> (s.getBonus() || s.getPenalty()));
-        final Boolean onCourseOCO = prList.stream().anyMatch(s -> s.getSplitOCO());
-        
-        prList.forEach(pr -> {
-            
-            // if they are a DNF or DQ swap out the placement stats
-            Boolean hideTime = false; 
-            Boolean dnf = pr.getParticipant().getDNF();
-            Boolean dq = pr.getParticipant().getDQ();
-            Boolean oco  = false;
-            Boolean splitOCO = pr.getSplitOCO();
-            
-            if (dq) hideTime = true;
-            
-            if (pr.getChipFinish() == null) dnf = true;
-                
-            if (!showDNF && !inProgress && dnf) return;
-            if (!showDQ && dq) return;
-            
-            if (!cutoffTime.isZero() && ! dnf && !(cutoffTime.compareTo(pr.getChipFinish()) >= 0 
-                        || cutoffTimeString.equals(DurationFormatter.durationToString(pr.getChipFinish(), dispFormat, roundMode)))) {
-                oco = true;
-            }
-            
-            if (!showDNF && oco) return; 
-            
-            
-            chars.append("\t{\n");
-            
+        segmentsToShow = race.raceSegmentsProperty().stream().anyMatch(s -> !s.getHidden());
+        penaltiesOrBonuses = prList.stream().anyMatch(s -> (s.getBonus() || s.getPenalty()));
+        onCourseOCO = prList.stream().anyMatch(s -> s.getSplitOCO());
 
-            
-            chars.append("\t\t\"bib\": ").append("\"").append(pr.getParticipant().getBib()).append("\",\n");
-            chars.append("\t\t\"age\": ").append("\"").append(pr.getAge().toString()).append("\",\n");
-            chars.append("\t\t\"sex\": ").append("\"").append(pr.getSex()).append("\",\n");
-            chars.append("\t\t\"ag\": ").append("\"").append(pr.getAGCode()).append("\",\n");
-            chars.append("\t\t\"full_name\": ").append("\"").append(escape(pr.getParticipant().fullNameProperty().getValueSafe())).append("\"").append(",\n");
-            chars.append("\t\t\"full_name_filter\": ").append("\"").append(escape(pr.getParticipant().fullNameProperty().getValueSafe()));
-            if(!pr.getParticipant().fullNameProperty().getValueSafe().equals(StringUtils.stripAccents(pr.getParticipant().fullNameProperty().getValueSafe()))) 
-                chars.append(" ").append(escape(StringUtils.stripAccents(pr.getParticipant().fullNameProperty().getValueSafe())));
-            chars.append("\"").append(",\n");
-            chars.append("\t\t\"first_name\": ").append("\"").append(escape(pr.getParticipant().getFirstName())).append("\"").append(",\n");
-            chars.append("\t\t\"middle_name\": ").append("\"").append(escape(pr.getParticipant().getMiddleName())).append("\"").append(",\n");
-            chars.append("\t\t\"last_name\": ").append("\"").append(escape(pr.getParticipant().getLastName())).append("\"").append(",\n");
-            chars.append("\t\t\"city\": ").append("\"").append(escape(pr.getParticipant().getCity())).append("\"").append(",\n");
-            chars.append("\t\t\"state\": ").append("\"").append(escape(pr.getParticipant().getState())).append("\"").append(",\n");
-            chars.append("\t\t\"country\": ").append("\"").append(escape(pr.getParticipant().getCountry())).append("\"").append(",\n");
-            chars.append("\t\t\"note\": ").append("\"").append(escape(pr.getParticipant().getNote())).append("\"").append(",\n");
-            
-            
-            if (showCustomAttributes) {
-                customAttributesList.forEach((a) -> {
-                    chars.append("\t\t\"custom_" + escapeAndFlatten(a) + "\": ").append("\"").append(escape(pr.getParticipant().getCustomAttribute(a.getID()).getValueSafe())).append("\"").append(",\n");
-                });
-            }
-            
-            if (penaltiesOrBonuses){
-                chars.append("\t\t\"penalty\": ").append("\"").append(pr.getPenalty().toString()).append("\"").append(",\n");
-                chars.append("\t\t\"bonus\": ").append("\"").append(pr.getBonus().toString()).append("\"").append(",\n");
-                chars.append("\t\t\"penalty_bonus_note\": ").append("\"").append(escape(pr.getBonusPenaltyNote())).append("\"").append(",\n");
-                chars.append("\t\t\"raw_chip_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getRawChipFinishTime(), dispFormat, roundMode)).append("\"").append(",\n");
-                chars.append("\t\t\"raw_gun_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getRawGunFinishTime(), dispFormat, roundMode)).append("\"").append(",\n");
-                chars.append("\t\t\"penalty_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getPenaltyTime(), dispFormat, roundMode)).append("\"").append(",\n");
-                chars.append("\t\t\"bonus_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getBonusTime(), dispFormat, roundMode)).append("\"").append(",\n");
-            }
-            if (onCourseOCO) chars.append("\t\t\"on_course_oco\": ").append("\"").append(pr.getSplitOCO().toString()).append("\"").append(",\n");
-            if (showAwards){
-                if (awardWinnersByBibMap.containsKey(pr.getParticipant().getBib())) {
-                    chars.append("\t\t\"award_winner\": ").append("\"").append("yes").append("\"").append(",\n");
-                    
-                    // Simple list of awards
-                    chars.append("\t\t\"awards\": {\n");
-                    List<String> awards = awardWinnersByBibMap.get(pr.getParticipant().getBib());
-                    for(int i = 0; i< awards.size(); i++){
-                        chars.append("\t\t\t\"award_" + i + "\": \"").append(awards.get(i)).append("\"").append(",\n");
-                    }
-                    chars.deleteCharAt(chars.lastIndexOf(","));
-                    chars.append("\t\t},\n");
-                    
-                    // Award Detail
-                    chars.append("\t\t\"award_Detail\": {\n");
-                    awardWinnersDetailByBibMap.get(pr.getParticipant().getBib()).keySet().forEach(ac -> {
-                        AwardWinner a = awardWinnersDetailByBibMap.get(pr.getParticipant().getBib()).get(ac);
-                        chars.append("\t\t\t\"award_").append(escape(ac.getName())).append("\": {\n");
-                            chars.append("\t\t\t\t\"title\": \"").append(escape(ac.getName())).append("\"").append(",\n");
-                            chars.append("\t\t\t\t\"category\": \"").append(escape(a.awardTitle)).append("\"").append(",\n");
-                            chars.append("\t\t\t\t\"place\": \"").append(escape(a.awardPlace.toString())).append("\"").append(",\n");
-                            chars.append("\t\t\t\t\"time\": \"").append(escape(DurationFormatter.durationToString(a.awardTime, dispFormat, roundMode))).append("\"").append(",\n");
-                        chars.append("\t\t\t},\n");
-                    });
-                    chars.deleteCharAt(chars.lastIndexOf(","));
-                    chars.append("\t\t},\n");
-                } else chars.append("\t\t\"award_winner\": ").append("\"").append("no").append("\"").append(",\n");
-                
-            }
-            if (showCourseRecords){
-                if (pr.getCourseRecords().size()>0){
-                    chars.append("\t\t\"course_records\": ").append("\"").append("yes").append("\"").append(",\n");
-                    chars.append("\t\t\"course_record_detail\": {\n");
-                    pr.getCourseRecords().forEach(cr -> {
-                        String segment = (cr.getSegmentID()==null?"Overall":cr.segmentProperty().get().getSegmentName());
-                        chars.append("\t\t\t\"").append(escape(segment + "_" + cr.getSex()+"_"+cr.getCategory())).append("\": {\n");
-                        chars.append("\t\t\t\t\"segment\": \"").append(escape(segment)).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"category\": \"").append(escape(cr.getCategory())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_time\": \"").append(escape(DurationFormatter.durationToString(cr.getRecordDuration(), dispFormat, roundMode))).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_name\": \"").append(escape(cr.getName())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_year\": \"").append(escape(cr.getYear())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_city\": \"").append(escape(cr.getCity())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_state\": \"").append(escape(cr.getState())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"old_country\": \"").append(escape(cr.getCountry())).append("\"").append(",\n");
-                        chars.append("\t\t\t\t\"new_time\": \"").append(escape(DurationFormatter.durationToString(cr.currentRecordTime(), dispFormat, roundMode))).append("\"").append("\n");
-                        chars.append("\t\t\t},\n");
-                    });
-                    chars.deleteCharAt(chars.lastIndexOf(","));
-                    chars.append("\t\t},\n");
-                } else chars.append("\t\t\"course_records\": ").append("\"").append("no").append("\"").append(",\n");
-            }
-            if (splitOCO) {
-                    chars.append("\t\t\"oa_place\": ").append("\"").append("OCO").append("\",\n");
-                    chars.append("\t\t\"sex_place\": ").append("\"").append("~~").append("\",\n");
-                    chars.append("\t\t\"ag_place\": ").append("\"").append("~~").append("\",\n");
-                    chars.append("\t\t\"oco_split\": ").append("\"").append(RaceDAO.getInstance().getSplitByID(pr.getOCOSplit()).getSplitName()).append("\",\n");
-                    chars.append("\t\t\"oco_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getOCOTime(), dispFormat, roundMode)).append("\",\n");
-                    chars.append("\t\t\"oco_cutoff_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getOCOCutoffTime(), dispFormat, roundMode)).append("\",\n");
-                }
-            else if (dq) {
-                chars.append("\t\t\"oa_place\": ").append("\"").append("DQ").append("\",\n");
-                chars.append("\t\t\"sex_place\": ").append("\"").append("~~").append("\",\n");
-                chars.append("\t\t\"ag_place\": ").append("\"").append("~~").append("\",\n");
-            }
-            else if (inProgress && pr.getChipFinish() == null) {
-                chars.append("\t\t\"oa_place\": ").append("\"").append("Started").append("\",\n");
-                chars.append("\t\t\"sex_place\": ").append("\"").append("~~").append("\",\n");
-                chars.append("\t\t\"ag_place\": ").append("\"").append("~~").append("\",\n");
-                //hideTime = true;
-            } else if (! dnf && ! dq) { 
-                if (!oco) {
-                    chars.append("\t\t\"oa_place\": ").append("\"").append(pr.getOverall().toString()).append("\",\n");
-                    chars.append("\t\t\"sex_place\": ").append("\"").append(pr.getSexPlace().toString()).append("\",\n");
-                    chars.append("\t\t\"ag_place\": ").append("\"").append(pr.getAGPlace().toString()).append("\",\n");
-                } else {
-                    chars.append("\t\t\"oa_place\": ").append("\"").append("OCO").append("\",\n");
-                    chars.append("\t\t\"sex_place\": ").append("\"").append("~~").append("\",\n");
-                    chars.append("\t\t\"ag_place\": ").append("\"").append("~~").append("\",\n");
-                }
-            } else {
-                chars.append("\t\t\"oa_place\": ").append("\"").append("DNF").append("\",\n");
-                chars.append("\t\t\"sex_place\": ").append("\"").append("~~").append("\",\n");
-                chars.append("\t\t\"ag_place\": ").append("\"").append("~~").append("\",\n");
-            }
-
-            // Insert split stuff here 
-            if (showSplits) {
-            // do stuff
-                chars.append("\t\t\"splits\": {\n");
-                for (int i = 2; i <= race.splitsProperty().size(); i++) {
-                    chars.append("\t\t\t\"split_").append(i-1).append("\": {\n");
-                    if (hideTime || pr.getSplit(i) == null) {
-                        chars.append("\t\t\t\t\t\"display\": ").append("\"\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"delta_time\": ").append("\"\"").append(",\n");
-                        if (showPace) chars.append("\t\t\t\t\t\"pace\": ").append("\"\"").append(",\n");
-                        if (showSegments && segmentsToShow && showSegmentPace && showSegmentSplits){
-                            for(Segment seg: race.getSegments()){
-                                if (seg.getHidden() || seg.getStartSplitPosition() > i || seg.getEndSplitPosition() < i) continue;
-                                chars.append("\t\t\t\t\t\"segment_").append(seg.getID()).append("_pace\": ").append("\"~~\"").append(",\n");
-                            }
-                        }
-                        chars.append("\t\t\t\t\t\"sort\": ").append("\"~~\"").append("\n");
-                    } else {
-                        chars.append("\t\t\t\t\t\"display\": ").append("\"").append(DurationFormatter.durationToString(pr.getSplit(i), dispFormat, roundMode)).append("\",\n");
-                        
-                        if (i == 2) { // 1st split after start
-                            chars.append("\t\t\t\t\t\"delta_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getSplit(i), dispFormat, roundMode)).append("\",\n");
-                            if (showPace) {
-                                if (hideTime || pr.getSplit(i) == null || race.splitsProperty().get(i-1).getSplitDistance().compareTo(BigDecimal.ZERO) == 0) chars.append(",\n\t\t\t\t\t\"pace\": ").append("\"~~\"").append(",\n");
-                                else chars.append("\t\t\t\t\t\"pace\": \"").append(pace.getPace(race.splitsProperty().get(i-1).getSplitDistance().floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i))).append("\",\n");
-                            }
-                            if (showSegments && segmentsToShow && showSegmentPace && showSegmentSplits){
-                                for(Segment seg: race.getSegments()){
-                                    if (seg.getHidden() || seg.getStartSplitPosition() > i || seg.getEndSplitPosition() < i) continue;
-                                    if (hideTime || pr.getSplit(i) == null || race.splitsProperty().get(i-1).getSplitDistance().compareTo(BigDecimal.ZERO) == 0) chars.append("\t\t\t\"segment_").append(seg.getID()).append("_pace\": ").append("\"~~\"").append("\n");
-                                    else if (seg.getUseCustomPace())
-                                        chars.append("\t\t\t\t\t\"segment_").append(seg.getID()).append("_pace\": \"").append(seg.getCustomPace().getPace(race.splitsProperty().get(i-1).getSplitDistance().floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i))).append("\",\n");
-                                    else chars.append("\t\t\t\t\t\"segment_").append(seg.getID()).append("_pace\": \"").append(pace.getPace(race.splitsProperty().get(i-1).getSplitDistance().floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i))).append("\",\n");
-                                }
-                            }
-                        } else {
-                            Split thisSplit = race.splitsProperty().get(i-1);
-                            Split previousSplit = race.splitsProperty().get(i-2);
-                            if (pr.getSplit(i) == null || pr.getSplit(i-1) == null) 
-                                chars.append("\t\t\t\t\t\"delta_time\": ").append("\"\"").append(",\n");
-                            else chars.append("\t\t\t\t\t\"delta_time\": ").append("\"").append(DurationFormatter.durationToString(pr.getSplit(i).minus(pr.getSplit(i-1)), dispFormat, roundMode)).append("\",\n");
-
-                            if (showPace) {
-                                if (thisSplit.getSplitDistance().compareTo(previousSplit.getSplitDistance()) == 0 || pr.getSplit(i) == null || pr.getSplit(i-1) == null)
-                                    chars.append("\t\t\t\t\t\"pace\": ").append("\"\"").append(",\n");
-                                else chars.append("\t\t\t\t\t\"pace\": \"").append(pace.getPace(thisSplit.getSplitDistance().subtract(previousSplit.getSplitDistance()).floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i).minus(pr.getSplit(i-1)))).append("\",\n");
-                            }
-                            if (showSegments && segmentsToShow && showSegmentPace && showSegmentSplits){
-                                for(Segment seg: race.getSegments()){
-                                    if (seg.getHidden() || seg.getStartSplitPosition() > i || seg.getEndSplitPosition() < i) continue;
-                                    if (hideTime || pr.getSplit(i) == null || race.splitsProperty().get(i-1).getSplitDistance().compareTo(BigDecimal.ZERO) == 0 || pr.getSplit(i) == null || pr.getSplit(i-1) == null) chars.append("\t\t\t\"segment_").append(seg.getID()).append("_pace\": ").append("\"~~\"").append(",\n");
-                                    else if (seg.getUseCustomPace())
-                                        chars.append("\t\t\t\t\t\"segment_").append(seg.getID()).append("_pace\": \"").append(seg.getCustomPace().getPace(thisSplit.getSplitDistance().subtract(previousSplit.getSplitDistance()).floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i).minus(pr.getSplit(i-1)))).append("\",\n");
-                                    else chars.append("\t\t\t\t\t\"segment_").append(seg.getID()).append("_pace\": \"").append(pace.getPace(thisSplit.getSplitDistance().subtract(previousSplit.getSplitDistance()).floatValue(), race.getRaceDistanceUnits(), pr.getSplit(i).minus(pr.getSplit(i-1)))).append("\",\n");
-                                }
-                            }
-                        }
-                        chars.append("\t\t\t\t\t\"sort\": ").append("\"").append(DurationFormatter.durationToString(pr.getSplit(i), dispTimestamp, roundMode)).append("\"\n");
-
-                    }
-                    chars.append("\t\t\t},\n");
-                }
-                chars.deleteCharAt(chars.lastIndexOf(","));
-
-                chars.append("\t\t},\n");
-            }
-            if (showSegments && segmentsToShow) {
-                Boolean ht = hideTime;
-                chars.append("\t\t\"segments\": {\n");
-                race.getSegments().forEach(seg -> {
-                    if (seg.getHidden()) return;
-                    chars.append("\t\t\t\"segment_").append(seg.getID()).append("\": {\n");
-                    if (ht || pr.getSegmentTime(seg.getID()) == null) {
-                        chars.append("\t\t\t\t\t\"display\": ").append("\"\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"sort\": ").append("\"~~\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"oa_place\": ").append("\"~~\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"sex_place\": ").append("\"~~\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"ag_place\": ").append("\"~~\"");
-                    }
-                    else {
-                        chars.append("\t\t\t\t\t\"display\": \"").append(DurationFormatter.durationToString(pr.getSegmentTime(seg.getID()), dispFormat, roundMode)).append("\",\n");
-                        chars.append("\t\t\t\t\t\"sort\": \"").append(DurationFormatter.durationToString(pr.getSegmentTime(seg.getID()), dispTimestamp, roundMode)).append("\",\n");
-                        chars.append("\t\t\t\t\t\"oa_place\": ").append("\"" + pr.getSegmentOverallPlace(seg.getID()) +"\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"sex_place\": ").append("\"" + pr.getSegmentSexPlace(seg.getID()) +"\"").append(",\n");
-                        chars.append("\t\t\t\t\t\"ag_place\": ").append("\"" + pr.getSegmentAGPlace(seg.getID()) +"\"");
-                    }
-                    if (showSegmentPace) {
-                        if (ht || pr.getSegmentTime(seg.getID()) == null || (seg.getUseCustomPace() && Pace.NONE.equals(seg.getCustomPace()))) chars.append(",\n\t\t\t\t\t\"pace\": ").append("\"~~\"").append("\n");
-                        else if (seg.getUseCustomPace())
-                            chars.append(",\n\t\t\t\t\t\"pace\": \"").append(seg.getCustomPace().getPace(seg.getSegmentDistance(), race.getRaceDistanceUnits(), pr.getSegmentTime(seg.getID()))).append("\"\n");
-                        else chars.append(",\n\t\t\t\t\t\"pace\": \"").append(pace.getPace(seg.getSegmentDistance(), race.getRaceDistanceUnits(), pr.getSegmentTime(seg.getID()))).append("\"\n");
-                    } else chars.append("\n");
-                    chars.append("\t\t\t},\n");
-                });
-                chars.deleteCharAt(chars.lastIndexOf(","));
-                chars.append("\t\t},\n");
-            }
-            if (inProgress) {
-                TimingDAO td = TimingDAO.getInstance();
-                List<CookedTimeData> times = td.getCookedTimesByBib(pr.getParticipant().getBib());
-                if (times != null && !times.isEmpty()) {
-                    times.sort((p1, p2) -> p1.getTimestamp().compareTo(p2.getTimestamp()));
-                    CookedTimeData last_chip = times.get(times.size()-1);
-                    chars.append("\t\t\"last_seen\": \"").append(escape(td.getTimingLocationByID(last_chip.getTimingLocationId()).getLocationName() + " at " + DurationFormatter.durationToString(last_chip.getTimestamp(), dispTimestamp, roundMode))).append("\",\n");
-
-                } else {
-                    chars.append("\t\t\"last_seen\": \"Never\",\n");
-                }
-            }
-            
-            chars.append("\t\t\"start_display\": \"").append(DurationFormatter.durationToString(pr.getChipStartTime(), dispFormat, roundMode)).append("\",\n");
-            
-            if (dnf || dq) { 
-                hideTime = true;
-            }
-            // chip time
-            if (hideTime) {
-                chars.append("\t\t\t\t\t\"finish_split_delta\": ").append("\"\"").append(",\n");
-                if (showPace) chars.append("\t\t\t\t\t\"finish_split_pace\": ").append("\"\"").append(",\n");
-                chars.append("\t\t\"finish_display\": ").append("\"\"").append(",\n");
-                chars.append("\t\t\"finish_sort\": ").append("\"~~\"").append("");
-            }
-            else {
-                if (showSplits) { 
-                    if (pr.getSplit(race.splitsProperty().size()-1) != null){
-                        // Calc distance and time since last split
-                        Duration last = pr.getChipFinish().minus(pr.getSplit(race.splitsProperty().size()-1));
-                        
-                        chars.append("\t\t\"finish_split_delta\": \"").append(DurationFormatter.durationToString(last, dispFormat, roundMode)).append("\",\n");
-                        if (showPace) {
-                            if (race.getRaceDistance().compareTo(race.splitsProperty().get(race.splitsProperty().size()-2).getSplitDistance()) != 0 )  
-                                chars.append("\t\t\"finish_split_pace\": \"").append(pace.getPace(race.getRaceDistance().floatValue() - race.splitsProperty().get(race.splitsProperty().size()-2).getSplitDistance().floatValue(), race.getRaceDistanceUnits(), last)).append("\",\n");
-                            else chars.append("\t\t\"finish_split_pace\": ").append("\"\"").append(",\n");
-                        }
-                    } else {
-                        chars.append("\t\t\t\t\t\"finish_split_delta\": ").append("\"\"").append(",\n");
-                        if (showPace) chars.append("\t\t\t\t\t\"finish_split_pace\": ").append("\"\"").append(",\n");
-                    }
-                }
-                chars.append("\t\t\"finish_display\": \"").append(DurationFormatter.durationToString(pr.getChipFinish(), dispFormat, roundMode)).append("\",\n");
-                chars.append("\t\t\"finish_sort\": \"").append(DurationFormatter.durationToString(pr.getChipFinish(), dispTimestamp, roundMode)).append("\"");
-            }
-            
-            
-            if (showGun) {
-
-                if (hideTime) {
-                    chars.append(",\n\t\t\"gun_display\": ").append("\"\"").append(",\n");
-                    chars.append("\t\t\"gun_sort\": ").append("\"~~\"").append("");
-                }
-                else {
-                    chars.append(",\n\t\t\"gun_display\": \"").append(DurationFormatter.durationToString(pr.getGunFinish(), dispFormat, roundMode)).append("\",\n");
-                    chars.append("\t\t\"gun_sort\": \"").append(DurationFormatter.durationToString(pr.getGunFinish(), dispTimestamp, roundMode)).append("\"");
-                }
-            }
-            
-            if (showPace){
-                if (hideTime) {
-                    chars.append(",\n\t\t\"finish_pace\": ").append("\"~~\"").append("\n");
-                }
-                else {
-                    chars.append(",\n\t\t\"finish_pace\": \"").append(pace.getPace(race.getRaceDistance().floatValue(), race.getRaceDistanceUnits(), pr.getChipFinish())).append("\"");
-                }
-
-            }
-            chars.append("\n\t},\n");
-            
-        });
-            
-        if (chars.lastIndexOf(",") > 0 )chars.deleteCharAt(chars.lastIndexOf(","));
-        report += chars.toString();
-        report +=   "  ]\n";
-
-        
-        return report;
+        StringWriter out = new StringWriter();
+        try (JsonGenerator gen = JSON_FACTORY.createGenerator(out)) {
+            gen.setCharacterEscapes(SCRIPT_SAFE_ESCAPES);
+            gen.setPrettyPrinter(newPrettyPrinter());
+            gen.writeStartArray();
+            for (ProcessedResult pr : prList) writeResult(gen, pr);
+            gen.writeEndArray();
+        } catch (IOException ex) {
+            // Can't really happen when writing to a StringWriter
+            throw new UncheckedIOException(ex);
+        }
+        return out.toString() + "\n";
     }
-    
+
+    private void writeResult(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        // if they are a DNF or DQ swap out the placement stats
+        boolean hideTime = false;
+        boolean dnf = pr.getParticipant().getDNF();
+        boolean dq = pr.getParticipant().getDQ();
+        boolean oco = false;
+        boolean splitOCO = pr.getSplitOCO();
+
+        if (dq) hideTime = true;
+
+        if (pr.getChipFinish() == null) dnf = true;
+
+        if (!showDNF && !inProgress && dnf) return;
+        if (!showDQ && dq) return;
+
+        if (!cutoffTime.isZero() && ! dnf && !(cutoffTime.compareTo(pr.getChipFinish()) >= 0
+                    || cutoffTimeString.equals(formatTime(pr.getChipFinish())))) {
+            oco = true;
+        }
+
+        if (!showDNF && oco) return;
+
+        gen.writeStartObject();
+
+        writeParticipant(gen, pr);
+        if (showCustomAttributes) writeCustomAttributes(gen, pr);
+        if (penaltiesOrBonuses) writePenaltyBonus(gen, pr);
+        if (onCourseOCO) gen.writeStringField("on_course_oco", pr.getSplitOCO().toString());
+        if (showAwards) writeAwards(gen, pr);
+        if (showCourseRecords) writeCourseRecords(gen, pr);
+        writePlacement(gen, pr, splitOCO, dq, dnf, oco);
+        if (showSplits) writeSplits(gen, pr, hideTime);
+        if (showSegments && segmentsToShow) writeSegments(gen, pr, hideTime);
+        if (inProgress) writeLastSeen(gen, pr);
+
+        if (dnf || dq) hideTime = true;
+        writeFinish(gen, pr, hideTime);
+
+        gen.writeEndObject();
+    }
+
+    private void writeParticipant(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        Participant p = pr.getParticipant();
+        String fullName = p.fullNameProperty().getValueSafe();
+        String fullNameFilter = text(fullName);
+        String strippedName = StringUtils.stripAccents(fullName);
+        if (!fullName.equals(strippedName)) fullNameFilter += " " + text(strippedName);
+
+        gen.writeStringField("bib", text(p.getBib()));
+        gen.writeStringField("age", pr.getAge().toString());
+        gen.writeStringField("sex", text(pr.getSex()));
+        gen.writeStringField("ag", text(pr.getAGCode()));
+        gen.writeStringField("full_name", text(fullName));
+        gen.writeStringField("full_name_filter", fullNameFilter);
+        gen.writeStringField("first_name", text(p.getFirstName()));
+        gen.writeStringField("middle_name", text(p.getMiddleName()));
+        gen.writeStringField("last_name", text(p.getLastName()));
+        gen.writeStringField("city", text(p.getCity()));
+        gen.writeStringField("state", text(p.getState()));
+        gen.writeStringField("country", text(p.getCountry()));
+        gen.writeStringField("note", text(p.getNote()));
+    }
+
+    private void writeCustomAttributes(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        for (CustomAttribute a : customAttributesList) {
+            gen.writeStringField("custom_" + escapeAndFlatten(a), text(pr.getParticipant().getCustomAttribute(a.getID()).getValueSafe()));
+        }
+    }
+
+    private void writePenaltyBonus(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        gen.writeStringField("penalty", pr.getPenalty().toString());
+        gen.writeStringField("bonus", pr.getBonus().toString());
+        gen.writeStringField("penalty_bonus_note", text(pr.getBonusPenaltyNote()));
+        gen.writeStringField("raw_chip_time", formatTime(pr.getRawChipFinishTime()));
+        gen.writeStringField("raw_gun_time", formatTime(pr.getRawGunFinishTime()));
+        gen.writeStringField("penalty_time", formatTime(pr.getPenaltyTime()));
+        gen.writeStringField("bonus_time", formatTime(pr.getBonusTime()));
+    }
+
+    private void writeAwards(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        String bib = pr.getParticipant().getBib();
+        if (!awardWinnersByBibMap.containsKey(bib)) {
+            gen.writeStringField("award_winner", "no");
+            return;
+        }
+        gen.writeStringField("award_winner", "yes");
+
+        // Simple list of awards (descriptions are already escaped as needed)
+        gen.writeObjectFieldStart("awards");
+        List<String> awards = awardWinnersByBibMap.get(bib);
+        for (int i = 0; i < awards.size(); i++) {
+            gen.writeStringField("award_" + i, awards.get(i));
+        }
+        gen.writeEndObject();
+
+        // Award Detail
+        gen.writeObjectFieldStart("award_Detail");
+        for (Map.Entry<AwardCategory,AwardWinner> e : awardWinnersDetailByBibMap.get(bib).entrySet()) {
+            AwardCategory ac = e.getKey();
+            AwardWinner a = e.getValue();
+            gen.writeObjectFieldStart("award_" + text(ac.getName()));
+            gen.writeStringField("title", text(ac.getName()));
+            gen.writeStringField("category", text(a.awardTitle));
+            gen.writeStringField("place", a.awardPlace.toString());
+            gen.writeStringField("time", formatTime(a.awardTime));
+            gen.writeEndObject();
+        }
+        gen.writeEndObject();
+    }
+
+    private void writeCourseRecords(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        List<CourseRecord> records = pr.getCourseRecords();
+        if (records.isEmpty()) {
+            gen.writeStringField("course_records", "no");
+            return;
+        }
+        gen.writeStringField("course_records", "yes");
+        gen.writeObjectFieldStart("course_record_detail");
+        for (CourseRecord cr : records) {
+            String segment = (cr.getSegmentID() == null ? "Overall" : cr.segmentProperty().get().getSegmentName());
+            gen.writeObjectFieldStart(text(segment + "_" + cr.getSex() + "_" + cr.getCategory()));
+            gen.writeStringField("segment", text(segment));
+            gen.writeStringField("category", text(cr.getCategory()));
+            gen.writeStringField("old_time", formatTime(cr.getRecordDuration()));
+            gen.writeStringField("old_name", text(cr.getName()));
+            gen.writeStringField("old_year", text(cr.getYear()));
+            gen.writeStringField("old_city", text(cr.getCity()));
+            gen.writeStringField("old_state", text(cr.getState()));
+            gen.writeStringField("old_country", text(cr.getCountry()));
+            gen.writeStringField("new_time", formatTime(cr.currentRecordTime()));
+            gen.writeEndObject();
+        }
+        gen.writeEndObject();
+    }
+
+    private void writePlacement(JsonGenerator gen, ProcessedResult pr, boolean splitOCO, boolean dq, boolean dnf, boolean oco) throws IOException {
+        if (splitOCO) {
+            writePlaces(gen, "OCO", "~~", "~~");
+            gen.writeStringField("oco_split", text(RaceDAO.getInstance().getSplitByID(pr.getOCOSplit()).getSplitName()));
+            gen.writeStringField("oco_time", formatTime(pr.getOCOTime()));
+            gen.writeStringField("oco_cutoff_time", formatTime(pr.getOCOCutoffTime()));
+        } else if (dq) {
+            writePlaces(gen, "DQ", "~~", "~~");
+        } else if (inProgress && pr.getChipFinish() == null) {
+            writePlaces(gen, "Started", "~~", "~~");
+        } else if (!dnf) {
+            if (!oco) writePlaces(gen, pr.getOverall().toString(), pr.getSexPlace().toString(), pr.getAGPlace().toString());
+            else writePlaces(gen, "OCO", "~~", "~~");
+        } else {
+            writePlaces(gen, "DNF", "~~", "~~");
+        }
+    }
+
+    private void writePlaces(JsonGenerator gen, String overall, String sex, String ag) throws IOException {
+        gen.writeStringField("oa_place", overall);
+        gen.writeStringField("sex_place", sex);
+        gen.writeStringField("ag_place", ag);
+    }
+
+    private void writeSplits(JsonGenerator gen, ProcessedResult pr, boolean hideTime) throws IOException {
+        boolean showSegmentSplitPace = showSegments && segmentsToShow && showSegmentPace && showSegmentSplits;
+        List<Split> splits = race.splitsProperty();
+
+        gen.writeObjectFieldStart("splits");
+        for (int i = 2; i <= splits.size(); i++) {
+            gen.writeObjectFieldStart("split_" + (i-1));
+            Duration splitTime = pr.getSplit(i);
+            if (hideTime || splitTime == null) {
+                gen.writeStringField("display", "");
+                gen.writeStringField("delta_time", "");
+                if (showPace) gen.writeStringField("pace", "");
+                if (showSegmentSplitPace) {
+                    for (Segment seg : race.getSegments()) {
+                        if (!segmentCoversSplit(seg, i)) continue;
+                        gen.writeStringField(segmentPaceKey(seg), "~~");
+                    }
+                }
+                gen.writeStringField("sort", "~~");
+            } else {
+                gen.writeStringField("display", formatTime(splitTime));
+
+                Split thisSplit = splits.get(i-1);
+                boolean zeroDistance = thisSplit.getSplitDistance().compareTo(BigDecimal.ZERO) == 0;
+                if (i == 2) { // 1st split after start
+                    float distance = thisSplit.getSplitDistance().floatValue();
+                    gen.writeStringField("delta_time", formatTime(splitTime));
+                    if (showPace) {
+                        if (zeroDistance) gen.writeStringField("pace", "~~");
+                        else gen.writeStringField("pace", pace.getPace(distance, race.getRaceDistanceUnits(), splitTime));
+                    }
+                    if (showSegmentSplitPace) {
+                        for (Segment seg : race.getSegments()) {
+                            if (!segmentCoversSplit(seg, i)) continue;
+                            if (zeroDistance) gen.writeStringField(segmentPaceKey(seg), "~~");
+                            else gen.writeStringField(segmentPaceKey(seg), segmentPace(seg).getPace(distance, race.getRaceDistanceUnits(), splitTime));
+                        }
+                    }
+                } else {
+                    Split previousSplit = splits.get(i-2);
+                    Duration previousTime = pr.getSplit(i-1);
+                    Duration delta = previousTime == null ? null : splitTime.minus(previousTime);
+                    float distance = thisSplit.getSplitDistance().subtract(previousSplit.getSplitDistance()).floatValue();
+
+                    gen.writeStringField("delta_time", delta == null ? "" : formatTime(delta));
+
+                    if (showPace) {
+                        if (thisSplit.getSplitDistance().compareTo(previousSplit.getSplitDistance()) == 0 || delta == null)
+                            gen.writeStringField("pace", "");
+                        else gen.writeStringField("pace", pace.getPace(distance, race.getRaceDistanceUnits(), delta));
+                    }
+                    if (showSegmentSplitPace) {
+                        for (Segment seg : race.getSegments()) {
+                            if (!segmentCoversSplit(seg, i)) continue;
+                            if (zeroDistance || delta == null) gen.writeStringField(segmentPaceKey(seg), "~~");
+                            else gen.writeStringField(segmentPaceKey(seg), segmentPace(seg).getPace(distance, race.getRaceDistanceUnits(), delta));
+                        }
+                    }
+                }
+                gen.writeStringField("sort", formatTimestamp(splitTime));
+            }
+            gen.writeEndObject();
+        }
+        gen.writeEndObject();
+    }
+
+    private boolean segmentCoversSplit(Segment seg, int splitPosition) {
+        return !seg.getHidden() && seg.getStartSplitPosition() <= splitPosition && seg.getEndSplitPosition() >= splitPosition;
+    }
+
+    private String segmentPaceKey(Segment seg) {
+        return "segment_" + seg.getID() + "_pace";
+    }
+
+    private Pace segmentPace(Segment seg) {
+        return seg.getUseCustomPace() ? seg.getCustomPace() : pace;
+    }
+
+    private void writeSegments(JsonGenerator gen, ProcessedResult pr, boolean hideTime) throws IOException {
+        gen.writeObjectFieldStart("segments");
+        for (Segment seg : race.getSegments()) {
+            if (seg.getHidden()) continue;
+            gen.writeObjectFieldStart("segment_" + seg.getID());
+            Duration segmentTime = pr.getSegmentTime(seg.getID());
+            boolean noTime = hideTime || segmentTime == null;
+            if (noTime) {
+                gen.writeStringField("display", "");
+                gen.writeStringField("sort", "~~");
+                writePlaces(gen, "~~", "~~", "~~");
+            } else {
+                gen.writeStringField("display", formatTime(segmentTime));
+                gen.writeStringField("sort", formatTimestamp(segmentTime));
+                writePlaces(gen,
+                        String.valueOf(pr.getSegmentOverallPlace(seg.getID())),
+                        String.valueOf(pr.getSegmentSexPlace(seg.getID())),
+                        String.valueOf(pr.getSegmentAGPlace(seg.getID())));
+            }
+            if (showSegmentPace) {
+                if (noTime || (seg.getUseCustomPace() && Pace.NONE.equals(seg.getCustomPace())))
+                    gen.writeStringField("pace", "~~");
+                else gen.writeStringField("pace", segmentPace(seg).getPace(seg.getSegmentDistance(), race.getRaceDistanceUnits(), segmentTime));
+            }
+            gen.writeEndObject();
+        }
+        gen.writeEndObject();
+    }
+
+    private void writeLastSeen(JsonGenerator gen, ProcessedResult pr) throws IOException {
+        TimingDAO td = TimingDAO.getInstance();
+        List<CookedTimeData> times = td.getCookedTimesByBib(pr.getParticipant().getBib());
+        if (times == null || times.isEmpty()) {
+            gen.writeStringField("last_seen", "Never");
+            return;
+        }
+        // Sort a copy so we don't reorder the DAO's list
+        List<CookedTimeData> sorted = new ArrayList<>(times);
+        sorted.sort((p1, p2) -> p1.getTimestamp().compareTo(p2.getTimestamp()));
+        CookedTimeData lastChip = sorted.get(sorted.size()-1);
+        gen.writeStringField("last_seen", text(td.getTimingLocationByID(lastChip.getTimingLocationId()).getLocationName() + " at " + formatTimestamp(lastChip.getTimestamp())));
+    }
+
+    private void writeFinish(JsonGenerator gen, ProcessedResult pr, boolean hideTime) throws IOException {
+        gen.writeStringField("start_display", formatTime(pr.getChipStartTime()));
+
+        // chip time
+        if (hideTime) {
+            gen.writeStringField("finish_split_delta", "");
+            if (showPace) gen.writeStringField("finish_split_pace", "");
+            gen.writeStringField("finish_display", "");
+            gen.writeStringField("finish_sort", "~~");
+        } else {
+            if (showSplits) {
+                List<Split> splits = race.splitsProperty();
+                Duration lastSplitTime = pr.getSplit(splits.size()-1);
+                if (lastSplitTime != null) {
+                    // Calc distance and time since last split
+                    Duration last = pr.getChipFinish().minus(lastSplitTime);
+                    BigDecimal lastSplitDistance = splits.get(splits.size()-2).getSplitDistance();
+
+                    gen.writeStringField("finish_split_delta", formatTime(last));
+                    if (showPace) {
+                        if (race.getRaceDistance().compareTo(lastSplitDistance) != 0)
+                            gen.writeStringField("finish_split_pace", pace.getPace(race.getRaceDistance().floatValue() - lastSplitDistance.floatValue(), race.getRaceDistanceUnits(), last));
+                        else gen.writeStringField("finish_split_pace", "");
+                    }
+                } else {
+                    gen.writeStringField("finish_split_delta", "");
+                    if (showPace) gen.writeStringField("finish_split_pace", "");
+                }
+            }
+            gen.writeStringField("finish_display", formatTime(pr.getChipFinish()));
+            gen.writeStringField("finish_sort", formatTimestamp(pr.getChipFinish()));
+        }
+
+        if (showGun) {
+            if (hideTime) {
+                gen.writeStringField("gun_display", "");
+                gen.writeStringField("gun_sort", "~~");
+            } else {
+                gen.writeStringField("gun_display", formatTime(pr.getGunFinish()));
+                gen.writeStringField("gun_sort", formatTimestamp(pr.getGunFinish()));
+            }
+        }
+
+        if (showPace) {
+            if (hideTime) gen.writeStringField("finish_pace", "~~");
+            else gen.writeStringField("finish_pace", pace.getPace(race.getRaceDistance().floatValue(), race.getRaceDistanceUnits(), pr.getChipFinish()));
+        }
+    }
+
+    private String formatTime(Duration d) {
+        return DurationFormatter.durationToString(d, dispFormat, roundMode);
+    }
+
+    private String formatTimestamp(Duration d) {
+        return DurationFormatter.durationToString(d, dispTimestamp, roundMode);
+    }
+
+    private static DefaultPrettyPrinter newPrettyPrinter() {
+        DefaultIndenter indenter = new DefaultIndenter("  ", "\n");
+        return new DefaultPrettyPrinter()
+                .withSeparators(Separators.createDefaultInstance()
+                        .withObjectFieldValueSpacing(Separators.Spacing.AFTER))
+                .withObjectIndenter(indenter)
+                .withArrayIndenter(indenter);
+    }
+
+    /**
+     * Standard JSON escaping, plus \\uXXXX escapes for &lt; &gt; &amp; ' and
+     * the U+2028/U+2029 line terminators so the JSON can be dropped into an
+     * HTML &lt;script&gt; block without ending it early or breaking older
+     * JavaScript parsers.
+     */
+    private static final class ScriptSafeEscapes extends CharacterEscapes {
+        private static final SerializedString LINE_SEPARATOR = new SerializedString("\\u2028");
+        private static final SerializedString PARAGRAPH_SEPARATOR = new SerializedString("\\u2029");
+        private final int[] asciiEscapes;
+
+        ScriptSafeEscapes() {
+            asciiEscapes = CharacterEscapes.standardAsciiEscapesForJSON();
+            asciiEscapes['<'] = CharacterEscapes.ESCAPE_STANDARD;
+            asciiEscapes['>'] = CharacterEscapes.ESCAPE_STANDARD;
+            asciiEscapes['&'] = CharacterEscapes.ESCAPE_STANDARD;
+            asciiEscapes['\''] = CharacterEscapes.ESCAPE_STANDARD;
+        }
+
+        @Override
+        public int[] getEscapeCodesForAscii() {
+            return asciiEscapes;
+        }
+
+        @Override
+        public SerializableString getEscapeSequence(int ch) {
+            if (ch == 0x2028) return LINE_SEPARATOR;
+            if (ch == 0x2029) return PARAGRAPH_SEPARATOR;
+            return null;
+        }
+    }
+
     // I wonder how many times this has been "reinvented"....
     public static String getOrdinal(int value) {
         // if it ends in the 'teens
@@ -528,5 +645,5 @@ public class OverallJSON implements RaceReportType{
              return "th";
         }
     }
-    
+
 }

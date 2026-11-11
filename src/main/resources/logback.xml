@@ -30,7 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
             <level>TRACE</level>
         </filter>
     </appender>
-    <!-- <appender name="DebugLogHolder" class="com.pikatimer.pikareader.util.DebugLogHolder"/> -->
+    <!-- <appender name="DebugLogHolder" class="org.pikatimer.pikareader.util.DebugLogHolder"/> -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>${java.io.tmpdir}/PikaTimer-${dateStamp}.log</file>
         <append>true</append>
@@ -55,7 +55,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     <logger name="com.mchange" level="INFO" />
     
 
-    <logger name="com.pikatimer" level="TRACE" />
+    <logger name="org.pikatimer" level="TRACE" />
     
     
 </configuration>

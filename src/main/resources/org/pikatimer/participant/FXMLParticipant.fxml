@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright (C) 2017 John Garner
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Accordion?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.control.cell.PropertyValueFactory?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.RowConstraints?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import org.controlsfx.control.CheckComboBox?>
+<?import org.controlsfx.control.PrefixSelectionChoiceBox?>
+<?import org.controlsfx.control.ToggleSwitch?>
+
+<GridPane alignment="CENTER" hgap="10.0" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" prefHeight="600.0" prefWidth="900.0" vgap="5.0" xmlns="http://javafx.com/javafx/23" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.participant.FXMLParticipantController">
+    <padding>
+        <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
+    </padding>
+   <children>
+      <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="5.0" GridPane.columnIndex="1" GridPane.halignment="CENTER" GridPane.hgrow="ALWAYS" GridPane.valignment="CENTER">
+         <children>
+            <Label fx:id="filterLabel" text="Event">
+               <font>
+                  <Font size="24.0" />
+               </font>
+            </Label>
+            <CheckComboBox fx:id="searchWaveComboBox" maxWidth="1.7976931348623157E308" minWidth="100.0" prefHeight="25.0" prefWidth="150.0" />
+            <Region maxWidth="1.7976931348623157E308" minHeight="-Infinity" minWidth="-Infinity" prefHeight="25.0" prefWidth="75.0" HBox.hgrow="ALWAYS" />
+            <Label text="Search">
+               <font>
+                  <Font size="24.0" />
+               </font>
+            </Label>
+            <TextField fx:id="filterField" maxWidth="1.7976931348623157E308" minWidth="125.0" prefHeight="25.0" prefWidth="200.0" promptText="Regex capable search filter" HBox.hgrow="NEVER" />
+         </children>
+         <GridPane.margin>
+            <Insets />
+         </GridPane.margin>
+      </HBox>
+      <VBox GridPane.columnIndex="1" GridPane.hgrow="ALWAYS" GridPane.rowIndex="1" GridPane.vgrow="NEVER">
+         <children>
+             <TableView fx:id="participantTableView" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" prefHeight="400.0" prefWidth="531.0" tableMenuButtonVisible="true" VBox.vgrow="ALWAYS">
+                 <columns>
+                     <TableColumn fx:id="bibNumberColumn" prefWidth="49.0" resizable="false" text="Bib #">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="bib" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="firstNameColumn" prefWidth="71.0" text="First Name">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="firstName" />
+                       </cellValueFactory>
+                   </TableColumn>
+                  <TableColumn prefWidth="75.0" text="Middle">
+                          <cellValueFactory>
+                           <PropertyValueFactory property="middleName" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="lastNameColumn" prefWidth="100" text="Last Name">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="lastName" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="ageColumn" prefWidth="32.0" text="Age">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="age" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="sexColumn" minWidth="8.0" prefWidth="32.0" text="Sex">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="sex" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="cityColumn" prefWidth="60.0" text="City">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="city" />
+                       </cellValueFactory>
+                   </TableColumn>
+                   <TableColumn fx:id="stateColumn" prefWidth="41.0" text="State">
+                       <cellValueFactory>
+                           <PropertyValueFactory property="state" />
+                       </cellValueFactory>
+                   </TableColumn>
+                  <TableColumn fx:id="countryColumn" prefWidth="51.0" text="Country">
+                      <cellValueFactory>
+                           <PropertyValueFactory property="country" />
+                       </cellValueFactory>
+                   </TableColumn>
+                  <TableColumn fx:id="raceColumn" prefWidth="124.0" text="Event / Wave" />
+                  <TableColumn fx:id="statusColumn" prefWidth="124.0" text="Status" />
+              </columns>  
+              <sortOrder> 
+                   <fx:reference source="bibNumberColumn" />
+                   <fx:reference source="lastNameColumn" />
+              </sortOrder>
+             </TableView>
+            <HBox maxWidth="1.7976931348623157E308" spacing="2.0" VBox.vgrow="NEVER">
+               <children>
+                  <Pane HBox.hgrow="ALWAYS" />
+                  <Label fx:id="filteredSizeLabel" text="99999" textOverrun="CLIP" HBox.hgrow="NEVER">
+                     <HBox.margin>
+                        <Insets />
+                     </HBox.margin>
+                  </Label>
+                  <Label text="/" HBox.hgrow="NEVER" />
+                  <Label fx:id="listSizeLabel" alignment="CENTER" text="9999" HBox.hgrow="NEVER">
+                     <HBox.margin>
+                        <Insets />
+                     </HBox.margin>
+                  </Label>
+               </children>
+            </HBox>
+         </children>
+      </VBox>
+      <HBox alignment="CENTER_RIGHT" spacing="10.0" GridPane.columnIndex="1" GridPane.hgrow="ALWAYS" GridPane.rowIndex="2">
+         <children>
+            <Button fx:id="rsuSyncButton" mnemonicParsing="false" text="RSU Sync" />
+            <ProgressBar fx:id="rsuSyncProgressBar" prefHeight="20.0" prefWidth="100.0" progress="0.0" />
+            <Label fx:id="rsuSyncLabel" prefHeight="17.0" prefWidth="141.0" />
+            <Pane HBox.hgrow="ALWAYS" />
+            <Button fx:id="deleteParticipantsButton" alignment="CENTER_RIGHT" text="Remove" />
+         </children>
+      </HBox>
+      <VBox GridPane.hgrow="NEVER" GridPane.rowIndex="1" GridPane.rowSpan="2" GridPane.vgrow="ALWAYS">
+         <children>
+            <ScrollPane fitToWidth="true" hbarPolicy="NEVER" style="-fx-padding: 0;" VBox.vgrow="SOMETIMES">
+               <content>
+                  <VBox fx:id="formVBox" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" spacing="5.0">
+                     <children>
+                        <HBox>
+                           <children>
+                              <Label minWidth="-Infinity" prefWidth="50.0" text="Bib" HBox.hgrow="NEVER">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="bibTextField" prefHeight="25.0" prefWidth="48.0" promptText="12345" HBox.hgrow="NEVER" />
+                           </children>
+                        </HBox>
+                        <HBox fx:id="raceHBox" alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label fx:id="raceLabel" minWidth="-Infinity" prefWidth="50.0" text="Event" textAlignment="RIGHT">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <CheckComboBox fx:id="waveComboBox" maxWidth="1.7976931348623157E308" prefHeight="25.0" prefWidth="62.0" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="First">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="firstNameField" maxWidth="1.7976931348623157E308" prefWidth="90" promptText="First Name" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="Middle">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="middleNameTextField" prefWidth="90" promptText="Middle Name / Initial" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="Last">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="lastNameField" prefWidth="90" promptText="Last Name" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="DOB">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <DatePicker fx:id="birthdayDatePicker" maxWidth="1.7976931348623157E308" minWidth="-Infinity" prefHeight="25.0" prefWidth="135.0" promptText="Date of Birth" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label minWidth="-Infinity" prefHeight="20.0" prefWidth="50.0" text="Age" HBox.hgrow="NEVER">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="ageTextField" minWidth="-Infinity" prefHeight="25.0" prefWidth="61.0" promptText="Age" HBox.hgrow="NEVER" />
+                              <Label maxWidth="1.7976931348623157E308" prefHeight="20.0" HBox.hgrow="ALWAYS">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <Label minWidth="-Infinity" prefHeight="20.0" prefWidth="27.0" text="Sex">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="sexTextField" minWidth="-Infinity" prefHeight="25.0" prefWidth="40.0" promptText="Sex" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label minWidth="-Infinity" prefHeight="20.0" prefWidth="50.0" text="City">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="cityTextField" prefHeight="25.0" prefWidth="228.0" promptText="City" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label minWidth="-Infinity" prefHeight="20.0" prefWidth="50.0" text="State">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="stateTextField" minWidth="-Infinity" prefWidth="40.0" promptText="State" />
+                           </children>
+                        </HBox>
+                        <HBox fx:id="countryHBox" alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="Country">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="countryTextField" prefWidth="90" promptText="Country" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="Status">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <PrefixSelectionChoiceBox fx:id="statusPrefixSelectionChoiceBox" maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <HBox>
+                           <children>
+                              <ToggleSwitch fx:id="awardEligibleToggleSwitch" maxWidth="1.7976931348623157E308" text="Award Eligible" HBox.hgrow="ALWAYS">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </ToggleSwitch>
+                           </children>
+                        </HBox>
+                        <HBox fx:id="zipHBox" alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="2.0">
+                           <children>
+                              <Label maxWidth="1.7976931348623157E308" minWidth="-Infinity" prefHeight="20.0" prefWidth="145.0" text="Award Gender Override" HBox.hgrow="ALWAYS">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="awardSexOverrideTextField" prefHeight="26.0" prefWidth="40.0" />
+                           </children>
+                        </HBox>
+                        <HBox alignment="CENTER_LEFT" spacing="2.0">
+                           <children>
+                              <Label prefHeight="20.0" prefWidth="50.0" text="Note">
+                                 <font>
+                                    <Font size="14.0" />
+                                 </font>
+                              </Label>
+                              <TextField fx:id="noteTextField" prefWidth="90" promptText="Note" HBox.hgrow="ALWAYS" />
+                           </children>
+                        </HBox>
+                        <VBox fx:id="customAttributesVBox" spacing="5.0" VBox.vgrow="ALWAYS" />
+                     </children>
+                  </VBox>
+               </content>
+            </ScrollPane>
+            <HBox alignment="CENTER_LEFT" spacing="5.0">
+                <children>  
+                  <Button fx:id="formResetButton" text="Clear Form" />
+                  <Label maxWidth="1.7976931348623157E308" prefHeight="20.0" prefWidth="1" text="" HBox.hgrow="ALWAYS" />
+                  <Button fx:id="formAddButton" text="Add" />
+                  <Button fx:id="formUpdateButton" managed="false" text="Update" visible="false" />
+                </children>
+               <padding>
+                  <Insets top="5.0" />
+               </padding>
+            </HBox>
+            <Pane maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" VBox.vgrow="ALWAYS" />
+            <Accordion maxWidth="1.7976931348623157E308">
+              <panes>
+                <TitledPane animated="false" text="Import / Export">
+                  <content>
+                        <VBox>
+                           <children>
+                              <HBox spacing="5.0">
+                                 <children>
+                                    <Button fx:id="importButton" focusTraversable="false" mnemonicParsing="false" prefHeight="25.0" prefWidth="60.0" text="Import" textAlignment="CENTER" />
+                                    <Button fx:id="exportButton" mnemonicParsing="false" prefWidth="60.0" text="Export" />
+                                 </children>
+                                 <padding>
+                                    <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
+                                 </padding>
+                              </HBox>
+                              <HBox spacing="5.0">
+                                 <children>
+                                    <Button fx:id="rsuSyncSetupButton" focusTraversable="false" mnemonicParsing="false" onAction="#importParticipants" prefHeight="26.0" prefWidth="125.0" text="Setup RSU Sync..." textAlignment="CENTER" />
+                                 </children>
+                                 <padding>
+                                    <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
+                                 </padding>
+                              </HBox>
+                           </children>
+                        </VBox>
+                  </content>
+                </TitledPane>
+                <TitledPane animated="false" text="Customization">
+                  <content>
+                        <VBox>
+                           <children>
+                              <Button fx:id="customAtrtributesButton" mnemonicParsing="false" onAction="#setupCustomAttributes" text="Setup Custom Attributes..." />
+                           </children>
+                        </VBox>
+                  </content>
+                </TitledPane>
+                <TitledPane animated="false" text="Utilities">
+                  <content>
+                        <VBox>
+                           <children>
+                              <HBox>
+                                 <children>
+                                    <Button fx:id="bulkBibAssignmentButton" mnemonicParsing="false" text="Bulk Bib Assignment..." />
+                                    <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="clearButton" focusTraversable="false" mnemonicParsing="false" onAction="#clearParticipants" prefWidth="60.0" text="Clear All" textAlignment="CENTER" />
+                                 </children>
+                              </HBox>
+                           </children>
+                        </VBox>
+                  </content>
+                </TitledPane>
+              </panes>
+               <padding>
+                  <Insets top="15.0" />
+               </padding>
+            </Accordion>
+         </children>
+         <GridPane.margin>
+            <Insets />
+         </GridPane.margin>
+      </VBox>
+      <HBox>
+         <children>
+            <Label maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" text="Add/Edit Participant" HBox.hgrow="ALWAYS">
+               <font>
+                  <Font size="24.0" />
+               </font>
+            </Label>
+         </children>
+         <GridPane.margin>
+            <Insets />
+         </GridPane.margin>
+      </HBox>
+   </children>
+   <columnConstraints>
+      <ColumnConstraints hgrow="NEVER" maxWidth="250.0" minWidth="250.0" prefWidth="250.0" />
+      <ColumnConstraints hgrow="ALWAYS" maxWidth="1.7976931348623157E308" minWidth="300.0" prefWidth="636.5" />
+   </columnConstraints>
+   <rowConstraints>
+      <RowConstraints />
+      <RowConstraints maxHeight="1.7976931348623157E308" vgrow="ALWAYS" />
+      <RowConstraints />
+
+   </rowConstraints>
+   
+      
+</GridPane>

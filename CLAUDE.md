@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-PikaTimer is a JavaFX race timing desktop application (GPLv3). Java 25, Maven, main class `com.pikatimer.Pikatimer`. An event is stored in a single embedded H2 file database. There are no unit tests (`src/test/java` is empty).
+PikaTimer is a JavaFX race timing desktop application (GPLv3). Java 25, Maven, main class `org.pikatimer.Pikatimer`. An event is stored in a single embedded H2 file database. There are no unit tests (`src/test/java` is empty).
 
 ## Commands
 
@@ -15,7 +15,7 @@ PikaTimer is a JavaFX race timing desktop application (GPLv3). Java 25, Maven, m
 
 ## Architecture
 
-Package root `src/main/java/com/pikatimer`, split by domain: `event`, `participant`, `race`, `timing` (with `reader`), `results` (with `reports`), `util` (with `fileTransports`). FXML views and their `FXML*Controller` classes sit beside the domain code, and the layouts are under `src/main/resources/com/pikatimer`.
+Package root `src/main/java/org/pikatimer`, split by domain: `event`, `participant`, `race`, `timing` (with `reader`), `results` (with `reports`), `util` (with `fileTransports`). FXML views and their `FXML*Controller` classes sit beside the domain code, and the layouts are under `src/main/resources/org/pikatimer`.
 
 - **Persistence**: Hibernate 6.6 (`jakarta.persistence`) with annotated entities, backed by H2 and pooled by c3p0. Bulk loads of entities that are used detached go through `HibernateUtil.loadReadOnly`. `util/HibernateUtil.getConfiguration()` **explicitly registers every entity with `addAnnotatedClass`**, so a new entity must be added there. The schema is managed by **Flyway** migrations in `src/main/resources/db/migration` (`B2__baseline.sql` plus `V2_0_x` scripts), which run when an event file is opened (`FXMLopenEventController`). Schema changes need a new migration, because Hibernate does not generate the schema.
 - **DAOs**: `*DAO` classes (`RaceDAO`, `TimingDAO`, `ResultsDAO`, `EventDAO`, ...) are lazy-holder singletons obtained with `getInstance()`. They wrap the Hibernate sessions, and the UI and processing code go through them.
@@ -24,4 +24,4 @@ Package root `src/main/java/com/pikatimer`, split by domain: `event`, `participa
 - **Results**: `results/ResultsDAO` and `Result`/`ProcessedResult` turn the cooked times plus the race definition (`Race`, `Wave`, `Split`, `Segment`, the age/sex groups and the awards definitions) into results. `results/reports` holds the report generators (text, HTML/DataTables, awards). `RaceOutputTarget`, `RaceReport` and `ReportDestination` define where reports go. `util/fileTransports` uploads them over FTP/FTPS/SFTP (commons-net, JSch). `util/HTTPServices` serves data via Javalin and WebSocket, e.g. the Marmot announcer feed.
 - **Preferences/startup**: `Pikatimer.java` (app entry, JDBC URL, event file handling) and `PikaPreferences`.
 
-`src/main/java/com/pikatimer/TODO.txt` tracks the 2.0 release plan. The git branch `v2.0` is the current development line, and `master` is the main branch.
+`src/main/java/org/pikatimer/TODO.txt` tracks the 2.0 release plan. The git branch `v2.0` is the current development line, and `master` is the main branch.

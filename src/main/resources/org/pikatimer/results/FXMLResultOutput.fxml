@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+Copyright (C) 2017 John Garner
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ChoiceBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.layout.RowConstraints?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import org.controlsfx.control.CheckComboBox?>
+<?import org.controlsfx.control.ToggleSwitch?>
+
+<GridPane fx:id="baseGridPane" hgap="5.0" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" vgap="2.0" xmlns="http://javafx.com/javafx/8.0.141" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.results.FXMLResultOutputController">
+   <columnConstraints>
+      <ColumnConstraints hgrow="NEVER" maxWidth="260.0" minWidth="-Infinity" prefWidth="260.0" />
+      <ColumnConstraints hgrow="ALWAYS" maxWidth="1.7976931348623157E308" minWidth="342.5" prefWidth="342.5" />
+   </columnConstraints>
+   <rowConstraints>
+      <RowConstraints fillHeight="false" vgrow="NEVER" />
+      <RowConstraints minHeight="10.0" vgrow="SOMETIMES" />
+      <RowConstraints minHeight="10.0" vgrow="SOMETIMES" />
+   </rowConstraints>
+   <children>
+      <VBox alignment="CENTER_LEFT" fillWidth="false">
+         <children>
+            <HBox alignment="CENTER_LEFT" spacing="2.0">
+               <children>
+                  <Label text="Type">
+                     <font>
+                        <Font size="14.0" />
+                     </font>
+                  </Label>
+                  <ChoiceBox fx:id="outputTypeChoiceBox" maxWidth="-Infinity" minWidth="-Infinity" prefWidth="150.0" />
+               </children>
+            </HBox>
+         </children>
+      </VBox>
+      <VBox GridPane.rowIndex="1">
+         <children>
+            <Label fx:id="optionsLabel" text="Options">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </Label>
+            <VBox spacing="5.0">
+               <children>
+                  <HBox fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="inProgressCheckBox" mnemonicParsing="false" prefWidth="120.0" text="In-Progress" />
+                        <CheckBox fx:id="showGunTimeCheckBox" mnemonicParsing="false" text="Show Gun Time" />
+                     </children>
+                  </HBox>
+                  <HBox fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showDQCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Show DQ's" />
+                        <CheckBox fx:id="showDNFCheckBox" mnemonicParsing="false" text="Show DNF's" />
+                     </children>
+                  </HBox>
+                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showPaceCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Show Pace" />
+                        <CheckBox fx:id="showSplitsCheckBox" mnemonicParsing="false" text="Show Splits" />
+                     </children>
+                  </HBox>
+                  <HBox fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showFinishTODCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Show Finish TOD" />
+                        <CheckBox fx:id="showSplitTODCheckBox" mnemonicParsing="false" text="Show Split TOD" />
+                     </children>
+                  </HBox>
+                  <HBox fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showSegmentsCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Show Segments" />
+                        <CheckBox fx:id="showSegmentPaceCheckBox" mnemonicParsing="false" text="Show Segment Pace" />
+                     </children>
+                  </HBox>
+                  <HBox fillHeight="false" spacing="5.0">
+                     <children>
+                        <Pane prefWidth="120.0" />
+                        <CheckBox fx:id="showSegmentSplitsCheckBox" mnemonicParsing="false" text="Show Segment Splits" />
+                     </children>
+                  </HBox>
+                  <HBox fx:id="customAttributesHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="customAttributesCheckBox" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" mnemonicParsing="false" prefHeight="17.0" prefWidth="120.0" text="Custom Attributes" />
+                        <CheckComboBox fx:id="customAttributesCheckComboBox" maxWidth="1.7976931348623157E308" HBox.hgrow="SOMETIMES" />
+                     </children>
+                  </HBox>
+                  <HBox fx:id="specificAwardsHBox" alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showSpecificAwardsCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Specific Awards" />
+                        <CheckComboBox fx:id="customAwardsCheckComboBox" maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                     </children>
+                  </HBox>
+                  <HBox alignment="CENTER_LEFT" fillHeight="false" spacing="5.0">
+                     <children>
+                        <CheckBox fx:id="showAwardsCheckBox" mnemonicParsing="false" prefWidth="120.0" text="Show Awards" />
+                        <CheckBox fx:id="showCRsCheckBox" mnemonicParsing="false" prefHeight="17.0" prefWidth="138.0" text="Show Course Records" />
+                     </children>
+                  </HBox>
+                  <CheckBox fx:id="showEmailCheckBox" mnemonicParsing="false" text="Show Email Addresses" />
+                  <CheckBox fx:id="hideCustomHeadersCheckBox" mnemonicParsing="false" text="Hide Custom Headers/Footers" />
+               </children>
+            </VBox>
+            <FlowPane fx:id="outputOptionsFlowPane" prefWidth="200.0" />
+         </children>
+      </VBox>
+      <VBox fillWidth="true" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" spacing="2.0" GridPane.columnIndex="1" GridPane.rowIndex="1">
+         <children>
+            <Label text="Output Paths">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </Label>
+            <Label fx:id="noOutputPpathsLabel" text="No output paths defined. Click &quot;Add Output&quot; to add some." textAlignment="CENTER">
+               <font>
+                  <Font name="System Italic" size="12.0" />
+               </font>
+            </Label>
+            <VBox fx:id="outputTargetsVBox" fillWidth="true" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" prefHeight="10.0" prefWidth="350.0" spacing="2.0" GridPane.rowIndex="2" />
+            <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308">
+               <children>
+                  <Button fx:id="outputAddButton" mnemonicParsing="false" onAction="#addRaceReportOututTarget" text="Add Output" />
+               </children>
+            </HBox>
+         </children>
+      </VBox>
+      <HBox alignment="CENTER_LEFT" spacing="4.0" GridPane.columnIndex="1" GridPane.halignment="RIGHT">
+         <children>
+            <ToggleSwitch fx:id="reportEnabledToggleSwitch" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="20.0" prefWidth="78.0" text="Enabled" HBox.hgrow="NEVER" />
+            <Button alignment="CENTER_RIGHT" mnemonicParsing="false" onAction="#processReportNow" text="Process Now" />
+            <Label maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+            <Button alignment="CENTER_RIGHT" mnemonicParsing="false" onAction="#removeRaceReport" text="Remove Report" />
+         </children>
+      </HBox>
+      <Separator prefWidth="200.0" GridPane.columnSpan="2147483647" GridPane.rowIndex="2" />
+   </children>
+   <padding>
+      <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+   </padding>
+</GridPane>

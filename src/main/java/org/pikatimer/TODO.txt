@@ -116,7 +116,6 @@ Reports:
     --Receipt printer dialog box?
     --Better print option for enhanced HTML output (show a runner's splits, etc)
     --Link to video / photos
-    --DataTables update to latest
     --GA4 support
 
 

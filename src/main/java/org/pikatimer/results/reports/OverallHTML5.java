@@ -44,7 +44,15 @@ import org.slf4j.LoggerFactory;
  */
 public class OverallHTML5 implements RaceReportType{
     private static final Logger logger = LoggerFactory.getLogger(OverallHTML5.class);
-    
+
+    // DataTables and extension versions loaded from the DataTables CDN
+    private static final String DT_CDN = "https://cdn.datatables.net";
+    private static final String DT_VERSION = "3.1.5";
+    private static final String DT_BUTTONS_VERSION = "4.1.3";
+    private static final String DT_RESPONSIVE_VERSION = "4.1.1";
+    private static final String DT_SCROLLER_VERSION = "3.1.1";
+    private static final String JQUERY_URL = "https://code.jquery.com/jquery-3.7.1.min.js";
+
     Race race;
 
     Boolean showDQ = true;
@@ -136,9 +144,11 @@ public class OverallHTML5 implements RaceReportType{
 
         Boolean showCountry = false;
         Boolean showState = false;
+        Boolean showCity = false;
         for (ProcessedResult x : prList){
             if (! x.getParticipant().getCountry().isEmpty()) showCountry=true;
             if (! x.getParticipant().getState().isEmpty()) showState=true;
+            if (! x.getParticipant().getCity().isEmpty()) showCity=true;
         }
         
 
@@ -167,6 +177,7 @@ public class OverallHTML5 implements RaceReportType{
         String cutoffTimeString = DurationFormatter.durationToString(cutoffTime, dispFormat, roundMode);
         
        
+        report += "<!DOCTYPE html>" +  System.lineSeparator();
         report += "<HTML lang=\"en\" xml:lang=\"en\" > " +  System.lineSeparator();
         report += "  <HEAD> " +  System.lineSeparator();
         report +=   " <meta charset=\"UTF-8\">\n" +
@@ -195,8 +206,10 @@ public class OverallHTML5 implements RaceReportType{
         }
         
         report +=   "<!-- Stylesheets / JS Includes-->\n" ;
-        if (inProgress) report +=   "<link rel=\"stylesheet\" type=\"text/css\" href=\"https://cdn.datatables.net/v/dt/jq-3.7.0/dt-1.13.7/fh-3.4.0/r-2.5.0/sc-2.3.0/datatables.min.css\"/>\n" ;
-        else report +=   "<link rel=\"stylesheet\" type=\"text/css\" href=\"https://cdn.datatables.net/v/dt/jq-3.7.0/jszip-3.10.1/dt-1.13.7/b-2.4.2/b-html5-2.4.2/b-print-2.4.2/r-2.5.0/sc-2.3.0/datatables.min.css\"/>" ;
+        report +=   "<link rel=\"stylesheet\" type=\"text/css\" href=\"" + DT_CDN + "/" + DT_VERSION + "/css/dataTables.dataTables.min.css\"/>\n" +
+                    "<link rel=\"stylesheet\" type=\"text/css\" href=\"" + DT_CDN + "/responsive/" + DT_RESPONSIVE_VERSION + "/css/responsive.dataTables.min.css\"/>\n" +
+                    "<link rel=\"stylesheet\" type=\"text/css\" href=\"" + DT_CDN + "/scroller/" + DT_SCROLLER_VERSION + "/css/scroller.dataTables.min.css\"/>\n";
+        if (!inProgress) report += "<link rel=\"stylesheet\" type=\"text/css\" href=\"" + DT_CDN + "/buttons/" + DT_BUTTONS_VERSION + "/css/buttons.dataTables.min.css\"/>\n";
         report +=   "<link rel=\"stylesheet\" href=\"https://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css\">\n" +
                 "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/css/flag-icon.min.css\">\n" +
                     " \n" ;
@@ -246,8 +259,18 @@ public class OverallHTML5 implements RaceReportType{
                     ".share-title {font-family: 'Source Sans Pro'; font-size: 20px; text-align: left; white-space: pre-wrap;}\n" +
                     ".share-link {font-family: 'Source Sans Pro'; font-size: 16px; text-align: left; padding-left: 5px; white-space: pre-wrap;}\n" +
                     ".share-link a:link {text-decoration: none;}\n" +
-                    ".toolbar {float:left; padding-right: 2px; font-family: 'Source Sans Pro'; font-size: 16px; text-align: left; white-space: pre-wrap;}\n" +
-                    ".buttons {float:right; padding-right: 2px;}\n " +
+                    // Collapsible filter panel, styled after a Bootstrap 3 panel-default
+                    ".filter-panel {width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; background: #fff; font-family: 'Source Sans Pro'; font-size: 16px; text-align: left;}\n" +
+                    ".filter-panel > summary {display: flex; align-items: center; gap: 6px; padding: 10px 15px; background: #f5f5f5; border-radius: 3px; cursor: pointer; list-style: none; font-weight: bold;}\n" +
+                    ".filter-panel > summary::-webkit-details-marker {display: none;}\n" +
+                    ".filter-panel[open] > summary {border-bottom: 1px solid #ddd; border-radius: 3px 3px 0 0;}\n" +
+                    ".filter-count {font-weight: normal; color: #555;}\n" +
+                    ".filter-chevron {margin-left: auto; color: grey; transition: transform .15s;}\n" +
+                    ".filter-panel[open] .filter-chevron {transform: rotate(90deg);}\n" +
+                    ".toolbar {display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 15px;}\n" +
+                    ".toolbar select {margin-left: 4px; max-width: 14em;}\n" +
+                    ".filter-clear {display: none;}\n" +
+                    ".filter-clear.active {display: inline-block;}\n" +
                     ".up-10 {transform: translateY(-10%);}\n" +
                     ".bold {font-weight: bold;}\n" +
                     ".show-mobile {display:none}\n" +
@@ -259,7 +282,7 @@ public class OverallHTML5 implements RaceReportType{
                     "    .overall {width: 100%; padding-right: 0px;}\n" +
                     "    .segment {width: 100%; padding-right: 0px;}\n" +
                     "    .split {width: 100%; padding-right: 0px;}\n" +
-                    "    .toolbar {width:100%; text-align: center; float:none;}\n" +
+                    "    .toolbar {justify-content: flex-start;}\n" +
                     "    .hide-mobile {display:none}\n" +
                     "    .show-mobile {display:initial}\n" +
                     "}\n" +
@@ -380,7 +403,6 @@ public class OverallHTML5 implements RaceReportType{
 
             report += "</tr></thead>" +  System.lineSeparator(); 
             report += "</table>" +  System.lineSeparator();
-            if (!inProgress) report += "<div id=\"btn\" class=\"buttons\"></div>" +  System.lineSeparator();
 
         
         
@@ -393,18 +415,25 @@ public class OverallHTML5 implements RaceReportType{
         report += "<!-- Start DataTables -->\n";
         
         
-        if (inProgress) report += "<script type=\"text/javascript\" src=\"https://cdn.datatables.net/v/dt/jq-3.7.0/dt-1.13.7/fh-3.4.0/r-2.5.0/sc-2.3.0/datatables.min.js\"></script>\n" ;
-        else report +=   "<script type=\"text/javascript\" src=\"https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/pdfmake.min.js\"></script>\n" +
-                        "<script type=\"text/javascript\" src=\"https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.36/vfs_fonts.js\"></script>\n" +
-                        "<script type=\"text/javascript\" src=\"https://cdn.datatables.net/v/dt/jq-3.7.0/jszip-3.10.1/dt-1.13.7/b-2.4.2/b-html5-2.4.2/b-print-2.4.2/r-2.5.0/sc-2.3.0/datatables.min.js\"></script>\n";
-
-        report +=           " \n" +
-                    "<script type=\"text/javascript\" src=\"https://cdn.datatables.net/plug-ins/1.13.6/sorting/natural.js\"></script>\n";
+        // jQuery is no longer required by DataTables but custom headers/footers may still use it
+        report +=   "<script type=\"text/javascript\" src=\"" + JQUERY_URL + "\"></script>\n" +
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/" + DT_VERSION + "/js/dataTables.min.js\"></script>\n" +
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/responsive/" + DT_RESPONSIVE_VERSION + "/js/dataTables.responsive.min.js\"></script>\n" +
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/scroller/" + DT_SCROLLER_VERSION + "/js/dataTables.scroller.min.js\"></script>\n";
+        if (!inProgress) report +=
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/buttons/" + DT_BUTTONS_VERSION + "/js/dataTables.buttons.min.js\"></script>\n" +
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/buttons/" + DT_BUTTONS_VERSION + "/js/buttons.html5.min.js\"></script>\n" +
+                    "<script type=\"text/javascript\" src=\"" + DT_CDN + "/buttons/" + DT_BUTTONS_VERSION + "/js/buttons.print.min.js\"></script>\n";
 
         report += "<script type=\"text/javascript\" class=\"init\">\n" +
                     " // nth(n) function from http://stackoverflow.com/questions/13627308/add-st-nd-rd-and-th-ordinal-suffix-to-a-number \n" + 
                     "function nth(s){var n = parseInt(s); if (isNaN(n)) return s; return s + ([\"st\",\"nd\",\"rd\"][((n+90)%100-10)%10-1]||\"th\");}\n" +
-                
+                    "// The result data is HTML escaped, so decode it when we need the plain text\n" +
+                    "function decodeHtml(s){ var t = document.createElement('textarea'); t.innerHTML = (s == null ? '' : s); return t.value; }\n" +
+                    "// lower case and strip the accents so that an unaccented search matches an accented name\n" +
+                    "function norm(s){ return decodeHtml(s).normalize('NFD').replace(/\\p{M}/gu, '').toLowerCase(); }\n" +
+                    "var pikaEventName = decodeHtml('" + escape(event.getEventName()) + "');\n" +
+
                 "function childData ( rData) {\n" +
                         "                \n" +
                         "                               if (typeof rData == \"undefined\") { return \"\";}" +
@@ -593,12 +622,15 @@ public class OverallHTML5 implements RaceReportType{
                 report += "data += '</div>';\n"; // split
                 report += "data += '</div>';\n"; // row
             }
-            report += "data += '    <div class=\"share\" >';\n" +
+            // The share link is just #<bib> since a numeric search is an exact bib match
+            report += "var shareUrl = encodeURIComponent(window.location.origin + window.location.pathname + '#' + encodeURIComponent(decodeHtml(rData.bib)));\n" +
+                        "var shareText = encodeURIComponent(decodeHtml(rData.full_name) + ' - ' + pikaEventName);\n" +
+                        "data += '    <div class=\"share\" >';\n" +
                         "data += '    <div class=\"share-title\">Share:</div>';\n" +
-                        "data += '    <div class=\"share-link\"><a href=\"http://twitter.com/intent/tweet?text=' + window.location.origin + window.location.pathname + '%23' + rData.bib + encodeURI(encodeURI(' ' + rData.full_name)) + '\" target=\"_blank\">';\n" +
-                        "data += '<i class=\"fa fa-twitter\" aria-hidden=\"true\"></i> Twitter';\n" +
+                        "data += '    <div class=\"share-link\"><a href=\"https://x.com/intent/post?url=' + shareUrl + '&amp;text=' + shareText + '\" target=\"_blank\" rel=\"noopener\">';\n" +
+                        "data += '<i class=\"fa fa-twitter\" aria-hidden=\"true\"></i> X';\n" +
                         "data += '</a></div>';\n" +
-                        "data += '    <div class=\"share-link\"><a href=\"http://www.facebook.com/sharer.php?u=' + window.location.origin + window.location.pathname + '#' + rData.bib + encodeURI(' ' +rData.full_name) +'\" target=\"_blank\">';\n" +
+                        "data += '    <div class=\"share-link\"><a href=\"https://www.facebook.com/sharer/sharer.php?u=' + shareUrl + '\" target=\"_blank\" rel=\"noopener\">';\n" +
                         "data += '<i class=\"fa fa-facebook\" aria-hidden=\"true\"></i> Facebook';\n" +
                         "data += '</a></div>';\n" +
                         "data += '  </div>';\n" ;
@@ -616,13 +648,161 @@ public class OverallHTML5 implements RaceReportType{
                 
                 
                     " var resultsData = " + json.process(prList, rr) +
-                    "\n" +
-                    "$(document).ready(function() {\n" +
-                    "var search = \"\";\n" +
-                    "	if ( window.location.hash !== \"\" ) {\n" +
-                    "		search = decodeURI(window.location.hash.substring( 1 ));\n" +
-                    "	}\n" +
-                    "var oTable = $('#results').DataTable({\n" +
+                    "\n";
+
+            // The dropdown filters shown in the toolbar: [label, data field]
+            report += "var filterDefs = [['Sex','sex'], ['Age-Group','ag']";
+            if (showCity) report += ", ['City','city']";
+            if (showState) report += ", ['State','state']";
+            if (showCountry) report += ", ['Country','country']";
+            report += "];\n";
+
+            report +=
+                    """
+                    // Natural sort (e.g. 2 before 10) for every column
+                    var naturalCollator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
+                    function naturalCompare(a, b){ return naturalCollator.compare(a == null ? '' : String(a), b == null ? '' : String(b)); }
+                    DataTable.type('natural', 'order', {
+                        asc: function (a, b) { return naturalCompare(a, b); },
+                        desc: function (a, b) { return naturalCompare(b, a); }
+                    });
+
+                    // Precompute the search keys once
+                    resultsData.forEach(function (r) {
+                        r._search_name = norm(r.full_name_filter);
+                        r._search_bib = decodeHtml(r.bib).trim();
+                    });
+
+                    // Main search box: all-digit terms are an exact bib match,
+                    // everything else must be found in the participant's name.
+                    // A mix (e.g. "123 John Smith" from older share links) must match both.
+                    var quick = {bibs: [], words: []};
+                    function setQuick(term){
+                        var tokens = (term || '').trim().split(/\\s+/).filter(function (t) { return t !== ''; });
+                        quick.bibs = tokens.filter(function (t) { return /^\\d+$/.test(t); });
+                        quick.words = tokens.filter(function (t) { return !/^\\d+$/.test(t); }).map(norm);
+                    }
+
+                    // Dropdown filters: data field -> selected (raw) value
+                    var filters = {};
+
+                    DataTable.ext.search.push(function (settings, searchData, dataIndex, row) {
+                        if ((settings.tableId || settings.sTableId) !== 'results') return true;
+                        for (var f in filters) {
+                            if (filters[f] !== '' && row[f] !== filters[f]) return false;
+                        }
+                        if (quick.bibs.length && quick.bibs.indexOf(row._search_bib) < 0) return false;
+                        for (var i = 0; i < quick.words.length; i++) {
+                            if (row._search_name.indexOf(quick.words[i]) < 0) return false;
+                        }
+                        return true;
+                    });
+
+                    var oTable;
+                    var search = '';
+                    if (window.location.hash !== '') {
+                        try { search = decodeURIComponent(window.location.hash.substring(1)); }
+                        catch (e) { search = window.location.hash.substring(1); }
+                    }
+                    setQuick(search);
+
+                    // Show how many filters are active, since the panel is usually collapsed
+                    function updateFilterCount(panel){
+                        var active = 0;
+                        for (var f in filters) { if (filters[f] !== '') active++; }
+                        panel.querySelector('.filter-count').textContent = active ? '(' + active + ' active)' : '';
+                        panel.querySelector('.filter-clear').classList.toggle('active', active > 0);
+                    }
+
+                    // The dropdown filters live in a collapsible panel, collapsed by default
+                    function buildToolbar(){
+                        var panel = document.createElement('details');
+                        panel.className = 'filter-panel';
+                        panel.innerHTML = '<summary><span class="filter-title">Filters</span>' +
+                            '<span class="filter-count"></span>' +
+                            '<i class="fa fa-chevron-right filter-chevron" aria-hidden="true"></i></summary>';
+                        var bar = document.createElement('div');
+                        bar.className = 'toolbar';
+                        panel.appendChild(bar);
+                        filterDefs.forEach(function (def) {
+                            var field = def[1];
+                            var seen = {};
+                            var values = [];
+                            resultsData.forEach(function (r) {
+                                var v = r[field];
+                                if (v == null || v === '' || seen.hasOwnProperty(v)) return;
+                                seen[v] = true;
+                                values.push({raw: v, text: decodeHtml(v)});
+                            });
+                            if (values.length === 0) return;
+                            values.sort(function (a, b) { return naturalCompare(a.text, b.text); });
+
+                            var label = document.createElement('label');
+                            label.className = 'up-10';
+                            label.appendChild(document.createTextNode(def[0]));
+                            var select = document.createElement('select');
+                            select.className = 'dt-input';
+                            select.appendChild(new Option('', ''));
+                            values.forEach(function (v) { select.appendChild(new Option(v.text, v.raw)); });
+                            select.addEventListener('change', function () {
+                                filters[field] = this.value;
+                                updateFilterCount(panel);
+                                oTable.draw();
+                            });
+                            label.appendChild(select);
+                            bar.appendChild(label);
+                        });
+                        if (!bar.querySelector('select')) return document.createElement('div');
+
+                        var clear = document.createElement('button');
+                        clear.type = 'button';
+                        clear.className = 'filter-clear';
+                        clear.textContent = 'Clear';
+                        clear.addEventListener('click', function () {
+                            bar.querySelectorAll('select').forEach(function (s) { s.value = ''; });
+                            filters = {};
+                            updateFilterCount(panel);
+                            oTable.draw();
+                        });
+                        bar.appendChild(clear);
+                        return panel;
+                    }
+
+                    function buildSearch(){
+                        var div = document.createElement('div');
+                        div.className = 'dt-search';
+                        var label = document.createElement('label');
+                        label.htmlFor = 'pika-search';
+                        label.textContent = 'Search: ';
+                        var input = document.createElement('input');
+                        input.type = 'search';
+                        input.id = 'pika-search';
+                        input.className = 'dt-input';
+                        input.placeholder = 'Bib # or Name';
+                        input.value = search;
+                        input.addEventListener('input', DataTable.util.debounce(function () {
+                            setQuick(input.value);
+                            oTable.draw();
+                        }, 200));
+                        div.appendChild(label);
+                        div.appendChild(input);
+                        return div;
+                    }
+
+                    function toggleChild(row){
+                        var tr = row.node();
+                        if (row.child.isShown()) {
+                            row.child.hide();
+                            if (tr) tr.classList.remove('parent');
+                        } else {
+                            row.child(childData(row.data()), 'child').show();
+                            if (tr) tr.classList.add('parent');
+                        }
+                    }
+
+                    document.addEventListener('DOMContentLoaded', function () {
+                    """ +
+                    "oTable = new DataTable('#results', {\n" +
                         "   data: resultsData,\n" +
                         "        \"columns\": [\n" +
                         "           { \"data\": null, \"defaultContent\": \"\", className: 'control', orderable: false, targets:   0 },\n" +
@@ -631,8 +811,8 @@ public class OverallHTML5 implements RaceReportType{
                         "           { \"data\": \"ag_place\" },\n" +
                         "           { \"data\": \"bib\" },\n" +
                         "           { \"data\": \"age\" },\n" +
-                        "           { \"data\": \"sex\" },\n" + // If this index changes, change the filter below
-                        "           { \"data\": \"ag\" },\n" +  // ibid
+                        "           { \"data\": \"sex\", \"name\": \"sex\" },\n" +
+                        "           { \"data\": \"ag\", \"name\": \"ag\" },\n" +
                          "           { \"data\": \"full_name\", \"render\":  \n" +
 "					 function (data, type, row) {\n" +
 "						if (type == \"sort\" || type === 'type') return data;\n" +
@@ -651,10 +831,10 @@ public class OverallHTML5 implements RaceReportType{
                         "           { \"data\": \"middle_name\" },\n" +
                         "           { \"data\": \"last_name\" },\n" +
 
-                        "           { \"data\": \"city\" },\n" ;
-            if (showState) report +=             "           { \"data\": \"state\" },\n";
+                        "           { \"data\": \"city\", \"name\": \"city\" },\n" ;
+            if (showState) report +=             "           { \"data\": \"state\", \"name\": \"state\" },\n";
             if (showCountry) {
-                        report +=  "			{ \"data\": \"country\", \"render\": \n" +
+                        report +=  "			{ \"data\": \"country\", \"name\": \"country\", \"render\": \n" +
                         "				function (data, type, row) {\n" +
                         "					if (type == \"sort\" || type === 'type') return data;\n" +
                         "					if (type == \"filter\" || type === 'type') return data;\n" +
@@ -704,88 +884,59 @@ public class OverallHTML5 implements RaceReportType{
                                     "			},\n";
             if (showPace) report += "           { \"data\": \"finish_pace\" }\n";
             report +=   "        ],\n" +
-                        "   \"oSearch\": { \"sSearch\": search },\n" + 
                         "    responsive: {\n" +
                         "            details: false \n" +
                         "        },\n" +
                         "    columnDefs: [ " +
                         "            { type: 'natural', targets: '_all' },\n" +
                         "            {className: 'control', orderable: false, targets:   0}\n" +
-                        "        ],"  +
+                        "        ],\n"  +
                         "    scrollY: '60vh',\n" +
                         "    scroller:    true,\n" +
                         "    deferRender: true,\n" +
-                        "    \"dom\": '<\"toolbar\">frtip',\n" ;
-            if (!inProgress) report +=             "     buttons: [\n" +
-                        "        {\n" +
-                        "            extend: 'csv',\n" +
-                        "            text: 'Export to CSV',\n" +
-                        "                    bom: 'true',\n" +
-                        "            exportOptions: {\n" +
-                        "                modifier: {\n" +
-                        "                    search: 'none'\n" +
-                        "                }\n" +
-                        "            }\n" +
-                        "        }, \n" +
-                        "		'print'\n" +
-                        "    ],\n";
-            report +=   "   \"fnInitComplete\": function () {\n" +
-                        //"	this.fnAdjustColumnSizing();\n" +
-                        "	$('div.dataTables_filter input').focus();\n" +
-                        "		$(\"div.toolbar\").html('<Label class=\"up-10 hide-mobile bold\">Filter: </label><label class=\"up-10\">Sex <span id=\"filter-index-6\" ></span></label><label class=\"up-10\">  Age-Group <span id=\"filter-index-7\" ></span></label>');\n" +
-                        "\n" +
-                        "		this.api().columns([6,7]).every( function () {\n" +
-                        "			var column = this;\n" +
-                        "			var select = $('<select><option value=\"\"></option></select>')\n" +
-                        "				.appendTo( document.getElementById('filter-index-' + this.index()) )\n" +
-                        "				.on( 'change', function () {\n" +
-                        "					var val = $.fn.dataTable.util.escapeRegex(\n" +
-                        "						$(this).val()\n" +
-                        "					);\n" +
-                        "\n" +
-                        "					column\n" +
-                        "						.search( val ? '^'+val+'$' : '', true, false )\n" +
-                        "						.draw();\n" +
-                        "				} );\n" +
-                        "\n" +
-                        "			column.data().unique().sort().each( function ( d, j ) {\n" +
-                        "				select.append( '<option value=\"'+d+'\">'+d+'</option>' )\n" +
-                        "			} );\n" +
-                        "		} );" +
+                        "    layout: {\n" +
+                        "        top1: buildToolbar,\n" +
+                        "        topStart: null,\n" +
+                        "        topEnd: buildSearch,\n" +
+                        "        bottomStart: 'info',\n";
+            if (inProgress) report += "        bottomEnd: null\n";
+            else report +=  "        bottomEnd: {\n" +
+                        "            buttons: [\n" +
+                        "                {\n" +
+                        "                    extend: 'csv',\n" +
+                        "                    text: 'Export to CSV',\n" +
+                        "                    bom: true,\n" +
+                        "                    exportOptions: {\n" +
+                        "                        modifier: {\n" +
+                        "                            search: 'none'\n" +
+                        "                        }\n" +
+                        "                    }\n" +
+                        "                },\n" +
+                        "                'print'\n" +
+                        "            ]\n" +
+                        "        }\n";
+            report +=   "    },\n" +
+                        "   initComplete: function () {\n" +
+                        "       document.getElementById('pika-search').focus();\n" +
                         "   }\n" +
                         "});\n" +
-                    "   // Add event listener for opening and closing details\n" +
-                    "    $('#results tbody').on('click', 'tr', function () {\n" +
-                    "        var tr = $(this).closest('tr');\n" +
-                    "        var row = oTable.row( tr );\n" +
-                    " \n" +
-                    "        if ( row.child.isShown() ) {\n" +
-                    "            // This row is already open - close it\n" +
-                    "            row.child.hide();\n" +
-                    "            tr.removeClass('parent');\n" +
-                    "        }\n" +
-                    "        else {\n" +
-                    "            // Open this row\n" +
-                    "            row.child( childData(row.data()), 'child' ).show();\n" +
-                    "            tr.addClass('parent');\n" +
-                    "        }\n" +
-                    "    } );\n" +
-                    "   setTimeout( function () {\n" +
-                    "		if (search !== \"\") oTable.rows( {search:'applied'} ).every(function(index){\n" +
-                    "			var row = oTable.row(index);\n" +
-                    "			row.node().click();\n" +
-                    "		});\n" +
-                    "		\n" +
-                    "	}, 300 );\n" +
-                    "   document.getElementById('loading').style.display = 'none';\n";
-        if (!inProgress) report += "   oTable.buttons().container().appendTo( document.getElementById('btn') );\n" ;
-                    //"   document.getElementById('results_table').style.display = 'initial';\n" +
-                    //"   $( $.fn.dataTable.tables(true) ).DataTable().responsive.rebuild();\n" +
-                    //"   $( $.fn.dataTable.tables(true) ).DataTable().responsive.recalc();\n" +
-        report += "} );\n" +
-                    "\n" +
-                    "\n" +
-                    "	</script>\n";
+                        "   // Add event listener for opening and closing details\n" +
+                        "   document.querySelector('#results tbody').addEventListener('click', function (e) {\n" +
+                        "       var tr = e.target.closest('#results > tbody > tr');\n" +
+                        "       if (!tr || tr.classList.contains('child')) return;\n" +
+                        "       var row = oTable.row(tr);\n" +
+                        "       if (!row.data()) return;\n" +
+                        "       toggleChild(row);\n" +
+                        "   });\n" +
+                        "   setTimeout( function () {\n" +
+                        "       if (search !== '') oTable.rows( {search:'applied'} ).every(function () {\n" +
+                        "           toggleChild(this);\n" +
+                        "       });\n" +
+                        "   }, 300 );\n" +
+                        "   document.getElementById('loading').style.display = 'none';\n" +
+                        "} );\n" +
+                        "\n" +
+                        "	</script>\n";
         report += "<!-- End DataTables -->\n";
 
         }

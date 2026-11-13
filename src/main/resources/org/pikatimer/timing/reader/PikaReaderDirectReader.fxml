@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ChoiceBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
+<?import javafx.scene.text.Font?>
+
+<VBox fx:id="rootVBox" maxWidth="1.7976931348623157E308" stylesheets="@PikaReaderDirect.css" xmlns="http://javafx.com/javafx/23" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.timing.reader.PikaReaderDirectReaderController">
+   <children>
+      <!-- Shown until a PikaReader is selected for this input -->
+      <VBox fx:id="notConfiguredVBox" spacing="5.0">
+         <children>
+            <Label text="No PikaReader selected">
+               <font>
+                  <Font name="System Bold" size="14.0" />
+               </font>
+            </Label>
+            <Button fx:id="selectReaderButton2" mnemonicParsing="false" text="Select Reader..." />
+         </children>
+         <padding>
+            <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+         </padding>
+      </VBox>
+      <VBox fx:id="readerVBox">
+         <children>
+            <HBox alignment="CENTER_LEFT">
+               <children>
+                  <Label fx:id="unitNameLabel" text="&lt;Name&gt;">
+                     <font>
+                        <Font name="System Bold" size="18.0" />
+                     </font>
+                  </Label>
+                  <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                  <HBox fx:id="battHBox" alignment="CENTER_LEFT">
+                     <children>
+                        <Label text="Batt: ">
+                           <font>
+                              <Font name="System Bold" size="14.0" />
+                           </font>
+                        </Label>
+                        <ProgressBar fx:id="batteryLevelProgressBar" prefHeight="20.0" prefWidth="85.0" progress="0.0" />
+                     </children>
+                  </HBox>
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" spacing="5.0">
+               <children>
+                  <Label fx:id="addressLabel" text="http://127.0.0.1:80" />
+                  <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                  <Button fx:id="selectReaderButton" mnemonicParsing="false" text="Select Reader..." />
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" spacing="5.0">
+               <children>
+                  <Label fx:id="readStatusLabel" text="Reader: Idle">
+                     <font>
+                        <Font name="System Bold" size="13.0" />
+                     </font>
+                  </Label>
+                  <Circle fx:id="readStatusCircle" fill="#585858" radius="8.0" stroke="BLACK" strokeType="INSIDE" />
+                  <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                  <Label fx:id="onlineStatusLabel" text="Connected:">
+                     <font>
+                        <Font name="System Bold" size="13.0" />
+                     </font>
+                  </Label>
+                  <Circle fx:id="onlineStatusCircle" fill="#949494" radius="8.0" stroke="BLACK" strokeType="INSIDE" />
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+            <Label fx:id="statusLabel" managed="false" visible="false" wrapText="true">
+               <font>
+                  <Font name="System Bold" size="13.0" />
+               </font>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </Label>
+            <HBox fx:id="profileHBox" alignment="CENTER_LEFT" spacing="2.0">
+               <children>
+                  <Label text="Profile: " />
+                  <ChoiceBox fx:id="profileChoiceBox" maxWidth="1.7976931348623157E308" styleClass="profile-choice-box" HBox.hgrow="ALWAYS" />
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" spacing="5.0">
+               <children>
+                  <Button fx:id="startReaderButton" minWidth="-Infinity" mnemonicParsing="false" prefWidth="100.0" text="Start Reader" />
+                  <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                  <Label minWidth="-Infinity" text="Last Read: " />
+                  <Label fx:id="lastReadLabel" text="&lt;No Reads&gt;" />
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+            <HBox alignment="CENTER_LEFT" spacing="5.0">
+               <children>
+                  <Button fx:id="rewindButton" minWidth="-Infinity" mnemonicParsing="false" prefWidth="100.0" text="Rewind..." />
+                  <Pane maxWidth="1.7976931348623157E308" HBox.hgrow="ALWAYS" />
+                  <Button fx:id="disconnectButton" minWidth="-Infinity" mnemonicParsing="false" text="Disconnect" />
+               </children>
+               <padding>
+                  <Insets bottom="2.0" left="2.0" right="2.0" top="2.0" />
+               </padding>
+            </HBox>
+         </children>
+      </VBox>
+   </children>
+</VBox>

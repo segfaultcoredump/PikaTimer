@@ -43,51 +43,30 @@ import java.util.Comparator;
 // Assumption is that the "toString" method of the object actually 
 // produces something of use. 
 
+// Works on index ranges instead of building a String for every chunk, so
+// sorting a large table does not create a pile of garbage. The ordering is
+// the same as the original chunk based version. 
 public class AlphanumericComparator<T> implements Comparator<T>
 {
-    private final boolean isDigit(char ch)
+    private static boolean isDigit(char ch)
     {
         return ch >= 48 && ch <= 57;
     }
 
-    /** Length of string is passed in for improved efficiency (only need to calculate it once) **/
-    private final String getChunk(String s, int slength, int marker)
+    /** The index just past the end of the chunk that starts at marker **/
+    private static int chunkEnd(String s, int slength, int marker)
     {
-        StringBuilder chunk = new StringBuilder();
-        char c = s.charAt(marker);
-        chunk.append(c);
+        boolean digit = isDigit(s.charAt(marker));
         marker++;
-        if (isDigit(c))
-        {
-            while (marker < slength)
-            {
-                c = s.charAt(marker);
-                if (!isDigit(c))
-                    break;
-                chunk.append(c);
-                marker++;
-            }
-        } else
-        {
-            while (marker < slength)
-            {
-                c = s.charAt(marker);
-                if (isDigit(c))
-                    break;
-                chunk.append(c);
-                marker++;
-            }
-        }
-        return chunk.toString();
+        while (marker < slength && isDigit(s.charAt(marker)) == digit) marker++;
+        return marker;
     }
 
     @Override
     public int compare(Object o1, Object o2)
     {
-        
         String s1 = o1.toString();
         String s2 = o2.toString();
-              
 
         int thisMarker = 0;
         int thatMarker = 0;
@@ -96,38 +75,42 @@ public class AlphanumericComparator<T> implements Comparator<T>
 
         while (thisMarker < s1Length && thatMarker < s2Length)
         {
-            String thisChunk = getChunk(s1, s1Length, thisMarker);
-            thisMarker += thisChunk.length();
+            int thisEnd = chunkEnd(s1, s1Length, thisMarker);
+            int thatEnd = chunkEnd(s2, s2Length, thatMarker);
+            int thisChunkLength = thisEnd - thisMarker;
+            int thatChunkLength = thatEnd - thatMarker;
 
-            String thatChunk = getChunk(s2, s2Length, thatMarker);
-            thatMarker += thatChunk.length();
-
-            // If both chunks contain numeric characters, sort them numerically
-            int result = 0;
-            if (isDigit(thisChunk.charAt(0)) && isDigit(thatChunk.charAt(0)))
+            int result;
+            if (isDigit(s1.charAt(thisMarker)) && isDigit(s2.charAt(thatMarker)))
             {
                 // Simple chunk comparison by length.
-                int thisChunkLength = thisChunk.length();
-                result = thisChunkLength - thatChunk.length();
+                result = thisChunkLength - thatChunkLength;
                 // If equal, the first different number counts
                 if (result == 0)
                 {
                     for (int i = 0; i < thisChunkLength; i++)
                     {
-                        result = thisChunk.charAt(i) - thatChunk.charAt(i);
-                        if (result != 0)
-                        {
-                            return result;
-                        }
+                        result = s1.charAt(thisMarker + i) - s2.charAt(thatMarker + i);
+                        if (result != 0) return result;
                     }
                 }
             } else
             {
-                result = thisChunk.compareTo(thatChunk);
+                // Same as String.compareTo on the two chunks
+                int limit = Math.min(thisChunkLength, thatChunkLength);
+                for (int i = 0; i < limit; i++)
+                {
+                    int diff = s1.charAt(thisMarker + i) - s2.charAt(thatMarker + i);
+                    if (diff != 0) return diff;
+                }
+                result = thisChunkLength - thatChunkLength;
             }
 
             if (result != 0)
                 return result;
+
+            thisMarker = thisEnd;
+            thatMarker = thatEnd;
         }
 
         return s1Length - s2Length;

@@ -1,5 +1,5 @@
-/* 
- * Copyright (C) 2023 John Garner
+/*
+ * Copyright (C) 2026 John Garner
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,594 +16,237 @@
  */
 package org.pikatimer.timing.reader;
 
-import org.pikatimer.PikaPreferences;
-import org.pikatimer.event.Event;
-import org.pikatimer.timing.RawTimeData;
-import org.pikatimer.timing.TimingListener;
-import org.pikatimer.timing.TimingReader;
-import org.pikatimer.util.DurationFormatter;
-import org.pikatimer.util.DurationParser;
-import java.io.BufferedReader;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
+import java.nio.channels.UnresolvedAddressException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoField;
+import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.PauseTransition;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
-import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
-import javafx.geometry.Insets;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
-import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
-import javafx.scene.control.Spinner;
+import javafx.scene.control.Separator;
 import javafx.scene.control.TextField;
-import javafx.scene.control.TitledPane;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
-import static javafx.scene.layout.Region.USE_PREF_SIZE;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
 import javafx.stage.Screen;
-import org.controlsfx.control.ToggleSwitch;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
+import org.pikatimer.event.Event;
+import org.pikatimer.timing.RawTimeData;
+import org.pikatimer.timing.TimingListener;
+import org.pikatimer.timing.TimingReader;
+import org.pikatimer.util.DurationFormatter;
+import org.pikatimer.util.DurationParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Connects a timing input to a PikaReader unit.
  *
- * @author jcgarner
- */
-/**
+ * Endpoints used:
+ * ws(s)://host:port/events -> READ and STATUS events
+ * GET /start, GET /stop -> start / stop the RFID readers
+ * GET /status -> status (used to check a manually entered address)
+ * GET /profiles, PUT /profile/{id} -> reader profiles
+ * GET /rewind/{from}/{to} -> reads between two local date/times
  *
- * This class implements the communications to and from a PikaReader
- * 
- * TODO: Switch to java.net.http.HttpClient once we migrate to JDK 11+
+ * Discovery: UDP broadcast of DISCOVER_PIKA_READER_REQUEST to port 8888,
+ * answered with "PIKA_READER unitID port".
  *
- * Endpoints are as follows: 
- * ws://<ip>:<port>/events -> Tag Reads and Status events 
- * http://<ip>:<port>/stop -> Start readers 
- * http://<ip>:<port>/stop -> Stop readers 
- * http://<ip>:<port>/status -> Status 
- * http://<ip>:<port>/rewind -> Rewind all reads
- * http://<ip>:<port>/rewind/<from> -> Rewind reads after <from> date/time
- * http://<ip>:<port>/rewind/<from>/<to> -> Rewind reads between <from> and <to>
- * date/time
- *
+ * @author John Garner
  */
 public class PikaReaderDirectReader implements TimingReader {
     private static final Logger logger = LoggerFactory.getLogger(PikaReaderDirectReader.class);
 
-    private static final DateTimeFormatter tagReadFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd' 'HH:mm:ss.SSS");
+    // Attribute keys (stored with the timing location input)
+    private static final String ATTR_IP = "PikaReaderDirect:pika_ip";
+    private static final String ATTR_PORT = "PikaReaderDirect:pika_port";
+    private static final String ATTR_SECURE = "PikaReaderDirect:secure";
+    private static final String ATTR_UNIT_ID = "PikaReaderDirect:unit_id";
+    private static final String ATTR_CONNECT = "PikaReaderDirect:connect";
 
-    protected TimingListener timingListener;
-    protected String pikaReaderIP;
-    protected String pikaReaderPort;
+    // "2023-12-28 13:45:24.476" (the fraction is optional and 0-9 digits)
+    private static final DateTimeFormatter tagReadFormatter = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd HH:mm:ss")
+            .optionalStart()
+            .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+            .optionalEnd()
+            .toFormatter();
 
-    Thread pikaConnectionThread;
-    InputStream input = null;
-    DataOutputStream ultraOutput = null;
-    private static final BlockingQueue<String> commandResultQueue = new ArrayBlockingQueue(10);
+    // One shared thread for all of the reconnect attempts
+    private static final ScheduledExecutorService RECONNECT = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable);
+        thread.setDaemon(true);
+        thread.setName("PikaReader-reconnect");
+        return thread;
+    });
 
-    private EventWebSocketClient webSocketClient;
+    private static final HttpClient httpClient = HttpClient.newHttpClient();
 
-    private Pane displayPane;
-    private Button discoverButton;
-    private Button rewindButton;
-    private Button exportButton;
-    protected TextField pikaReaderIPTextField;
-    protected TextField readsFileTextField;
-    protected Label statusLabel;
-    protected Label lastReadLabel;
-    private HBox displayHBox;
-    private VBox displayVBox;
-    private ProgressBar batteryProgressBar;
-    private ToggleSwitch connectToggleSwitch;
-    private ToggleSwitch readToggleSwitch;
+    // Seconds since the last STATUS, capped. Also used as the "not heard from" value
+    static final int LAST_UPDATED_MAX = 99;
 
-    CheckBox saveToFileCheckBox = new CheckBox("Save to File:");
-    TextField fileTextField = new TextField();
-    Button fileButton = new Button("Select...");
+    private TimingListener timingListener;
 
-    ChoiceBox<String> reader1ModeChoiceBox = new ChoiceBox(FXCollections.observableArrayList("Box", "Reader", "Antenna"));
-    Spinner<Integer> gatingIntervalSpinner = new Spinner<>(1, 20, 3);
-    ChoiceBox<String> beeperVolumeChoiceBox = new ChoiceBox(FXCollections.observableArrayList("Off", "Soft", "Loud"));
+    // Connection settings
+    private final StringProperty readerIPProperty = new SimpleStringProperty("");
+    private final StringProperty readerPortProperty = new SimpleStringProperty("");
+    private final BooleanProperty secureProperty = new SimpleBooleanProperty(false);
+    private final BooleanProperty configuredProperty = new SimpleBooleanProperty(false);
 
-    Button setClockButton = new Button("Sync Time...");
-    Button remoteSettingsButton = new Button("Remote Server...");
-    Button antennaSettingsButton = new Button("Antenna Options...");
-    Label modeLabel = new Label("Reader Mode:");
-    Label gatingLabel = new Label("Gating Interval:");
-    Label volumeLabel = new Label("Beeper Volume:");
-    Button updateSettingsButton = new Button("Update");
+    // Reader state (only updated on the FX thread)
+    private final BooleanProperty readingProperty = new SimpleBooleanProperty(false);
+    private final BooleanProperty connectedProperty = new SimpleBooleanProperty(false);
+    private final BooleanProperty enabledProperty = new SimpleBooleanProperty(false);
+    private final DoubleProperty batteryProperty = new SimpleDoubleProperty(-2);
+    private final StringProperty rfidReaderProblemProperty = new SimpleStringProperty("");
+    private final StringProperty readerNameProperty = new SimpleStringProperty("");
+    private final StringProperty lastReadProperty = new SimpleStringProperty("<No Reads>");
+    private final IntegerProperty lastUpdatedProperty = new SimpleIntegerProperty(LAST_UPDATED_MAX);
 
-    private Map<String, String> readerSettings = new HashMap();
-    
+    // Written by the websocket and rewind threads, pushed to the properties by the timeline
+    private volatile LocalDateTime lastUpdated = null;
+    private volatile String lastRead = null;
 
-    protected final BooleanProperty readingStatus = new SimpleBooleanProperty();
-    protected final BooleanProperty connectedStatus = new SimpleBooleanProperty();
-    //protected final BooleanProperty isSingleReader = new SimpleBooleanProperty(true);
+    // Reader profiles (PikaReader 6684b90 and newer).
+    // Older PikaReader versions do not send a profile in their STATUS messages,
+    // so profileSupportedProperty stays false and the UI hides the profile.
+    private final BooleanProperty profileSupportedProperty = new SimpleBooleanProperty(false);
+    private final StringProperty profileIDProperty = new SimpleStringProperty("");
+    private final StringProperty profileNameProperty = new SimpleStringProperty("");
+    private final ObservableList<Profile> profiles = FXCollections.observableArrayList();
+    private final AtomicBoolean profilesLoading = new AtomicBoolean(false);
+    private volatile boolean profilesLoaded = false;
 
-    private Boolean connectToReader = false;
-    private Boolean externalInitiated = false;
+    // True while a connection attempt is in progress
+    private final AtomicBoolean connecting = new AtomicBoolean(false);
+    private volatile EventWebSocketClient webSocketClient;
+    private Timeline timeline;
 
-
-    private Boolean saveToFile = false;
-    private String backupFile = null;
-    private PrintWriter outputFile = null;
+    // UI
+    private Parent controlRoot = null;
+    private PikaReaderDirectReaderController controller = null;
+    private Pane displayPane = null;
 
     public PikaReaderDirectReader() {
     }
+
+    // ------------------------------------------------------------------
+    // TimingReader
+    // ------------------------------------------------------------------
 
     @Override
     public void setTimingListener(TimingListener t) {
         timingListener = t;
 
-        // get any existing attributes
-        pikaReaderIP = timingListener.getAttribute("PikaReaderDirect:pika_ip");
-        pikaReaderPort = timingListener.getAttribute("PikaReaderDirect:pika_port");
+        String ip = Objects.toString(t.getAttribute(ATTR_IP), "").trim();
+        String port = Objects.toString(t.getAttribute(ATTR_PORT), "").trim();
+        boolean secure = Boolean.parseBoolean(t.getAttribute(ATTR_SECURE));
+        String unitID = Objects.toString(t.getAttribute(ATTR_UNIT_ID), "").trim();
+        boolean autoConnect = !"false".equalsIgnoreCase(t.getAttribute(ATTR_CONNECT));
 
-        if (pikaReaderIP != null) {
-            logger.debug("PikaReaderDirect: Found existing pika reader ip setting: " + pikaReaderIP);
-        } else {
-            logger.debug("PikaReaderDirect: Did not find existing ip setting.");
-            pikaReaderIP = "";
-            timingListener.setAttribute("PikaReaderDirect:ultra_ip", pikaReaderIP);
-        }
+        logger.debug("PikaReaderDirect: settings for {}: ip={} port={} secure={} unit={} connect={}",
+                t.getLocationName(), ip, port, secure, unitID, autoConnect);
 
-        saveToFile = Boolean.valueOf(timingListener.getAttribute("PikaReaderDirect:saveToFile"));
-        if (saveToFile != null) {
-            logger.debug("PikaReaderDirect: Found existing saveToFile setting: " + saveToFile);
-        } else {
-            logger.debug("PikaReaderDirect: Did not find existing saveToFile setting.");
-            saveToFile = false;
-            timingListener.setAttribute("PikaReaderDirect:saveToFile", saveToFile.toString());
-        }
-
-        backupFile = timingListener.getAttribute("PikaReaderDirect:backupFile");
-        if (backupFile != null) {
-            logger.debug("PikaReaderDirect: Found existing backupFile setting: " + backupFile);
-        } else {
-            logger.debug("PikaReaderDirect: Did not find existing ip setting.");
-            backupFile = "";
-            timingListener.setAttribute("PikaReaderDirect:backupFile", backupFile);
-        }
+        runOnFX(() -> {
+            setAddress(ip, port, secure, unitID);
+            if (configuredProperty.get() && autoConnect) enable();
+        });
     }
 
     @Override
     public void showControls(Pane p) {
-        if (displayPane == null) {
-            // initialize our display
-            displayHBox = new HBox();
-            displayVBox = new VBox();
-            batteryProgressBar = new ProgressBar(100);
-            connectToggleSwitch = new ToggleSwitch("Connect");
-            connectToggleSwitch.selectedProperty().set(false);
-
-            connectToggleSwitch.maxWidth(30);
-            HBox.setHgrow(connectToggleSwitch, Priority.NEVER);
-
-            connectToggleSwitch.setPadding(new Insets(3, 0, 0, 0)); // this is a hack to get around a ToggleSwitch bug
-
-            readToggleSwitch = new ToggleSwitch("Read");
-            readToggleSwitch.selectedProperty().set(false);
-            readToggleSwitch.disableProperty().bind(connectedStatus.not());
-            readToggleSwitch.setPadding(new Insets(3, 0, 0, 0)); // this is a hack to get around a ToggleSwitch bug
-            readToggleSwitch.maxWidth(30);
-            HBox.setHgrow(readToggleSwitch, Priority.NEVER);
-
-            HBox switchHBox = new HBox();
-            switchHBox.maxHeight(18);
-            switchHBox.prefWidth(30);
-            switchHBox.maxWidth(30);
-            switchHBox.setSpacing(5);
-            switchHBox.getChildren().addAll(connectToggleSwitch, readToggleSwitch);
-
-            Label ipLabel = new Label("Reader IP:");
-            statusLabel = new Label("Disconnected");
-            statusLabel.setPrefWidth(200);
-            lastReadLabel = new Label("");
-            lastReadLabel.setPrefWidth(250);
-            discoverButton = new Button("Discover...");
-            rewindButton = new Button("Rewind...");
-            exportButton = new Button("Export...");
-            pikaReaderIPTextField = new TextField();
-            pikaReaderIPTextField.setPrefWidth(90);
-            pikaReaderIPTextField.setMinWidth(USE_PREF_SIZE);
-            displayVBox.setSpacing(5);
-            //displayVBox.setPadding(new Insets(5, 5, 5, 5));
-
-            connectToggleSwitch.selectedProperty().bindBidirectional(connectedStatus);
-            readToggleSwitch.selectedProperty().bindBidirectional(readingStatus);
-
-            pikaReaderIPTextField.disableProperty().bind(connectToggleSwitch.selectedProperty()); // no changes when connected
-
-            // This is way more complicated than it should be...
-            pikaReaderIPTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                Boolean revert = false;
-                if (newValue.isEmpty()) {
-                    connectToggleSwitch.disableProperty().set(true);
-                }
-                if (pikaReaderIP == null || newValue.isEmpty() || pikaReaderIP.equals(newValue)) {
-                    connectToggleSwitch.disableProperty().set(false);
-                    return;
-                }
-                if (newValue.matches("[\\d\\.]+")) { // numbers and dots only for the inital pass
-                    String octets[] = newValue.split("\\.");
-                    if (octets.length != 4) {
-                        connectToggleSwitch.disableProperty().set(true);
-                    }
-                    if (octets.length > 4) { // too many octets, cut a few and it will be fine
-                        revert = true;
-                    } else {
-                        Boolean validIP = true;
-                        for (String octet : octets) {
-                            try {
-                                Integer o = Integer.valueOf(octet);
-                                logger.debug("Octet : " + o);
-                                if (o > 255) {
-                                    validIP = false;
-                                    revert = true;
-                                }
-                            } catch (Exception e) {
-                                logger.debug("Octet Exception: " + e.getLocalizedMessage());
-
-                                validIP = false;
-                            }
-                        }
-                        if (validIP && octets.length == 4) {
-                            logger.debug("Valid IP : " + pikaReaderIP);
-                            connectToggleSwitch.disableProperty().set(false);
-                            // save the ip if it is new
-                            if (!pikaReaderIP.equals(newValue)) {
-                                pikaReaderIP = newValue;
-                                timingListener.setAttribute("PikaReaderDirect:pika_ip", pikaReaderIP);
-                                logger.debug("Valid IP : " + pikaReaderIP);
-                            }
-                        } else {
-                            connectToggleSwitch.disableProperty().set(true);
-                        }
-                    }
-                } else { //just say no
-                    revert = true;
-                }
-                if (revert) {
-                    connectToggleSwitch.disableProperty().set(true);
-                    Platform.runLater(() -> {
-                        int c = pikaReaderIPTextField.getCaretPosition();
-                        pikaReaderIPTextField.setText(oldValue);
-                        pikaReaderIPTextField.positionCaret(c);
-                    });
-                }
-            });
-            TitledPane settingsTitlePane = new TitledPane();
-            VBox settingsVBox = new VBox();
-            settingsVBox.setSpacing(4);
-
-            HBox fileHBox = new HBox();
-            fileHBox.setSpacing(4);
-            fileHBox.setAlignment(Pos.CENTER_LEFT);
-            fileTextField.setPrefWidth(150);
-            fileHBox.getChildren().addAll(saveToFileCheckBox, fileTextField, fileButton);
-
-            VBox advancedVBox = new VBox();
-            advancedVBox.setSpacing(4);
-            advancedVBox.setAlignment(Pos.CENTER_LEFT);
-
-            gatingIntervalSpinner.setMaxWidth(60);
-            gatingIntervalSpinner.setEditable(true);
-
-            // REMOVE THIS once JDK-8150946 is backported or we upgrade to JDK 9
-            gatingIntervalSpinner.focusedProperty().addListener((observable, oldValue, newValue) -> {
-                if (!newValue) {
-                    gatingIntervalSpinner.increment(0); // won't change value, but will commit editor
-                    Integer gating = Integer.valueOf(readerSettings.get("1E"));
-                    if (!gatingIntervalSpinner.getValue().equals(gating)) {
-                        updateSettingsButton.setVisible(true);
-                    }
-                }
-            });
-            reader1ModeChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-                if ("Start".equals(newVal)) {
-                    gatingIntervalSpinner.disableProperty().set(true);
-                    if (!"0".equals(readerSettings.get("14"))) {
-                        updateSettingsButton.setVisible(true);
-                    }
-                } else {
-                    gatingIntervalSpinner.disableProperty().set(false);
-                    if (!"3".equals(readerSettings.get("14"))) {
-                        updateSettingsButton.setVisible(true);
-                        gatingIntervalSpinner.getValueFactory().setValue(5);
-                    }
-
-                }
-            });
-
-            beeperVolumeChoiceBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-                logger.debug("beeperVolumeChoiceBox listener: Existing volume: " + readerSettings.get("21"));
-                if (null != newVal) {
-                    switch (newVal) {
-                        case "Off":
-                            if (!"0".equals(readerSettings.get("21"))) {
-                                updateSettingsButton.setVisible(true);
-                            }
-                            break;
-                        case "Soft":
-                            if (!"1".equals(readerSettings.get("21"))) {
-                                updateSettingsButton.setVisible(true);
-                            }
-                            break;
-                        case "Loud":
-                            if (!"2".equals(readerSettings.get("21"))) {
-                                updateSettingsButton.setVisible(true);
-                            }
-                            break;
-                        default:
-                            break;
-                    }
-                }
-
-            });
-
-            updateSettingsButton.setVisible(false);
-            updateSettingsButton.setOnAction(action -> {
-                updateReaderSettings();
-            });
-
-            HBox advancedHBox1 = new HBox();
-            advancedHBox1.setSpacing(4);
-            advancedHBox1.setAlignment(Pos.CENTER_LEFT);
-            HBox advancedHBox2 = new HBox();
-            advancedHBox2.setSpacing(4);
-            advancedHBox2.setAlignment(Pos.CENTER_LEFT);
-            HBox advancedHBox3 = new HBox();
-            advancedHBox3.setSpacing(4);
-            advancedHBox3.setAlignment(Pos.CENTER_LEFT);
-
-            advancedHBox1.getChildren().addAll(volumeLabel, beeperVolumeChoiceBox, modeLabel, reader1ModeChoiceBox, gatingLabel, gatingIntervalSpinner);
-            advancedHBox2.getChildren().addAll(setClockButton, remoteSettingsButton, antennaSettingsButton);
-            advancedHBox3.getChildren().addAll(updateSettingsButton);
-            advancedVBox.getChildren().addAll(advancedHBox1, advancedHBox2, advancedHBox3);
-
-            advancedVBox.disableProperty().bind(connectedStatus.and(readingStatus).or(connectedStatus.not()));
-
-            settingsVBox.getChildren().addAll(fileHBox, advancedVBox);
-
-            Label strut = new Label();
-            strut.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(strut, Priority.ALWAYS);
-
-            Label strut2 = new Label();
-            strut2.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(strut2, Priority.ALWAYS);
-
-            settingsTitlePane.setText("Advanced Settings");
-            settingsTitlePane.setContent(settingsVBox);
-            settingsTitlePane.setExpanded(false);
-
-            exportButton.setMinWidth(75);
-            exportButton.setMaxWidth(75);
-            HBox statusHBox = new HBox();
-            statusHBox.getChildren().addAll(statusLabel, lastReadLabel);
-            statusHBox.setSpacing(5);
-            lastReadLabel.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(lastReadLabel, Priority.ALWAYS);
-
-            HBox batteryHBox = new HBox();
-            Label batterySpacer = new Label();
-            batterySpacer.setMaxWidth(100);
-            batterySpacer.setPrefWidth(100);
-            batteryProgressBar.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(batteryProgressBar, Priority.ALWAYS);
-            batteryHBox.getChildren().addAll(new Label("Battery: "), batteryProgressBar);
-            batteryHBox.visibleProperty().bind(connectToggleSwitch.selectedProperty());
-            batteryProgressBar.setPrefHeight(20.0);
-            VBox statusVBox = new VBox();
-            statusVBox.getChildren().addAll(statusHBox, batteryHBox);
-            HBox.setHgrow(statusVBox, Priority.ALWAYS);
-            HBox statusHBox2 = new HBox();
-            statusHBox2.setSpacing(10);
-            statusHBox2.getChildren().addAll(statusVBox, exportButton);
-
-            rewindButton.setMinWidth(75);
-            rewindButton.setMaxWidth(75);
-
-            displayHBox.setSpacing(5);
-            displayHBox.setAlignment(Pos.CENTER_LEFT);
-            displayHBox.getChildren().addAll(ipLabel, pikaReaderIPTextField, discoverButton, switchHBox, strut, rewindButton);
-
-            displayVBox.setAlignment(Pos.CENTER_LEFT);
-            displayVBox.getChildren().addAll(displayHBox, statusHBox2, settingsTitlePane);
-
-            // Set the action for the discoverButton
-            discoverButton.setOnAction((event) -> {
-                discover();
-            });
-            discoverButton.disableProperty().bind(connectedStatus);
-
-            rewindButton.setOnAction((event) -> {
-                rewind();
-            });
-            rewindButton.disableProperty().bind(connectedStatus.not());
-            exportButton.setOnAction((event) -> {
-                //export();
-            });
-            setClockButton.setOnAction((event) -> {
-                setClockDialog();
-            });
-            remoteSettingsButton.setOnAction((event) -> {
-                remoteDialog();
-            });
-            antennaSettingsButton.setOnAction((event) -> {
-                antennaDialog();
-            });
-
-            connectToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
-                if (newValue) {
-                    if (!connectToReader) {
-                        logger.debug("PikaPikaReaderDirectReader: connectToggleSwitch event: calling connect()");
-                        connect();
-                    }
-                } else {
-                    if (connectToReader) {
-                        logger.debug("PikaPikaReaderDirectReader: connectToggleSwitch event: calling disconnect()");
-                        disconnect();
-                    }
-                }
-            });
-
-            readToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) -> {
-                if (newValue) {
-                    if (connectToReader && !externalInitiated) {
-                        logger.debug("PikaPikaReaderDirectReader: readToggleSwitch event: calling startReading()");
-                        startReading();
-                    }
-                } else {
-                    if (connectToReader && !externalInitiated) {
-                        logger.debug("PikaPikaReaderDirectReader: readToggleSwitch event: calling stopReading()");
-                        stopReading();
-                    }
-                }
-                externalInitiated = false;
-            });
-            pikaReaderIPTextField.textProperty().setValue(pikaReaderIP);
-
-            // save to file stuff
-            saveToFileCheckBox.setSelected(saveToFile);
-            saveToFileCheckBox.selectedProperty().addListener((ob, oldVal, newVal) -> {
-                logger.debug("saveToFileCheckBox changed: " + oldVal + " -> " + newVal);
-                if (!newVal.equals(saveToFile)) {
-                    saveToFile = newVal;
-                    timingListener.setAttribute("PikaReaderDirect:saveToFile", saveToFile.toString());
-                }
-
-            });
-
-            fileTextField.setText(backupFile);
-            fileTextField.focusedProperty().addListener((ob, oldVal, newVal) -> {
-                if (!newVal) {
-                    outputFile = null; // clear the reference to the old file
-                    if (fileTextField.getText().isEmpty()) {
-                        saveToFileCheckBox.setSelected(false);
-                        if (!backupFile.isEmpty()) {
-
-                            backupFile = "";
-                            timingListener.setAttribute("PikaReaderDirect:backupFile", backupFile);
-                        }
-                        return;
-                    }
-
-                    File newFile = new File(fileTextField.getText()).getAbsoluteFile();
-                    logger.debug("Testing file " + newFile.getAbsolutePath());
-                    Boolean goodFile = false;
-                    try {
-                        if (newFile.canWrite() || newFile.createNewFile()) {
-                            backupFile = newFile.getPath();
-                            timingListener.setAttribute("PikaReaderDirect:backupFile", fileTextField.getText());
-                            saveToFileCheckBox.setSelected(true);
-                            goodFile = true;
-                        }
-                    } catch (IOException ex) {
-                        //Logger.getLogger(PikaPikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                    if (!goodFile) {
-                        // warn and revert
-                        Platform.runLater(() -> {
-                            Alert alert = new Alert(AlertType.ERROR);
-                            alert.setTitle("Unable to write to file");
-                            alert.setHeaderText("Unable to write to the selected file!");
-                            alert.setContentText("The chosen file path, " + newFile.getPath() + "\neither does not exist or is not writable.");
-                            alert.showAndWait();
-                        });
-                        fileTextField.setText(backupFile);
-                        saveToFileCheckBox.setSelected(false);
-                    }
-                }
-            });
-
-            fileButton.setOnAction(event -> {
-                final FileChooser fileChooser = new FileChooser();
-
-                fileChooser.setTitle("Save File");
-
-                File cwd = PikaPreferences.getInstance().getCWD();
-
-                logger.debug("Using initial directory of " + cwd.getAbsolutePath());
-
-                fileChooser.setInitialFileName(timingListener.getLocationName() + ".txt");
-                fileChooser.setInitialDirectory(cwd);
-                fileChooser.getExtensionFilters().addAll(
-                        new FileChooser.ExtensionFilter("Text Files", "*.txt"),
-                        new FileChooser.ExtensionFilter("All files", "*")
-                );
-                File file = fileChooser.showSaveDialog(fileButton.getScene().getWindow());
-                if (file != null) {
-                    Platform.runLater(() -> fileTextField.setText(file.getAbsolutePath()));
-                    saveToFileCheckBox.setSelected(true);
-                    outputFile = null;
-                }
-            });
-
+        if (controlRoot == null) {
+            try {
+                FXMLLoader loader = new FXMLLoader(PikaReaderDirectReader.class.getResource("PikaReaderDirectReader.fxml"));
+                controlRoot = loader.load();
+                controller = loader.getController();
+                controller.setReader(this);
+            } catch (IOException ex) {
+                logger.error("Unable to load the PikaReader controls", ex);
+                return;
+            }
         }
 
         // If we were previously visible, clear the old one
-        if (displayPane != null) {
-            displayPane.getChildren().clear();
-        }
+        if (displayPane != null) displayPane.getChildren().clear();
 
-        // Now show ourselves.... 
         displayPane = p;
         displayPane.getChildren().clear();
-        displayPane.getChildren().add(displayVBox);
+        displayPane.getChildren().add(controlRoot);
     }
 
     @Override
@@ -613,95 +256,36 @@ public class PikaReaderDirectReader implements TimingReader {
 
     @Override
     public void startReading() {
-        Task pikaReaderCommand = new Task<Void>() {
-            @Override
-            public Void call() {
-                if (connectedStatus.get()) {
-                    try {
-                        URL url = new URL("http://" + pikaReaderIP + ":" + pikaReaderPort + "/start"); 
-                        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                        conn.setRequestMethod("GET");
-                        //conn.setRequestProperty("Accept", "application/json");
-                        if (conn.getResponseCode() != 200) {
-                            throw new RuntimeException("Failed : HTTP Error code : "
-                                    + conn.getResponseCode());
-                        }
-                        InputStreamReader in = new InputStreamReader(conn.getInputStream(),"UTF-8");
-                        BufferedReader br = new BufferedReader(in);
-                        String output;
-                        String fullResponse="";
-                        while ((output = br.readLine()) != null) {
-                            logger.debug(output);
-                            fullResponse +=output;
-                        }
-                        conn.disconnect();
-                        JSONObject json = new JSONObject(fullResponse);
-
-                        // TODO: Replace with status update
-                        Platform.runLater(() -> readingStatus.setValue(Boolean.TRUE) );
-                    
-                    } catch(Exception ex){
-                        logger.debug("Exception in PikaReaderDirect::StartReading() ");
-                        ex.printStackTrace(System.out);
-                    }
-                }
-                return null;
-            }
-        };
-        new Thread(pikaReaderCommand).start();
+        // Connect to the unit. Starting the unit's RFID readers is only done
+        // from the Start Reader button.
+        runOnFX(() -> {
+            if (configuredProperty.get()) enable();
+        });
     }
 
+    /**
+     * Called when the input is no longer needed (type change, removal, clearing
+     * the reads). This only disconnects from the unit, it never stops the unit,
+     * and it does not change the saved auto connect setting.
+     */
     @Override
     public void stopReading() {
-        Task pikaReaderCommand = new Task<Void>() {
-            @Override
-            public Void call() {
-                if (connectedStatus.get()) {
-                    try {
-                    URL url = new URL("http://" + pikaReaderIP + ":" + pikaReaderPort + "/stop"); 
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    //conn.setRequestProperty("Accept", "application/json");
-                    if (conn.getResponseCode() != 200) {
-                        throw new RuntimeException("Failed : HTTP Error code : "
-                                + conn.getResponseCode());
-                    }
-                    InputStreamReader in = new InputStreamReader(conn.getInputStream(),"UTF-8");
-                    BufferedReader br = new BufferedReader(in);
-                    String output;
-                    String fullResponse="";
-                    while ((output = br.readLine()) != null) {
-                        fullResponse +=output;
-                    }
-                    conn.disconnect();
-                    JSONObject json = new JSONObject(fullResponse);
-                    
-                    // TODO: Replace with status update
-                    Platform.runLater(() -> readingStatus.setValue(Boolean.FALSE) );
-                    
-                    } catch(Exception ex){
-                        logger.debug("Exception in PikaReaderDirect::StopReading() ");
-                        ex.printStackTrace(System.out);
-                    }
-                }
-                return null;
-            }
-        };
-        new Thread(pikaReaderCommand).start();
+        runOnFX(this::disable);
+    }
+
+    /**
+     * Clear Reads: the reads have already been removed by the timing input,
+     * so stay connected and just reset the last read display.
+     */
+    @Override
+    public void readsCleared() {
+        lastRead = null;
+        runOnFX(() -> lastReadProperty.set("<No Reads>"));
     }
 
     @Override
     public BooleanProperty getReadingStatus() {
-        return readingStatus;
-    }
-
-    public void getSettings(CountDownLatch latch) {
-
-
-    }
-
-    public void setClock(LocalDateTime time, Integer tz, Boolean gps) {
-
+        return readingProperty;
     }
 
     @Override
@@ -709,385 +293,489 @@ public class PikaReaderDirectReader implements TimingReader {
         return Boolean.FALSE;
     }
 
+    // ------------------------------------------------------------------
+    // Connection
+    // ------------------------------------------------------------------
+
+    // Must be called on the FX thread
+    private void setAddress(String ip, String port, boolean secure, String unitID) {
+        readerIPProperty.set(ip);
+        readerPortProperty.set(port);
+        secureProperty.set(secure);
+        readerNameProperty.set(unitID.isBlank() ? ip : unitID);
+        configuredProperty.set(!ip.isBlank() && !port.isBlank());
+    }
+
+    // Must be called on the FX thread
+    private void resetState() {
+        readingProperty.set(false);
+        batteryProperty.set(-2);
+        rfidReaderProblemProperty.set("");
+        profileSupportedProperty.set(false);
+        profileIDProperty.set("");
+        profileNameProperty.set("");
+        profiles.clear();
+        profilesLoaded = false;
+        lastUpdated = null;
+        lastUpdatedProperty.set(LAST_UPDATED_MAX);
+        lastRead = null;
+        lastReadProperty.set("<No Reads>");
+    }
+
+    // Must be called on the FX thread
     private void connect() {
-        if (connectToReader == true) {
-            return; // already connected
-        }
-        connectToReader = true;
+        if (!configuredProperty.get()) return;
+        if (connectedProperty.get()) return; // already connected
+        if (!connecting.compareAndSet(false, true)) return; // already trying
 
-        PikaReaderDirectReader reader = this;
-        Task pikaReaderConnection = new Task<Void>() {
+        // periodically push the background updates to the properties
+        if (timeline != null) timeline.stop();
+        timeline = new Timeline(new KeyFrame(javafx.util.Duration.seconds(1), event -> {
+            String r = lastRead;
+            if (r != null && !r.equals(lastReadProperty.get())) lastReadProperty.set(r);
 
+            LocalDateTime updated = lastUpdated;
+            long seconds = updated == null ? LAST_UPDATED_MAX : Duration.between(updated, LocalDateTime.now()).toSeconds();
+            lastUpdatedProperty.set((int) Math.max(0, Math.min(seconds, LAST_UPDATED_MAX)));
+        }));
+        timeline.setCycleCount(Animation.INDEFINITE);
+        timeline.play();
+
+        String wsURL = (secureProperty.get() ? "wss://" : "ws://") + uriHost(readerIPProperty.getValueSafe())
+                + ":" + readerPortProperty.getValueSafe() + "/events";
+        String name = readerNameProperty.getValueSafe();
+
+        Task<Void> connection = new Task<>() {
             @Override
             public Void call() {
-
                 try {
-                    // Start listening for events....
-                    String wsPikaURL = "ws://" + pikaReaderIP + ":" + pikaReaderPort + "/events";
-                    logger.debug("Connecting to wsPikaURL: " + wsPikaURL);
-                    webSocketClient = new EventWebSocketClient(wsPikaURL, reader);
-                    webSocketClient.connectBlocking(60, TimeUnit.SECONDS);
+                    logger.debug("Connecting to {}", wsURL);
+                    EventWebSocketClient client = new EventWebSocketClient(wsURL);
+                    webSocketClient = client;
+                    client.setDaemon(true);
+                    client.connectBlocking(10, TimeUnit.SECONDS);
 
                     Platform.runLater(() -> {
-                        if (webSocketClient.isOpen()) {
-                            statusLabel.setText("Connected to\n" + wsPikaURL);
-                            connectedStatus.setValue(true);
-                            connectToReader = true;
+                        if (client == webSocketClient && client.isOpen()) {
+                            connectedProperty.set(true);
                         }
                     });
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                 } catch (Exception ex) {
+                    logger.error("PikaReader connection error: {} {}", name, ex.getMessage(), ex);
+                } finally {
+                    connecting.set(false);
                 }
                 return null;
             }
         };
-        pikaConnectionThread = new Thread(pikaReaderConnection);
-        pikaConnectionThread.setName("Thread-PikaReader-" + pikaReaderIP);
-        pikaConnectionThread.setDaemon(true);
-        pikaConnectionThread.start();
-
+        Thread connectionThread = new Thread(connection);
+        connectionThread.setName("Thread-PikaReader-" + readerIPProperty.getValueSafe());
+        connectionThread.setDaemon(true);
+        connectionThread.start();
     }
 
-    private void disconnect() {
-        statusLabel.setText("Disconecting from " + pikaReaderIP + "...");
-        if (webSocketClient != null) {
-            webSocketClient.close();
+    // Must be called on the FX thread
+    void enable() {
+        enabledProperty.set(true);
+        connect();
+    }
+
+    // Must be called on the FX thread
+    void disable() {
+        enabledProperty.set(false);
+        // The client is created by the connection thread, so it may not exist yet
+        EventWebSocketClient client = webSocketClient;
+        if (client != null) client.close();
+        if (timeline != null) timeline.stop();
+        lastUpdatedProperty.set(LAST_UPDATED_MAX);
+        connectedProperty.set(false);
+    }
+
+    /**
+     * The Disconnect / Reconnect button. Saves the choice so the input
+     * does (or does not) connect when the event is opened again.
+     */
+    void toggleConnection() {
+        if (enabledProperty.get()) {
+            disable();
+            setAttribute(ATTR_CONNECT, "false");
+        } else {
+            enable();
+            setAttribute(ATTR_CONNECT, "true");
         }
-        connectToReader = false;
     }
+
+    // Switch this input over to a different unit (FX thread)
+    private void useReader(String ip, String port, boolean secure, String unitID) {
+        disable();
+        webSocketClient = null;
+        resetState();
+        setAddress(ip, port, secure, unitID);
+        setAttribute(ATTR_IP, ip);
+        setAttribute(ATTR_PORT, port);
+        setAttribute(ATTR_SECURE, Boolean.toString(secure));
+        setAttribute(ATTR_UNIT_ID, unitID);
+        setAttribute(ATTR_CONNECT, "true");
+        enable();
+    }
+
+    private void setAttribute(String key, String value) {
+        if (timingListener != null) timingListener.setAttribute(key, value);
+    }
+
+    private static void runOnFX(Runnable r) {
+        if (Platform.isFxApplicationThread()) r.run();
+        else Platform.runLater(r);
+    }
+
+    // ------------------------------------------------------------------
+    // Messages from the unit
+    // ------------------------------------------------------------------
 
     private void processLine(String line) {
-        JSONObject message = new JSONObject(line);
+        JSONObject message;
+        try {
+            message = new JSONObject(line);
+        } catch (JSONException ex) {
+            logger.warn("Ignoring a malformed message from {}: {}", readerNameProperty.getValueSafe(), ex.getMessage());
+            return;
+        }
         String type = message.optString("type", "UNKNOWN");
-
-        switch (type) {
-            case "READ": // chip time
-                processRead(message);
-                break;
-            case "STATUS": // status 
-                processStatus(message);
-                break;
-            default: // unknown command response
-                logger.debug("Unknown: \"" + line.substring(0, 1) + "\" " + line);
-                break;
+        try {
+            switch (type) {
+                case "READ" -> processRead(message, false);
+                case "STATUS" -> processStatus(message);
+                default -> logger.debug("Unknown message from {}: {}", readerNameProperty.getValueSafe(), line);
+            }
+        } catch (RuntimeException ex) {
+            logger.warn("Unable to process a {} message from {}: {}", type, readerNameProperty.getValueSafe(), line, ex);
         }
     }
 
     private void processStatus(JSONObject status) {
-        // TODO:
-        // Snag reading status
-        // Snag battery status
-        
-        
+        logger.trace("PikaReader Status: {} -> {}", readerNameProperty.getValueSafe(), status);
+
+        // Pull everything out of the message here, only update the properties on the FX thread
+        String unitID = status.optString("unitID", "");
+        double battery = status.optDouble("battery", -1);
+        boolean hasReading = status.has("reading");
+        boolean reading = status.optBoolean("reading", false);
+        JSONObject profile = status.optJSONObject("profile");
+        String rfidProblem = rfidReaderProblem(status.optJSONArray("readers"));
+
+        Platform.runLater(() -> {
+            if (!unitID.isBlank()) readerNameProperty.set(unitID);
+
+            batteryProperty.set(battery > 0 ? battery / 100.0 : -1);
+
+            if (hasReading) readingProperty.set(reading);
+
+            rfidReaderProblemProperty.set(rfidProblem);
+
+            // {"profile":{"id":"finish_mats","name":"Finish Mats"}}
+            if (profile != null) {
+                String id = profile.optString("id");
+                String name = profile.optString("name", id);
+                profileSupportedProperty.set(true);
+                profileIDProperty.set(id);
+                profileNameProperty.set(name);
+
+                // If we don't know about this profile yet (first status or
+                // the profile list changed on the unit), add a placeholder
+                // so it can be displayed and then go fetch the full list.
+                // Keep trying to fetch the list until it loads.
+                boolean unknownProfile = !id.isBlank() && profiles.stream().noneMatch(p -> p.id().equals(id));
+                if (unknownProfile) profiles.add(new Profile(id, name, ""));
+                if (unknownProfile || !profilesLoaded) loadProfiles();
+            } else {
+                profileSupportedProperty.set(false);
+            }
+        });
+
+        lastUpdated = LocalDateTime.now();
     }
 
-    private void processRead(JSONObject tagRead) {
-        //  {"antenna":3,"chip":"23210006","rssi":-71,"reader":1,"tz":"-07:00","epochMilli":1703796324476,"type":"READ","timestamp":"2023-12-28 13:45:24.476"}
+    // {"readers":[{"id":1,"name":"Reader 1","connected":true,...},...]}
+    // Returns "Reader 1 not connected" (or "Reader 1, Reader 2 not connected"),
+    // or "" if every RFID reader is connected or the unit didn't list them.
+    // A reader without a "connected" flag is assumed to be fine.
+    static String rfidReaderProblem(JSONArray readers) {
+        if (readers == null) return "";
+        List<String> down = new ArrayList<>();
+        for (int i = 0; i < readers.length(); i++) {
+            JSONObject r = readers.optJSONObject(i);
+            if (r == null || r.optBoolean("connected", true)) continue;
+            down.add(r.optString("name", "Reader " + r.optString("id", "?")));
+        }
+        if (down.isEmpty()) return "";
+        return String.join(", ", down) + " not connected";
+    }
 
-        String chip = tagRead.getString("chip");
-        String reader = tagRead.optString("reader");
-        String port = tagRead.optString("antenna");
+    /**
+     * Hands a read to the timing listener (which ignores duplicates).
+     *
+     * {"antenna":3,"chip":"23210006","rssi":-71,"reader":1,"tz":"-07:00",
+     *  "epochMilli":1703796324476,"type":"READ","timestamp":"2023-12-28 13:45:24.476"}
+     *
+     * @return true if the read was sent to the timing listener
+     */
+    private boolean processRead(JSONObject tagRead, boolean rewind) {
+        logger.trace("Chip read from {}: {}", readerNameProperty.getValueSafe(), tagRead);
 
-//        // make sure we have what we need...
-//        if (port.equals("0") && !chip.equals("0")) { // invalid combo
-//            logger.debug("Non Start time: " + chip);
-//            return;
-//        } else if (!port.matches("[1234]") && !chip.equals("0")) {
-//            logger.debug("Invalid Port: " + port);
-//            return;
-//        }
+        TimingListener listener = timingListener;
+        if (listener == null) return false;
 
-        //LocalDate origin = LocalDate.parse("1980-01-01",DateTimeFormatter.ISO_LOCAL_DATE); 
-        //LocalDateTime read_ldt = LocalDateTime.of(origin, LocalTime.MIDNIGHT);
-        LocalDateTime read_ldt = LocalDateTime.parse(tagRead.getString("timestamp"), tagReadFormatter);
-        LocalDateTime event_ldt = LocalDateTime.of(Event.getInstance().getLocalEventDate(), LocalTime.MIN);
-
-        Duration timestamp = Duration.between(event_ldt, read_ldt);
-
-        // if it is before the event date, just return
-        if (timestamp.isNegative()) {
-            String status = "Read Timestamp of " + timestamp + " is before the event date, ignoring";
-            Platform.runLater(() -> {
-                lastReadLabel.textProperty().setValue(status);
-            });
-            logger.debug(status);
-        } else {
-            RawTimeData rawTime = new RawTimeData();
-            rawTime.setChip(chip);
-            rawTime.setTimestampLong(timestamp.toNanos());
-            String status = "Read of chip " + chip + " at " + DurationFormatter.durationToString(timestamp, 3) + " Reader: " + reader + " Port: " + port;
-            Platform.runLater(() -> {
-                lastReadLabel.textProperty().setValue(status);
-            });
-            if (statusLabel.getText().equals("Connected: Waiting for a chip read...")) {
-                Platform.runLater(() -> {
-                    statusLabel.setText("Connected: ");
-                });
-            }
-            timingListener.processRead(rawTime); // process it
-            
-            if (saveToFile) {
-                String date = read_ldt.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                Duration t = Duration.between(LocalTime.MIDNIGHT, read_ldt.toLocalTime());
-                String time = DurationFormatter.durationToString(t, 3);
-                if (t.minusHours(10).isNegative()) {
-                    time = "0" + time; // zero pad the hours
-                }
-                saveToFile(reader + "," + chip + "," + chip + ",\"" + date + " " + time + "\"," + reader + "," + port);
-            }
+        String chip = tagRead.optString("chip", "").trim();
+        String timestamp = tagRead.optString("timestamp", "").trim();
+        if (chip.isEmpty() || timestamp.isEmpty()) {
+            logger.debug("Skipping a read without a chip or timestamp from {}: {}", readerNameProperty.getValueSafe(), tagRead);
+            return false;
         }
 
-    }
-
-    private void saveToFile(String line) {
-//        private Boolean saveToFile = false;
-//        private String backupFile = null;
-//        private PrintWriter outputFile = null;
-
-        if (outputFile == null) {
-            File newFile = new File(backupFile).getAbsoluteFile();
-            logger.debug("PikaPikaReaderDirectReader::saveToFile: opening " + newFile.getAbsolutePath());
-            Boolean goodFile = false;
-            try {
-                // Not a directory and we can write to it _or_ we can create it
-                if ((!newFile.isDirectory() && newFile.isFile() && newFile.canWrite()) || newFile.createNewFile()) {
-                    outputFile = new PrintWriter(new FileOutputStream(newFile, true));
-                }
-            } catch (IOException ex) {
-                //Logger.getLogger(PikaPikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        LocalDateTime readTime;
+        try {
+            readTime = LocalDateTime.parse(timestamp, tagReadFormatter);
+        } catch (DateTimeParseException ex) {
+            logger.debug("Skipping a read with a bad timestamp from {}: {}", readerNameProperty.getValueSafe(), tagRead);
+            return false;
         }
 
-        if (outputFile != null) {
-            outputFile.println(line);
-            if (outputFile.checkError()) {
-                logger.debug("PikaPikaReaderDirectReader::saveToFile: error writing to " + backupFile);
-            }
-        } else {
-            logger.debug("PikaPikaReaderDirectReader::saveToFile: error opening file " + backupFile);
+        Duration time = Duration.between(Event.getInstance().getLocalEventDate().atStartOfDay(), readTime);
+        if (time.isNegative()) {
+            logger.debug("Read of {} at {} is before the event date, ignoring", chip, timestamp);
+            return false;
         }
 
+        RawTimeData rawTime = new RawTimeData();
+        rawTime.setChip(chip);
+        rawTime.setTimestampLong(time.toNanos());
+        listener.processRead(rawTime);
+
+        lastRead = chip + " @ " + DurationFormatter.durationToString(time, 3);
+        return true;
     }
 
-    private void onConnectSetup() {
-        // Get the settings and check for any clock issues
+    // ------------------------------------------------------------------
+    // Commands
+    // ------------------------------------------------------------------
 
-//        CountDownLatch latch = new CountDownLatch(1);
-//        getSettings(latch);
-//        clockIssuesCheck(latch);
+    // Completes exceptionally (with the reader's error message) if the
+    // reader can't be reached or rejects the command
+    CompletableFuture<HttpResponse<String>> startReader() {
+        return sendCommand("/start");
     }
 
-    private void discover() {
-        logger.debug("Starting discover...");
-        ObservableList<PikaReader> readers = FXCollections.observableArrayList();
-        BooleanProperty scanCompleted = new SimpleBooleanProperty(false);
-        BooleanProperty dialogClosed = new SimpleBooleanProperty(false);
-        // start a discovery task in a background thread
-        Task pikaSearch = new Task<Void>() {
-            @Override
-            public Void call() {
+    CompletableFuture<HttpResponse<String>> stopReader() {
+        return sendCommand("/stop");
+    }
 
-                // This is ugly but it works
-                byte one = Integer.valueOf(1).byteValue();
-                byte zero = Integer.valueOf(0).byteValue();
-                byte[] packetData = "DISCOVER_PIKA_READER_REQUEST".getBytes();
-
-                // Find the server using UDP broadcast
-                // Loop while the dialog box is open
-                // UDP Broadcast code borrowed from https://demey.io/network-discovery-using-udp-broadcast/
-                // with a few modifications to protect the guilty and to bring it up to date
-                // (e.g., try-with-resources 
-                while (dialogClosed.not().get()) {
-                    try (DatagramSocket broadcastSocket = new DatagramSocket()) {
-                        broadcastSocket.setBroadcast(true);
-                        // 2 second timeout for responses
-                        broadcastSocket.setSoTimeout(2000);
-
-                        // Send a packet to 255.255.255.255 on port 8888
-                        DatagramPacket probeDatagramPacket = new DatagramPacket(packetData, packetData.length, InetAddress.getByName("255.255.255.255"), 8888);
-                        broadcastSocket.send(probeDatagramPacket);
-
-                        logger.debug("Sent UDP Broadcast to 255.255.255.255");
-                        // Broadcast the message over all the network interfaces
-
-                        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-                        while (interfaces.hasMoreElements()) {
-                            NetworkInterface networkInterface = interfaces.nextElement();
-
-                            if (networkInterface.isLoopback() || !networkInterface.isUp()) {
-                                continue; // Don't want to broadcast to the loopback interface
-                            }
-
-                            for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses()) {
-                                InetAddress broadcast = interfaceAddress.getBroadcast();
-                                if (broadcast == null) {
-                                    continue;
-                                }
-                                // Send the broadcast package!
-                                try {
-                                    DatagramPacket sendPacket = new DatagramPacket(packetData, packetData.length, broadcast, 8888);
-                                    broadcastSocket.send(sendPacket);
-                                    logger.debug("Sent UDP Broadcast to " + broadcast.getHostAddress());
-                                } catch (Exception e) {
-                                }
-                            }
-                        }
-
-                        try {
-
-                            while (true) { // the socket timeout should stop this
-                                byte[] recvBuf = new byte[1500]; // mass overkill
-                                DatagramPacket receivePacket = new DatagramPacket(recvBuf, recvBuf.length);
-                                broadcastSocket.receive(receivePacket);
-
-                                String message = new String(receivePacket.getData()).trim();
-
-                                logger.debug("PikaReader Discover Response: " + receivePacket.getAddress().getHostAddress() + " \"" + message + "\"");
-
-                                String[] msg = message.split(" ");
-
-                                if (msg[0].equalsIgnoreCase("PIKA_READER")) {
-                                    PikaReader u = new PikaReader(receivePacket.getAddress().getHostAddress());
-                                    u.MAC.set(msg[1].toUpperCase());
-                                    u.PORT.set(msg[2]);
-                                    // If we have a new PikaReader, save it. 
-                                    if (!readers.contains(u)) {
-                                        Platform.runLater(() -> {
-                                            if (!readers.contains(u)) {
-                                                readers.add(u);
-                                            }
-                                        });
-                                    }
-                                }
-                            }
-                        } catch (Exception ex) {
-                        }
-
-                    } catch (IOException ex) {
-                        //Logger.getLogger(this.class.getName()).log(Level.SEVERE, null, ex);
-                        logger.debug("oops...");
+    private CompletableFuture<HttpResponse<String>> sendCommand(String command) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(getBaseURL() + command))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        logger.debug("Sending {} to {}", command, readerNameProperty.getValueSafe());
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() < 200 || response.statusCode() > 299) {
+                        throw new RuntimeException(responseError(response));
                     }
-                }
-                logger.debug("Done scanning for PikaReader units.");
-                //Platform.runLater(() -> {scanCompleted.set(true);});
-
-                readers.forEach(u -> {
-                    logger.debug("Found " + u.IP.getValueSafe());
+                    return response;
                 });
-                return null;
-            }
-        };
-        Thread scanner = new Thread(pikaSearch);
-        scanner.setDaemon(true);
-        scanner.setName("Pika Scanner");
-        scanner.start();
-
-        ProgressBar progress = new ProgressBar();
-        progress.progressProperty().bind(pikaSearch.progressProperty());
-
-        ListView<PikaReader> pikaReaderListView = new ListView();
-        pikaReaderListView.setItems(readers);
-
-        // open a dialog
-        Dialog<PikaReader> dialog = new Dialog();
-        dialog.resizableProperty().set(true);
-        dialog.getDialogPane().setMaxHeight(Screen.getPrimary().getVisualBounds().getHeight() - 150);
-        dialog.setTitle("Discover...");
-        dialog.setHeaderText("Discover Local PikaReader units");
-        ButtonType selectButtonType = new ButtonType("Select", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(selectButtonType, ButtonType.CANCEL);
-
-        // Create a scrollPane to put the tables and such in
-        VBox mainVBox = new VBox();
-        mainVBox.setPrefWidth(250);
-        mainVBox.setStyle("-fx-font-size: 16px;"); // Make the scroll bar a bit larger
-        VBox progressVBox = new VBox();
-        progressVBox.setAlignment(Pos.CENTER);
-        progressVBox.getChildren().add(new Label("Searching for Units..."));
-        progressVBox.visibleProperty().bind(scanCompleted.not());
-        progressVBox.managedProperty().bind(scanCompleted.not());
-        progressVBox.getChildren().add(progress);
-        Label foundCount = new Label();
-        foundCount.textProperty().bind(Bindings.concat("Found ", Bindings.size(readers).asString()));
-
-        progressVBox.getChildren().add(foundCount);
-
-        progress.setMaxWidth(500);
-
-        progressVBox.setPrefHeight(175);
-
-        VBox ultraListVBox = new VBox();
-        ultraListVBox.setStyle("-fx-font-size: 16px;"); // Make everything normal again
-        ultraListVBox.fillWidthProperty().set(true);
-        ultraListVBox.setAlignment(Pos.CENTER_LEFT);
-
-        Label selectLabel = new Label("Select a PikaReader:");
-        selectLabel.visibleProperty().bind(Bindings.size(readers).isNotEqualTo(0));
-        selectLabel.managedProperty().bind(Bindings.size(readers).isNotEqualTo(0));
-        ultraListVBox.getChildren().add(selectLabel);
-        ultraListVBox.getChildren().add(pikaReaderListView);
-
-        Label notFound = new Label("No PikaReader units were found!.\nCheck network settings\nand try again.");
-        notFound.visibleProperty().bind(Bindings.size(readers).isEqualTo(0));
-        notFound.managedProperty().bind(Bindings.size(readers).isEqualTo(0));
-        pikaReaderListView.visibleProperty().bind(Bindings.size(readers).greaterThanOrEqualTo(1));
-        pikaReaderListView.managedProperty().bind(Bindings.size(readers).greaterThanOrEqualTo(1));
-
-        ultraListVBox.setPrefHeight(1750);
-
-        ultraListVBox.getChildren().add(notFound);
-        ultraListVBox.visibleProperty().bind(scanCompleted);
-        ultraListVBox.managedProperty().bind(scanCompleted);
-        mainVBox.getChildren().add(progressVBox);
-        mainVBox.getChildren().add(ultraListVBox);
-        dialog.getDialogPane().setContent(mainVBox);
-
-        scanCompleted.bind(Bindings.size(readers).greaterThanOrEqualTo(1));
-
-        // If they double click on an ultra, select it and close the dialog box
-        pikaReaderListView.setOnMouseClicked((MouseEvent click) -> {
-            if (click.getClickCount() == 2) {
-                dialog.setResult(pikaReaderListView.getSelectionModel().getSelectedItem());
-            }
-        });
-
-        dialog.getDialogPane().getScene().getWindow().sizeToScene();
-
-        Node createButton = dialog.getDialogPane().lookupButton(selectButtonType);
-        createButton.disableProperty().bind(pikaReaderListView.getSelectionModel().selectedItemProperty().isNull());
-
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == selectButtonType) {
-                return pikaReaderListView.getSelectionModel().getSelectedItem();
-            }
-            return null;
-        });
-
-        Optional<PikaReader> result = dialog.showAndWait();
-        dialogClosed.set(true);
-
-        if (result.isPresent()) {
-            pikaReaderIP = result.get().IP.getValueSafe();
-            pikaReaderPort = result.get().PORT.getValueSafe();
-            pikaReaderIPTextField.setText(pikaReaderIP);
-            timingListener.setAttribute("PikaReaderDirect:pika_ip", pikaReaderIP);
-            timingListener.setAttribute("PikaReaderDirect:pika_port", pikaReaderPort.toString());
-            connectToggleSwitch.selectedProperty().set(true);
-        }
-
     }
 
-    private void rewind() {
-        // open a dialog box 
-        Dialog<RewindData> dialog = new Dialog();
+    // The reader's web address, e.g. http://192.168.1.10:8080
+    String getBaseURL() {
+        return baseURL(secureProperty.get(), readerIPProperty.getValueSafe(), readerPortProperty.getValueSafe());
+    }
+
+    private static String baseURL(boolean secure, String host, String port) {
+        return (secure ? "https://" : "http://") + uriHost(host) + ":" + port;
+    }
+
+    // IPv6 literals need [brackets] in a URL
+    static String uriHost(String host) {
+        if (host.contains(":") && !host.startsWith("[")) return "[" + host + "]";
+        return host;
+    }
+
+    /**
+     * Checks that a PikaReader answers at an address that was entered by hand.
+     *
+     * @return completes with the unit ID from GET /status, or exceptionally
+     * if nothing answers or the response is not from a PikaReader
+     */
+    static CompletableFuture<String> probeStatus(boolean secure, String host, int port) {
+        HttpRequest request;
+        try {
+            request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseURL(secure, host, String.valueOf(port)) + "/status"))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+        } catch (IllegalArgumentException ex) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid address"));
+        }
+        logger.debug("Checking for a PikaReader at {}", request.uri());
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                // The request timeout may not cover the connect, so back it up
+                .orTimeout(5, TimeUnit.SECONDS)
+                .thenApply(response -> {
+                    // A PikaReader always answers /status
+                    if (response.statusCode() < 200 || response.statusCode() > 299) {
+                        throw new RuntimeException("Not a PikaReader (" + responseError(response) + ")");
+                    }
+                    String unitID;
+                    try {
+                        unitID = new JSONObject(response.body()).optString("unitID", "");
+                    } catch (JSONException ex) {
+                        unitID = "";
+                    }
+                    if (unitID.isBlank()) throw new RuntimeException("Not a PikaReader (no unitID in /status)");
+                    return unitID;
+                });
+    }
+
+    // The "error" from a PikaReader error response, or the HTTP status code
+    private static String responseError(HttpResponse<String> response) {
+        try {
+            return new JSONObject(response.body()).optString("error", "HTTP " + response.statusCode());
+        } catch (JSONException ex) {
+            return "HTTP " + response.statusCode();
+        }
+    }
+
+    /**
+     * @param ex an exception from a CompletableFuture (possibly wrapped)
+     * @return a message suitable for showing to the user
+     */
+    static String errorMessage(Throwable ex) {
+        Throwable cause = ex;
+        while ((cause instanceof CompletionException || cause instanceof ExecutionException) && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (cause instanceof HttpTimeoutException) return "The reader did not respond in time";
+        if (cause instanceof ConnectException) {
+            if (cause.getCause() instanceof UnresolvedAddressException) return "Unknown host";
+            return "Unable to connect to the reader";
+        }
+        if (cause instanceof TimeoutException) return "The reader did not respond in time";
+        if (cause instanceof javax.net.ssl.SSLException) return "Secure connection failed: " + cause.getMessage();
+        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
+    }
+
+    // ------------------------------------------------------------------
+    // Profiles
+    // ------------------------------------------------------------------
+
+    // Fetch the list of available profiles from the reader
+    // {"current":"finish_mats","profiles":[{"id":"finish_mats","name":"Finish Mats","description":"...","tagPopulation":32},...]}
+    void loadProfiles() {
+        // The STATUS messages arrive once a second, so don't stack up requests
+        if (!profilesLoading.compareAndSet(false, true)) return;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(getBaseURL() + "/profiles"))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        String name = readerNameProperty.getValueSafe();
+
+        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenAccept(response -> {
+                    if (response.statusCode() < 200 || response.statusCode() > 299) {
+                        logger.debug("Unable to load the profiles for {}: HTTP {}", name, response.statusCode());
+                        return;
+                    }
+                    JSONArray list = new JSONObject(response.body()).getJSONArray("profiles");
+                    List<Profile> newProfiles = new ArrayList<>();
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject p = list.getJSONObject(i);
+                        String id = p.getString("id");
+                        newProfiles.add(new Profile(id, p.optString("name", id), p.optString("description", "")));
+                    }
+                    logger.debug("Loaded {} profiles for {}", newProfiles.size(), name);
+                    Platform.runLater(() -> {
+                        // Keep the current profile in the list even if the unit didn't return it
+                        String currentID = profileIDProperty.getValueSafe();
+                        if (!currentID.isBlank() && newProfiles.stream().noneMatch(p -> p.id().equals(currentID))) {
+                            newProfiles.add(new Profile(currentID, profileNameProperty.getValueSafe(), ""));
+                        }
+                        profiles.setAll(newProfiles);
+                    });
+                    profilesLoaded = true;
+                })
+                .exceptionally(ex -> {
+                    logger.debug("Unable to load the profiles for {}: {}", name, ex.getMessage());
+                    return null;
+                })
+                .whenComplete((v, ex) -> profilesLoading.set(false));
+    }
+
+    // Change the reader profile. Only allowed by the reader when it is not reading.
+    // Completes with the reader's response on success, or exceptionally with
+    // the reader's error message (e.g. 409 if the reader is reading).
+    CompletableFuture<JSONObject> changeProfile(String id) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(getBaseURL() + "/profile/"
+                        + URLEncoder.encode(id, StandardCharsets.UTF_8).replace("+", "%20")))
+                .timeout(Duration.ofSeconds(45)) // The reader can take up to 30 seconds to apply the profile
+                .PUT(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        String name = readerNameProperty.getValueSafe();
+        logger.debug("Changing the profile for {} to {}", name, id);
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    JSONObject body;
+                    try {
+                        body = new JSONObject(response.body());
+                    } catch (JSONException ex) {
+                        body = new JSONObject();
+                    }
+
+                    if (response.statusCode() < 200 || response.statusCode() > 299) {
+                        throw new RuntimeException(body.optString("error", "HTTP " + response.statusCode()));
+                    }
+
+                    String newID = body.optString("id", id);
+                    String newName = body.optString("name", newID);
+                    logger.debug("Profile for {} changed to {}", name, newName);
+                    Platform.runLater(() -> {
+                        profileIDProperty.set(newID);
+                        profileNameProperty.set(newName);
+                    });
+                    return body;
+                });
+    }
+
+    // ------------------------------------------------------------------
+    // Rewind
+    // ------------------------------------------------------------------
+
+    void rewind() {
+        if (!connectedProperty.get()) {
+            Alert alert = new Alert(AlertType.INFORMATION);
+            alert.setTitle("Rewind");
+            alert.setHeaderText("Reader is not connected");
+            alert.setContentText(readerNameProperty.getValueSafe() + " is not connected.\nRewind will be available once the reader reconnects.");
+            alert.showAndWait();
+            return;
+        }
+
+        Dialog<RewindRange> dialog = new Dialog<>();
         dialog.setTitle("Rewind");
         dialog.setHeaderText("Rewind timing data...");
         ButtonType rewindButtonType = new ButtonType("Rewind", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(rewindButtonType, ButtonType.CANCEL);
 
         VBox rewindVBox = new VBox();
+        rewindVBox.setSpacing(5.0);
         rewindVBox.setStyle("-fx-font-size: 16px;");
 
-        // start date / time
         HBox startHBox = new HBox();
         startHBox.setSpacing(5.0);
         Label startLabel = new Label("From:");
@@ -1096,7 +784,6 @@ public class PikaReaderDirectReader implements TimingReader {
         TextField startTime = new TextField();
         startHBox.getChildren().addAll(startLabel, startDate, startTime);
 
-        // end date / time
         HBox endHBox = new HBox();
         endHBox.setSpacing(5.0);
         Label endLabel = new Label("To:");
@@ -1112,655 +799,483 @@ public class PikaReaderDirectReader implements TimingReader {
         BooleanProperty endTimeOK = new SimpleBooleanProperty(false);
         BooleanProperty allOK = new SimpleBooleanProperty(false);
 
-        allOK.bind(Bindings.and(endTimeOK, startTimeOK));
+        installTimeFilter(startTime, startTimeOK);
+        installTimeFilter(endTime, endTimeOK);
 
-        startTime.textProperty().addListener((observable, oldValue, newValue) -> {
-            startTimeOK.setValue(false);
-            if (DurationParser.parsable(newValue)) {
-                startTimeOK.setValue(Boolean.TRUE);
+        // Both times valid, both dates set, and from is not after to
+        Runnable validate = () -> {
+            boolean ok = startTimeOK.get() && endTimeOK.get()
+                    && startDate.getValue() != null && endDate.getValue() != null;
+            if (ok) {
+                LocalDateTime from = toDateTime(startDate.getValue(), startTime.getText());
+                LocalDateTime to = toDateTime(endDate.getValue(), endTime.getText());
+                ok = !from.isAfter(to);
             }
-            if (newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?")) {
-                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = startTime.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) {
-                        c++;
-                    } else {
-                        c--;
-                    }
-                    startTime.setText(oldValue);
-                    startTime.positionCaret(c);
-                });
-                logger.debug("Bad start time (newValue: " + newValue + ")");
-            }
-        });
-        endTime.textProperty().addListener((observable, oldValue, newValue) -> {
-            endTimeOK.setValue(false);
-            if (DurationParser.parsable(newValue)) {
-                endTimeOK.setValue(Boolean.TRUE);
-            }
-            if (newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?")) {
-                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = endTime.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) {
-                        c++;
-                    } else {
-                        c--;
-                    }
-                    endTime.setText(oldValue);
-                    endTime.positionCaret(c);
-                });
-                logger.debug("Bad end time (newValue: " + newValue + ")");
-            }
-        });
+            allOK.set(ok);
+        };
+        startTime.textProperty().addListener(o -> validate.run());
+        endTime.textProperty().addListener(o -> validate.run());
+        startDate.valueProperty().addListener(o -> validate.run());
+        endDate.valueProperty().addListener(o -> validate.run());
 
-        //Default to event date / 00:00 for the start time, event date 23:59:00 for the end time
-        startDate.setValue(Event.getInstance().getLocalEventDate());
+        // Default to the event date, 00:00:00 -> 23:59:59
+        LocalDate eventDate = Event.getInstance().getLocalEventDate();
+        startDate.setValue(eventDate);
         startTime.setText("00:00:00");
-        endDate.setValue(Event.getInstance().getLocalEventDate());
+        endDate.setValue(eventDate);
         endTime.setText("23:59:59");
 
-        Node createButton = dialog.getDialogPane().lookupButton(rewindButtonType);
-        createButton.disableProperty().bind(allOK.not());
+        Node rewindButton = dialog.getDialogPane().lookupButton(rewindButtonType);
+        rewindButton.disableProperty().bind(allOK.not());
 
         dialog.setResultConverter(dialogButton -> {
             if (dialogButton == rewindButtonType) {
-                RewindData result = new RewindData();
-                result.startDate = startDate.getValue();
-                result.startTime = DurationParser.parse(startTime.getText());
-                result.endDate = endDate.getValue();
-                result.endTime = DurationParser.parse(endTime.getText());
-                return result;
+                return new RewindRange(
+                        toDateTime(startDate.getValue(), startTime.getText()),
+                        toDateTime(endDate.getValue(), endTime.getText()));
             }
             return null;
         });
 
-        Optional<RewindData> result = dialog.showAndWait();
+        Optional<RewindRange> result = dialog.showAndWait();
+        if (result.isEmpty()) return;
 
-        if (result.isPresent()) {
-            RewindData rwd= result.get();
-            // convert the date/time to seconds since 1/1/1980
-            
-//            Long startTimestamp = Duration.between(EPOC, LocalDateTime.of(rwd.startDate, LocalTime.ofSecondOfDay(rwd.startTime.getSeconds()))).getSeconds();
-//            Long endTimestamp = Duration.between(EPOC, LocalDateTime.of(rwd.endDate, LocalTime.ofSecondOfDay(rwd.endTime.getSeconds()))).getSeconds();
-            LocalDateTime from = LocalDateTime.of(rwd.startDate, LocalTime.ofSecondOfDay(rwd.startTime.getSeconds()));
-            LocalDateTime to = LocalDateTime.of(rwd.endDate, LocalTime.ofSecondOfDay(rwd.endTime.getSeconds()));
-            logger.debug("Rewind from " + from.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + " to " + to.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            // issue the rewind command via a background thread
-            
-            Task pikaCommand = new Task<Void>() {
-                @Override public Void call() {
-                    if (connectedStatus.get()) {
+        RewindRange range = result.get();
+        String readerName = readerNameProperty.getValueSafe();
+        String from = range.from().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String to = range.to().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        logger.info("Rewind {} from {} to {}", readerName, from, to);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(getBaseURL() + "/rewind/" + from + "/" + to))
+                .timeout(Duration.ofSeconds(120)) // A full day can be a lot of reads
+                .GET()
+                .build();
+
+        // Fetch and process the reads in the background, then report back
+        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() < 200 || response.statusCode() > 299) {
+                        throw new RuntimeException(responseError(response));
+                    }
+                    JSONArray rewinds = new JSONArray(response.body());
+                    int processed = 0;
+                    int skipped = 0;
+                    for (int i = 0; i < rewinds.length(); i++) {
                         try {
-                            URL url = new URL("http://" + pikaReaderIP + ":" + pikaReaderPort + "/rewind" + 
-                                    "/" + from.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + 
-                                    "/" + to.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)); 
-                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                            conn.setRequestMethod("GET");
-                            //conn.setRequestProperty("Accept", "application/json");
-                            if (conn.getResponseCode() != 200) {
-                                throw new RuntimeException("Failed : HTTP Error code : "
-                                        + conn.getResponseCode());
-                            }
-                            InputStreamReader in = new InputStreamReader(conn.getInputStream(),"UTF-8");
-                            BufferedReader br = new BufferedReader(in);
-                            String output;
-                            String fullResponse="";
-                            while ((output = br.readLine()) != null) {
-                                logger.trace(output);
-                                fullResponse +=output;
-                            }
-                            conn.disconnect();
-                            JSONArray rewinds = new JSONArray(fullResponse);
-                            rewinds.forEach(item -> {
-                                JSONObject obj = (JSONObject) item;
-                                processRead(obj);
-                            });
-
-                        } catch(Exception ex){
-                            logger.debug("Exception in PikaReaderDirect::StartReading() ");
-                            ex.printStackTrace(System.out);
+                            JSONObject obj = rewinds.optJSONObject(i);
+                            if (obj != null && processRead(obj, true)) processed++;
+                            else skipped++;
+                        } catch (RuntimeException ex) {
+                            skipped++;
+                            logger.debug("Skipping a bad rewind read from {}: {}", readerName, ex.getMessage());
                         }
-                        
                     }
-                    return null;
-                }
-            };
-            new Thread(pikaCommand).start();
-         }
-    }
-
-    private void antennaDialog() {
-//        // Open a dialog box
-//        Dialog<Boolean> dialog = new Dialog();
-//        dialog.setTitle("Antenna settings");
-//        String type = "";
-//        if (isJoey.get()) type = "Joey";
-//        else if (isSingleReader.get()) type = "Ultra-4";
-//        else type = "Ultra-8";
-//        
-//        dialog.setHeaderText("Antenna and Power settings for " + type + " at "+ pikaReaderIP);
-//        ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
-//        dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
-//        
-//        //VBox dialogVBox = new VBox();
-//        GridPane antennaGridPane = new GridPane();
-//        Map<String,CheckBox> antennaMap = new HashMap();
-//        
-//        antennaGridPane.setHgap(1);
-//        antennaGridPane.setVgap(4);
-//        
-//        Label portsLabel = new Label("Ports");
-//        antennaGridPane.add(portsLabel,1,0,4,1);
-//        GridPane.setHalignment(portsLabel, HPos.CENTER);
-//        
-//        // Power Option of 1 -> 32 (inclusive)
-//        PrefixSelectionComboBox<String> readerAPower = new PrefixSelectionComboBox();
-//        PrefixSelectionComboBox<String> readerBPower = new PrefixSelectionComboBox();
-//        for(Integer p = 32; p>0; p--){
-//            readerAPower.getItems().add(p.toString());
-//            readerBPower.getItems().add(p.toString());
-//        }
-//        
-//        // Reader 'A'
-//        for(int port = 1; port < 5; port++){
-//            antennaMap.put("A" + port,new CheckBox());
-//            logger.debug("Requesting ultraSetting " + String.format("%02x", 11 + port).toUpperCase());
-//            if (readerSettings.containsKey(String.format("%02x", 11 + port).toUpperCase())) {
-//                if ("1".equals(readerSettings.get(String.format("%02x", 11 + port).toUpperCase()))) antennaMap.get("A" + port).setSelected(true);
-//                else antennaMap.get("A" + port).setSelected(false);
-//            } else antennaMap.get("A" + port).setSelected(false);
-//            antennaGridPane.add(new Label(Integer.toString(port)),port,1);
-//            antennaGridPane.add(antennaMap.get("A" + port),port,2);
-//        } 
-//        if (!isJoey.get()) {
-//            antennaGridPane.add(new Label("Power"), 5,1);
-//            antennaGridPane.add(readerAPower, 5,2);
-//            if (readerSettings.containsKey("18")){
-//                logger.debug("Reader A power set to " + readerSettings.get("18"));
-//                readerAPower.getSelectionModel().select(readerSettings.get("18"));
-//            } else readerAPower.getSelectionModel().selectFirst();
-//            
-//            antennaMap.put("ABackup",new CheckBox());
-//            if (readerSettings.containsKey("26")) {
-//                if ("1".equals(readerSettings.get("26"))) antennaMap.get("ABackup").setSelected(true);
-//                else antennaMap.get("ABackup").setSelected(false);
-//            } else antennaMap.get("ABackup").setSelected(false);
-//            antennaGridPane.add(new Label("  "),6,1);
-//            Label antBackupLlabel = new Label("Antenna 4\nis backup");
-//            antennaGridPane.add(antBackupLlabel,7,0,1,2);
-//            GridPane.setValignment(antBackupLlabel, VPos.BOTTOM);
-//            antennaGridPane.add(antennaMap.get("ABackup"),7,2);
-//        }
-//        
-//        // Reader 'B' but only if we have one...
-//        if (!isSingleReader.get()){
-//            Label readerALabel = new Label("Reader A ");
-//            antennaGridPane.add(readerALabel, 0, 2);
-//            Label readerBLabel = new Label("Reader B ");
-//            antennaGridPane.add(readerBLabel, 0, 3);
-//            for(int port = 1; port < 5; port++){
-//                antennaMap.put("B" + port,new CheckBox());
-//                logger.debug("Requesting ultraSetting " + Integer.toHexString(15 + port));
-//                if (readerSettings.containsKey(Integer.toHexString(15 + port))) {
-//                    if ("1".equals(readerSettings.get(Integer.toHexString(15 + port)))) antennaMap.get("B" + port).setSelected(true);
-//                    else antennaMap.get("B" + port).setSelected(false);
-//                } else antennaMap.get("B" + port).setSelected(false);
-//                antennaGridPane.add(antennaMap.get("B" + port),port,3);
-//            } 
-//            
-//            antennaGridPane.add(readerBPower, 5,3);
-//            if (readerSettings.containsKey("19")){
-//                readerBPower.getSelectionModel().select(readerSettings.get("19"));
-//                logger.debug("Reader B power set to " + readerSettings.get("19"));
-//            } else readerBPower.getSelectionModel().selectFirst();
-//            
-//            antennaMap.put("BBackup",new CheckBox());
-//            if (readerSettings.containsKey("27")) {
-//                if ("1".equals(readerSettings.get("27"))) antennaMap.get("BBackup").setSelected(true);
-//                else antennaMap.get("BBackup").setSelected(false);
-//            } else antennaMap.get("BBackup").setSelected(false);
-//            antennaGridPane.add(antennaMap.get("BBackup"),7,3);
-//        }
-//        
-//        dialog.getDialogPane().setContent(antennaGridPane);
-//        
-//        // if good, save the settings
-//        dialog.setResultConverter(dialogButton -> {
-//            if (dialogButton == saveButtonType) {
-//                return Boolean.TRUE;
-//            }
-//            return null;
-//        });
-//        
-//        
-//        Optional result = dialog.showAndWait();
-//        
-//        if (result.isPresent()) {
-//            
-//            // If an Ultra-8
-//            if (!isSingleReader.get()) {
-//                // Reader B, 1 -> 4
-//                // Power Setting
-//                // Backup setting
-//            }
-//            
-//            // Play the task game
-//            Task ultraCommand = new Task<Void>() {
-//                @Override public Void call() {
-//                    if (connectedStatus.get()) {
-//                        Boolean aquired = false;
-//                        try {
-//                            if (okToSend.tryAcquire(10, TimeUnit.SECONDS)){
-//                                aquired = true;
-//                                Boolean commit=false;
-//                                Boolean restartInterface=false;
-//                                
-//                                
-//                                // 0x0C -> 0x0F Reader A, Antenna 1 -4
-//                                // 0x10 -> 0x13 Reader B, Antenna 1 -> 4
-//                                // 0x18 -> Reader A Power
-//                                // 0x26 -> Reader A Ant 4 as Backup (Ultra Only)
-//                                
-//                                // Reader A, 1 -> 4
-//                                for(int port = 1; port < 5; port++){
-//                                    String p = String.format("%02x", 11 + port).toUpperCase();
-//                                    if (!readerSettings.containsKey(p) || 
-//                                        (antennaMap.get("A" + port).selectedProperty().get() && "0".equals(readerSettings.get(p))) ||
-//                                        (!antennaMap.get("A" + port).selectedProperty().get() && "1".equals(readerSettings.get(p)))){
-//                                        logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("A" + port).selectedProperty().get());
-//                                        ultraOutput.flush();
-//                                        ultraOutput.writeBytes("u");
-//                                        ultraOutput.writeByte(11 + port);  // 0x0C -> 0x0F
-//                                        if (antennaMap.get("A" + port).selectedProperty().get()) ultraOutput.writeByte(1);
-//                                        else ultraOutput.writeByte(0);
-//                                        ultraOutput.writeByte(255);
-//                                        ultraOutput.flush();
-//                                        String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                        if (result != null) {
-//                                            commit=true;
-//                                        } else {
-//                                        // timeout
-//                                            logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
-//                                        }
-//                                    }
-//                                } 
-//                                if (!isJoey.get()) {
-//                                    // Power Setting
-//                                    if (!readerSettings.containsKey("18") || 
-//                                            !readerSettings.get("18").equals(readerAPower.getSelectionModel().getSelectedItem()) ){
-//                                        logger.debug("AntennaDialog(): Sending Reader A power (0x18) command to " + readerAPower.getSelectionModel().getSelectedItem());
-//                                        ultraOutput.flush();
-//                                        ultraOutput.writeBytes("u");
-//                                        ultraOutput.writeByte(24);  // 0x18
-//                                        ultraOutput.writeBytes(readerAPower.getSelectionModel().getSelectedItem());
-//                                        ultraOutput.writeByte(255);
-//                                        ultraOutput.flush();
-//                                        String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                        if (result != null) {
-//                                            commit=true;
-//                                        } else {
-//                                        // timeout
-//                                            logger.debug("Timeout with command '0x18' to set the Reader A port 4 backupflag");
-//                                        }
-//                                    }
-//
-//                                    // If an Ultra backup setting
-//                                    if (!readerSettings.containsKey("26") || 
-//                                            (antennaMap.get("ABackup").selectedProperty().get() && "0".equals(readerSettings.get("26"))) ||
-//                                            (!antennaMap.get("ABackup").selectedProperty().get() && "1".equals(readerSettings.get("26")))
-//                                        ){
-//                                        logger.debug("remoteDialog(): Sending Reader A port 4 backup (0x26) command");
-//                                        ultraOutput.flush();
-//                                        ultraOutput.writeBytes("u");
-//                                        ultraOutput.writeByte(38);  // 0x26
-//                                        if (antennaMap.get("ABackup").selectedProperty().get()) ultraOutput.writeByte(1);
-//                                        else ultraOutput.writeByte(0);
-//                                        ultraOutput.writeByte(255);
-//                                        ultraOutput.flush();
-//                                        String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                        if (result != null) {
-//                                            commit=true;
-//                                        } else {
-//                                        // timeout
-//                                            logger.debug("Timeout with command '0x18' to set the Reader A Power Command");
-//                                        }
-//                                    }
-//                                }
-//            
-//                                if (!isSingleReader.get()){
-//                                    
-//                                    // 0x10 -> 0x13 Reader B, Antenna 1 -> 4
-//                                    // 0x19 -> Reader B Power
-//                                    // 0x27 -> Reader B Ant 4 as Backup (Ultra Only)
-//
-//                                    // Reader A, 1 -> 4
-//                                    for(int port = 1; port < 5; port++){
-//                                        String p = String.format("%02x", 15 + port).toUpperCase();
-//                                        if (!readerSettings.containsKey(p) || 
-//                                            (antennaMap.get("B" + port).selectedProperty().get() && "0".equals(readerSettings.get(p))) ||
-//                                            (!antennaMap.get("B" + port).selectedProperty().get() && "1".equals(readerSettings.get(p)))){
-//                                            logger.debug("AntennaDialog(): Setting " + p + " to " + antennaMap.get("B" + port).selectedProperty().get());
-//                                            ultraOutput.flush();
-//                                            ultraOutput.writeBytes("u");
-//                                            ultraOutput.writeByte(15 + port);  // 0x0C -> 0x0F
-//                                            if (antennaMap.get("B" + port).selectedProperty().get()) ultraOutput.writeByte(1);
-//                                            else ultraOutput.writeByte(0);
-//                                            ultraOutput.writeByte(255);
-//                                            ultraOutput.flush();
-//                                            String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                            if (result != null) {
-//                                                commit=true;
-//                                            } else {
-//                                            // timeout
-//                                                logger.debug("Timeout with command '" + p + "' to enable/disable the antenna");
-//                                            }
-//                                        }
-//
-//                                    } 
-//                                    if (!readerSettings.containsKey("19") || 
-//                                        !readerSettings.get("19").equals(readerBPower.getSelectionModel().getSelectedItem()) ){
-//                                        logger.debug("remoteDialog(): Sending Reader B power (0x19) command to " + readerBPower.getSelectionModel().getSelectedItem());
-//                                        ultraOutput.flush();
-//                                        ultraOutput.writeBytes("u");
-//                                        ultraOutput.writeByte(25);  // 0x19
-//                                        ultraOutput.writeBytes(readerBPower.getSelectionModel().getSelectedItem());
-//                                        ultraOutput.writeByte(255);
-//                                        ultraOutput.flush();
-//                                        String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                        if (result != null) {
-//                                            commit=true;
-//                                        } else {
-//                                        // timeout
-//                                            logger.debug("Timeout with command '0x19' to set the Reader B Power Command");
-//                                        }
-//                                    }
-//
-//                                    // If an Ultra backup setting
-//                                    if (!readerSettings.containsKey("27") || 
-//                                            (antennaMap.get("BBackup").selectedProperty().get() && "0".equals(readerSettings.get("27"))) ||
-//                                            (!antennaMap.get("BBackup").selectedProperty().get() && "1".equals(readerSettings.get("27")))
-//                                        ){
-//                                        logger.debug("remoteDialog(): Sending Reader B port 4 backup (0x27) command");
-//                                        ultraOutput.flush();
-//                                        ultraOutput.writeBytes("u");
-//                                        ultraOutput.writeByte(39);  // 0x27
-//                                        if (antennaMap.get("BBackup").selectedProperty().get()) ultraOutput.writeByte(1);
-//                                        else ultraOutput.writeByte(0);
-//                                        ultraOutput.writeByte(255);
-//                                        ultraOutput.flush();
-//                                        String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                        if (result != null) {
-//                                            commit=true;
-//
-//                                        } else {
-//                                        // timeout
-//                                            logger.debug("Timeout with command '0x27' to set the Reader B port 4 backup flag");
-//                                        }
-//                                    }
-//                                }
-//                                
-//                                if (commit){
-//                                    logger.debug("remoteDialog(): Sending commit (u 0xFF 0xFF) command");
-//                                    ultraOutput.flush();
-//
-//                                    ultraOutput.writeBytes("u");
-//                                    ultraOutput.writeByte(255);
-//                                    ultraOutput.writeByte(255);
-//                                    ultraOutput.flush();
-//                                    String result = commandResultQueue.poll(10, TimeUnit.SECONDS);
-//                                    if (result != null) {
-//                                        restartInterface = true;
-//
-//                                        // Reader A
-//                                        for(int port = 1; port < 5; port++){
-//                                            String p = String.format("%02x", 11 + port).toUpperCase();
-//                                            if (antennaMap.get("A" + port).selectedProperty().get()) readerSettings.put(p,"1");
-//                                            else readerSettings.put(p,"0");
-//                                        } 
-//                                        if (!isJoey.get()){
-//                                            readerSettings.put("18",readerAPower.getSelectionModel().getSelectedItem());
-//                                            if (antennaMap.get("ABackup").selectedProperty().get()) readerSettings.put("26","1");
-//                                            else readerSettings.put("26","0");
-//                                        }
-//                                        if (!isSingleReader.get()){
-//                                            // Reader B
-//                                            for(int port = 1; port < 5; port++){
-//                                                String p = String.format("%02x", 15 + port).toUpperCase();
-//                                                if (antennaMap.get("B" + port).selectedProperty().get()) readerSettings.put(p,"1");
-//                                                else readerSettings.put(p,"0");
-//                                            } 
-//                                                readerSettings.put("19",readerBPower.getSelectionModel().getSelectedItem());
-//                                                if (antennaMap.get("BBackup").selectedProperty().get()) readerSettings.put("27","1");
-//                                                else readerSettings.put("27","0");
-//                                        }
-//                                        
-//                                    } else {
-//                                    // timeout
-//                                        logger.debug("Timeout with command 'u[0xFF][0xFF]'");
-//                                    }
-//                                }
-//                                if (restartInterface){ // This will result in a disconnect
-//                                    logger.debug("Sending reset interface (0x2D) command");
-//                                    ultraOutput.flush();
-//                                    ultraOutput.writeBytes("u");
-//                                    ultraOutput.writeByte(45);
-//                                    ultraOutput.writeByte(255);
-//                                    ultraOutput.flush();
-//                                    
-//                                }
-//                            } else {
-//                                // timeout
-//                                logger.debug("Timeout waiting to send command '?'");
-//                            }
-//                        } catch (Exception ex) {
-//                            Logger.getLogger(PikaReaderDirectReader.class.getName()).log(Level.SEVERE, null, ex);
-//
-//                        } finally {
-//                            if (aquired) logger.debug("Relasing transmit lock");
-//                            if (aquired) okToSend.release();
-//                        }
-//                    }
-//                    return null;
-//                }
-//        };
-//        new Thread(ultraCommand).start();
-//            
-//            
-//            
-//        }
-
-    }
-
-    private void remoteDialog() {
-
-    }
-
-    private void setClockDialog() {
-    }
-
-    private void clockIssuesCheck(CountDownLatch latch) {
-    }
-
-    private void processExtStatus(char[] status) {
-
-        // We are after status[42] for the battery
-        // and status[45] for the state of the reader. 
-        if (status.length > 60) {
-
-            Integer battery = (int) status[42]; // old tricks are still good
-            Boolean reading = (char) 00 != status[45];
-            logger.debug("Reading: " + status[45]);
-
-            // update the reading status and status label 
-            Boolean currentStatus = readingStatus.getValue();
-            if (!Objects.equals(reading, currentStatus)) {
-                externalInitiated = true;
-                Platform.runLater(() -> {
-                    if (reading) {
-                        readingStatus.setValue(Boolean.TRUE);
+                    logger.info("Rewind {}: {} reads processed, {} skipped", readerName, processed, skipped);
+                    return new int[]{processed, skipped};
+                })
+                .whenComplete((counts, ex) -> Platform.runLater(() -> {
+                    if (ex != null) {
+                        logger.error("Rewind of {} failed: {}", readerName, errorMessage(ex));
+                        Alert alert = new Alert(AlertType.ERROR);
+                        alert.setTitle("Rewind");
+                        alert.setHeaderText("Unable to rewind " + readerName);
+                        alert.setContentText(errorMessage(ex));
+                        alert.show();
                     } else {
-                        readingStatus.setValue(Boolean.FALSE);
+                        Alert alert = new Alert(AlertType.INFORMATION);
+                        alert.setTitle("Rewind");
+                        alert.setHeaderText("Rewind of " + readerName + " complete");
+                        String msg = "Processed " + counts[0] + " reads.\nReads that were already received are ignored.";
+                        if (counts[1] > 0) msg += "\n" + counts[1] + " reads were skipped (unreadable or before the event date).";
+                        alert.setContentText(msg);
+                        alert.show();
                     }
-                });
-            }
-            if (statusLabel.getText().equals("Starting Readers...") && reading) {
-                Platform.runLater(() -> {
-                    statusLabel.setText("Connected: Waiting for a chip read...");
-                });
-            } else if (statusLabel.getText().equals("Connected: Readers stopped") && reading) {
-                Platform.runLater(() -> {
-                    statusLabel.setText("Connected: Waiting for a chip read...");
-                });
-            } else if (!reading) {
-                Platform.runLater(() -> {
-                    statusLabel.setText("Connected: Readers stopped");
-                });
-            }
+                }));
+    }
 
-            // Now do the same for the battery indicator
-            // Color code it based on a 60/25 green/yellow/red split
-            Platform.runLater(() -> {
-                batteryProgressBar.progressProperty().setValue(battery / 100.0f);
-                if (battery > 60) {
-                    batteryProgressBar.setStyle("-fx-accent: green");
-                } else if (battery > 25) {
-                    batteryProgressBar.setStyle("-fx-accent: yellow");
-                } else {
-                    batteryProgressBar.setStyle("-fx-accent: red");
+    // Date + time of day (a duration from midnight, so 24:00:00 rolls over to the next day)
+    private static LocalDateTime toDateTime(LocalDate date, String time) {
+        return date.atStartOfDay().plus(DurationParser.parse(time));
+    }
+
+    // Only allow time-like input (HH:MM:SS.sss) in the field, and track if it is a valid time
+    private static void installTimeFilter(TextField timeField, BooleanProperty timeOK) {
+        timeField.textProperty().addListener((observable, oldValue, newValue) -> {
+            timeOK.set(DurationParser.parsable(newValue));
+            if (!(newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?"))) {
+                Platform.runLater(() -> {
+                    int c = timeField.getCaretPosition();
+                    if (oldValue.length() > newValue.length()) c++;
+                    else c--;
+                    timeField.setText(oldValue);
+                    timeField.positionCaret(c);
+                });
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Discovery / reader selection
+    // ------------------------------------------------------------------
+
+    private static final String HTTP = "http://";
+    private static final String HTTPS = "https://";
+    // Just a host name or IP address (no scheme, path, user or spaces)
+    private static final Pattern MANUAL_HOST_PATTERN = Pattern.compile("[^\\s/@?#]+");
+
+    void discover() {
+        logger.debug("Starting discover...");
+        ObservableList<DiscoveredReader> readers = FXCollections.observableArrayList();
+        BooleanProperty scanCompleted = new SimpleBooleanProperty(false);
+        BooleanProperty dialogClosed = new SimpleBooleanProperty(false);
+
+        // start a discovery task in a background thread
+        Task<Void> pikaSearch = new Task<>() {
+            @Override
+            public Void call() {
+                byte[] packetData = "DISCOVER_PIKA_READER_REQUEST".getBytes(StandardCharsets.UTF_8);
+
+                // Find the units using UDP broadcast, looping while the dialog box is open
+                // UDP Broadcast code borrowed from https://demey.io/network-discovery-using-udp-broadcast/
+                while (!dialogClosed.get()) {
+                    try (DatagramSocket broadcastSocket = new DatagramSocket()) {
+                        broadcastSocket.setBroadcast(true);
+                        // 2 second timeout for responses
+                        broadcastSocket.setSoTimeout(2000);
+
+                        // Send a packet to 255.255.255.255 on port 8888
+                        DatagramPacket probe = new DatagramPacket(packetData, packetData.length, InetAddress.getByName("255.255.255.255"), 8888);
+                        broadcastSocket.send(probe);
+
+                        // Broadcast the message over all the network interfaces
+                        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                        while (interfaces.hasMoreElements()) {
+                            NetworkInterface networkInterface = interfaces.nextElement();
+                            if (networkInterface.isLoopback() || !networkInterface.isUp()) continue;
+
+                            for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses()) {
+                                InetAddress broadcast = interfaceAddress.getBroadcast();
+                                if (broadcast == null) continue;
+                                try {
+                                    broadcastSocket.send(new DatagramPacket(packetData, packetData.length, broadcast, 8888));
+                                    logger.trace("Sent UDP Broadcast to {}", broadcast.getHostAddress());
+                                } catch (IOException e) {
+                                    logger.trace("Unable to broadcast to {}: {}", broadcast.getHostAddress(), e.getMessage());
+                                }
+                            }
+                        }
+
+                        try {
+                            while (true) { // the socket timeout ends this
+                                byte[] recvBuf = new byte[1500];
+                                DatagramPacket receivePacket = new DatagramPacket(recvBuf, recvBuf.length);
+                                broadcastSocket.receive(receivePacket);
+
+                                String message = new String(receivePacket.getData(), 0, receivePacket.getLength(), StandardCharsets.UTF_8).trim();
+                                String host = receivePacket.getAddress().getHostAddress();
+                                logger.debug("PikaReader Discover Response: {} \"{}\"", host, message);
+
+                                // PIKA_READER <unitID> <port>
+                                String[] msg = message.split("\\s+");
+                                if (msg.length < 3 || !msg[0].equalsIgnoreCase("PIKA_READER")) {
+                                    logger.debug("Ignoring a malformed discovery response from {}", host);
+                                    continue;
+                                }
+                                DiscoveredReader u = new DiscoveredReader(host, msg[1].toUpperCase(), msg[2], false);
+                                Platform.runLater(() -> {
+                                    if (!readers.contains(u)) readers.add(u);
+                                });
+                            }
+                        } catch (IOException ex) {
+                            // timeout, go around again
+                        }
+                    } catch (IOException ex) {
+                        logger.debug("PikaReader discovery error: {}", ex.getMessage());
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return null;
+                        }
+                    }
                 }
-            });
+                logger.debug("Done scanning for PikaReader units.");
+                return null;
+            }
+        };
+        Thread scanner = new Thread(pikaSearch);
+        scanner.setDaemon(true);
+        scanner.setName("Pika Scanner");
+        scanner.start();
 
+        ProgressBar progress = new ProgressBar();
+        progress.progressProperty().bind(pikaSearch.progressProperty());
+
+        ListView<DiscoveredReader> pikaReaderListView = new ListView<>();
+        pikaReaderListView.setItems(readers);
+
+        Dialog<DiscoveredReader> dialog = new Dialog<>();
+        dialog.resizableProperty().set(true);
+        dialog.getDialogPane().setMaxHeight(Screen.getPrimary().getVisualBounds().getHeight() - 150);
+        dialog.getDialogPane().getStylesheets().add(PikaReaderDirectReader.class.getResource("PikaReaderDirect.css").toExternalForm());
+        dialog.setTitle("Select PikaReader");
+        // Keep this short enough for one line: the dialog is sized to the manual entry row
+        dialog.setHeaderText("Discover PikaReader units or enter an address");
+        ButtonType selectButtonType = new ButtonType("Select", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(selectButtonType, ButtonType.CANCEL);
+
+        VBox mainVBox = new VBox();
+        mainVBox.setSpacing(5);
+        mainVBox.setStyle("-fx-font-size: 16px;"); // Make the scroll bar a bit larger
+
+        VBox progressVBox = new VBox();
+        progressVBox.setAlignment(Pos.CENTER);
+        progressVBox.getChildren().add(new Label("Searching for Units..."));
+        progressVBox.visibleProperty().bind(scanCompleted.not());
+        progressVBox.managedProperty().bind(scanCompleted.not());
+        progressVBox.getChildren().add(progress);
+        Label foundCount = new Label();
+        foundCount.textProperty().bind(Bindings.concat("Found ", Bindings.size(readers).asString()));
+        progressVBox.getChildren().add(foundCount);
+        progress.setMaxWidth(500);
+        progressVBox.setPrefHeight(175);
+
+        VBox listVBox = new VBox();
+        listVBox.fillWidthProperty().set(true);
+        listVBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label selectLabel = new Label("Select a PikaReader:");
+        selectLabel.visibleProperty().bind(Bindings.size(readers).isNotEqualTo(0));
+        selectLabel.managedProperty().bind(Bindings.size(readers).isNotEqualTo(0));
+        listVBox.getChildren().add(selectLabel);
+        listVBox.getChildren().add(pikaReaderListView);
+
+        Label notFound = new Label("No PikaReader units were found!\nCheck network settings\nand try again.");
+        notFound.visibleProperty().bind(Bindings.size(readers).isEqualTo(0));
+        notFound.managedProperty().bind(Bindings.size(readers).isEqualTo(0));
+        pikaReaderListView.visibleProperty().bind(Bindings.size(readers).greaterThanOrEqualTo(1));
+        pikaReaderListView.managedProperty().bind(Bindings.size(readers).greaterThanOrEqualTo(1));
+
+        listVBox.setPrefHeight(1750);
+        // Shrink the list, not the manual entry, when the dialog is short
+        VBox.setVgrow(listVBox, Priority.ALWAYS);
+        listVBox.getChildren().add(notFound);
+        listVBox.visibleProperty().bind(scanCompleted);
+        listVBox.managedProperty().bind(scanCompleted);
+
+        // Manual entry: protocol, IP address or hostname, and port (blank for 80 / 443)
+        ChoiceBox<String> protocolChoiceBox = new ChoiceBox<>(FXCollections.observableArrayList(HTTP, HTTPS));
+        protocolChoiceBox.setValue(HTTP);
+        TextField hostTextField = new TextField();
+        hostTextField.setPromptText("IP address or hostname");
+        hostTextField.setStyle("-fx-pref-width: 10.75em;");
+        HBox.setHgrow(hostTextField, Priority.ALWAYS);
+        TextField portTextField = new TextField();
+        portTextField.setStyle("-fx-pref-width: 4.5em;");
+        portTextField.setTextFormatter(new TextFormatter<String>(change
+                -> change.getControlNewText().matches("\\d{0,5}") ? change : null));
+        portTextField.promptTextProperty().bind(Bindings.when(protocolChoiceBox.valueProperty().isEqualTo(HTTPS)).then("443").otherwise("80"));
+        HBox manualHBox = new HBox(5, protocolChoiceBox, hostTextField, new Label(":"), portTextField);
+        manualHBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label manualStatusLabel = new Label();
+        manualStatusLabel.setWrapText(true);
+        manualStatusLabel.setMinHeight(Region.USE_PREF_SIZE);
+
+        VBox manualVBox = new VBox(5, new Separator(), new Label("Or enter a PikaReader's address:"), manualHBox, manualStatusLabel);
+        manualVBox.setMinHeight(Region.USE_PREF_SIZE);
+
+        mainVBox.getChildren().addAll(progressVBox, listVBox, manualVBox);
+        dialog.getDialogPane().setContent(mainVBox);
+
+        scanCompleted.bind(Bindings.size(readers).greaterThanOrEqualTo(1));
+
+        // The manual reader, once GET /status on it works
+        BooleanProperty manualOK = new SimpleBooleanProperty(false);
+        ObjectProperty<DiscoveredReader> manualReader = new SimpleObjectProperty<>();
+        // Bumped on every edit, so the results of older checks are ignored
+        AtomicInteger manualCheck = new AtomicInteger();
+        // Wait for the typing to stop before checking
+        PauseTransition manualDebounce = new PauseTransition(javafx.util.Duration.millis(500));
+
+        InvalidationListener manualEdited = o -> {
+            manualCheck.incrementAndGet();
+            manualOK.set(false);
+            manualReader.set(null);
+            manualDebounce.stop();
+
+            String host = hostTextField.getText().trim();
+            String port = portTextField.getText();
+            if (host.isEmpty()) {
+                setStatus(manualStatusLabel, "", null);
+            } else if (!MANUAL_HOST_PATTERN.matcher(host).matches()) {
+                setStatus(manualStatusLabel, "Enter just the IP address or hostname", "warning-label");
+            } else if (!port.isEmpty() && (Integer.parseInt(port) < 1 || Integer.parseInt(port) > 65535)) {
+                setStatus(manualStatusLabel, "The port must be between 1 and 65535", "warning-label");
+            } else {
+                setStatus(manualStatusLabel, "Checking...", null);
+                manualDebounce.playFromStart();
+            }
+        };
+        protocolChoiceBox.valueProperty().addListener(manualEdited);
+        hostTextField.textProperty().addListener(manualEdited);
+        portTextField.textProperty().addListener(manualEdited);
+
+        manualDebounce.setOnFinished(event -> {
+            int check = manualCheck.get();
+            boolean secure = HTTPS.equals(protocolChoiceBox.getValue());
+            String host = hostTextField.getText().trim();
+            int portNumber = portTextField.getText().isEmpty() ? (secure ? 443 : 80) : Integer.parseInt(portTextField.getText());
+            String port = String.valueOf(portNumber);
+
+            probeStatus(secure, host, portNumber).whenComplete((unitID, ex) -> Platform.runLater(() -> {
+                if (check != manualCheck.get() || dialogClosed.get()) return; // edited since, or closed
+                if (ex != null) {
+                    logger.debug("No PikaReader at {}{}:{}: {}", secure ? HTTPS : HTTP, host, port, errorMessage(ex));
+                    setStatus(manualStatusLabel, errorMessage(ex), "warning-label");
+                    return;
+                }
+                // Upper case, like discovery
+                String name = unitID.toUpperCase();
+                manualReader.set(new DiscoveredReader(host, name, port, secure));
+                manualOK.set(true);
+                setStatus(manualStatusLabel, "Found " + name, "ok-label");
+            }));
+        });
+
+        // Pre-fill the reader this input is using now (this checks it too)
+        if (configuredProperty.get()) {
+            protocolChoiceBox.setValue(secureProperty.get() ? HTTPS : HTTP);
+            portTextField.setText(readerPortProperty.getValueSafe());
+            hostTextField.setText(readerIPProperty.getValueSafe());
         }
+
+        // If they double click on a reader, select it and close the dialog box
+        pikaReaderListView.setOnMouseClicked((MouseEvent click) -> {
+            DiscoveredReader selected = pikaReaderListView.getSelectionModel().getSelectedItem();
+            if (click.getClickCount() == 2 && selected != null) {
+                dialog.setResult(selected);
+            }
+        });
+
+        dialog.getDialogPane().getScene().getWindow().sizeToScene();
+
+        // Select needs a discovered unit or a manual address that works
+        Node selectButton = dialog.getDialogPane().lookupButton(selectButtonType);
+        selectButton.disableProperty().bind(pikaReaderListView.getSelectionModel().selectedItemProperty().isNull().and(manualOK.not()));
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == selectButtonType) {
+                DiscoveredReader selected = pikaReaderListView.getSelectionModel().getSelectedItem();
+                if (selected != null) return selected;
+                return manualOK.get() ? manualReader.get() : null;
+            }
+            return null;
+        });
+
+        Optional<DiscoveredReader> result = dialog.showAndWait();
+        dialogClosed.set(true);
+        manualDebounce.stop();
+
+        result.ifPresent(r -> {
+            logger.debug("Using PikaReader {} at {}", r.unitID(), baseURL(r.secure(), r.host(), r.port()));
+            useReader(r.host(), r.port(), r.secure(), r.unitID());
+        });
     }
 
-    public void updateReaderSettings() {
+    // Sets a status label's text, colored with a style class from
+    // PikaReaderDirect.css (ok-label, warning-label) or plain if null
+    private static void setStatus(Label label, String text, String styleClass) {
+        label.getStyleClass().removeAll("ok-label", "warning-label");
+        if (styleClass != null) label.getStyleClass().add(styleClass);
+        label.setText(text);
     }
 
-    private static class PikaReader {
+    // ------------------------------------------------------------------
+    // Properties for the controller
+    // ------------------------------------------------------------------
 
+    BooleanProperty readingProperty() { return readingProperty; }
+    BooleanProperty connectedProperty() { return connectedProperty; }
+    BooleanProperty enabledProperty() { return enabledProperty; }
+    BooleanProperty configuredProperty() { return configuredProperty; }
+    BooleanProperty secureProperty() { return secureProperty; }
+    DoubleProperty batteryProperty() { return batteryProperty; }
+    StringProperty rfidReaderProblemProperty() { return rfidReaderProblemProperty; }
+    StringProperty readerNameProperty() { return readerNameProperty; }
+    StringProperty readerIPProperty() { return readerIPProperty; }
+    StringProperty readerPortProperty() { return readerPortProperty; }
+    StringProperty lastReadProperty() { return lastReadProperty; }
+    IntegerProperty lastUpdatedProperty() { return lastUpdatedProperty; }
+    BooleanProperty profileSupportedProperty() { return profileSupportedProperty; }
+    StringProperty profileIDProperty() { return profileIDProperty; }
+    StringProperty profileNameProperty() { return profileNameProperty; }
+    ObservableList<Profile> getProfiles() { return profiles; }
+
+    // ------------------------------------------------------------------
+    // Helper types
+    // ------------------------------------------------------------------
+
+    /**
+     * A PikaReader reader profile (e.g. Finish Mats), as reported by the
+     * PikaReader /profiles api and the profile object in the STATUS messages.
+     */
+    public record Profile(String id, String name, String description) {
         @Override
-        public int hashCode() {
-            int hash = 7 + IP.hashCode() + MAC.hashCode();
-            return hash;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (obj == null) {
-                return false;
-            }
-            if (getClass() != obj.getClass()) {
-                return false;
-            }
-            final PikaReader other = (PikaReader) obj;
-            if (!this.IP.getValueSafe().equals(other.IP.getValueSafe())) {
-                return false;
-            }
-            if (!this.MAC.getValueSafe().equals(other.MAC.getValueSafe())) {
-                return false;
-            }
-            return true;
-        }
-        public StringProperty IP = new SimpleStringProperty();
-        public StringProperty MAC = new SimpleStringProperty();
-        public StringProperty PORT = new SimpleStringProperty();
-
-        public PikaReader() {
-
-        }
-
-        public PikaReader(String host) {
-            IP.set(host);
-        }
-
-        public StringProperty ipProperty() {
-            return IP;
-        }
-
-        public StringProperty macProperty() {
-            return MAC;
-        }
-
-        public StringProperty portProperty() {
-            return PORT;
-        }
-
         public String toString() {
-            return IP.getValueSafe() + " (" + MAC.getValueSafe() + ")";
+            return name; // Controls what is displayed in the ChoiceBox
         }
     }
 
-    static String stringToHex(String string) {
-        StringBuilder buf = new StringBuilder(200);
-        for (char ch : string.toCharArray()) {
-            if (buf.length() > 0) {
-                buf.append(' ');
-            }
-            buf.append(String.format("%02x", (int) ch));
-        }
-        return buf.toString();
-    }
-
-    private static class RewindData {
-
-        public LocalDate startDate;
-        public LocalDate endDate;
-        public Duration startTime;
-        public Duration endTime;
-
-        public RewindData() {
+    private record DiscoveredReader(String host, String unitID, String port, boolean secure) {
+        @Override
+        public String toString() {
+            return unitID + " (" + host + ")";
         }
     }
 
-    private static class PikaReaderClock {
-
-        public LocalDate date;
-        public LocalTime time;
-        public Duration tzOffset;
-        public Boolean tzHalfOffsetSupport;
-        public LocalTime takenAt;
-
-        public PikaReaderClock() {
-        }
-    }
+    private record RewindRange(LocalDateTime from, LocalDateTime to) {}
 
     private class EventWebSocketClient extends WebSocketClient {
+        private long messageCounter = 0;
 
-        private Integer messageCounter = 0;
-        private String wsURI;
-        PikaReaderDirectReader reader;
-
-        public EventWebSocketClient(URI serverURI) {
-            super(serverURI);
-        }
-
-        EventWebSocketClient(String ws, PikaReaderDirectReader reader) throws URISyntaxException {
+        EventWebSocketClient(String ws) throws URISyntaxException {
             super(new URI(ws));
-            this.reader = reader;
         }
 
         @Override
         public void onOpen(ServerHandshake handshakedata) {
-            logger.debug("new connection opened");
+            logger.debug("Connection to {} opened", readerNameProperty.getValueSafe());
         }
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            logger.debug("closed with exit code " + code + " additional info: " + reason);
+            logger.warn("PikaReader {} closed with code {}: {}", readerNameProperty.getValueSafe(), code, reason);
 
+            // A client we have already replaced (e.g. a different unit was selected)
+            if (this != webSocketClient) return;
+
+            Platform.runLater(() -> {
+                if (this == webSocketClient) connectedProperty.set(false);
+            });
+
+            if (enabledProperty.get()) {
+                // Reconnect in 5 seconds. The shared scheduler just waits,
+                // the actual work is done on the FX thread (UI-bound properties).
+                RECONNECT.schedule(() -> Platform.runLater(() -> {
+                    if (!enabledProperty.get() || this != webSocketClient) return; // disconnected or replaced in the mean time
+                    logger.debug("Attempting to reconnect to {}", readerNameProperty.getValueSafe());
+                    connectedProperty.set(false);
+                    connect();
+                }), 5, TimeUnit.SECONDS);
+            }
         }
 
         @Override
         public void onMessage(String message) {
-            logger.trace("Received message #" + messageCounter++ + ": " + message + " Thread: " + Thread.currentThread().getName());
-            reader.processLine(message);
+            logger.trace("Received message #{}: {}", messageCounter++, message);
+            processLine(message);
         }
 
         @Override
@@ -1770,8 +1285,7 @@ public class PikaReaderDirectReader implements TimingReader {
 
         @Override
         public void onError(Exception ex) {
-            System.err.println("an error occurred:" + ex);
+            logger.warn("Websocket error for {}: {}", readerNameProperty.getValueSafe(), ex.toString());
         }
-
     }
 }

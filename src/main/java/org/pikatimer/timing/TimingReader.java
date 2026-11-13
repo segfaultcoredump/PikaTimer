@@ -40,8 +40,15 @@ public interface TimingReader {
     public void startReading();
     
     // Used when the reader is no longer needed. It should 
-    public void stopReading(); 
-    
+    public void stopReading();
+
+    // Called after all of the reads for this input have been cleared
+    // (Clear Reads). By default the reader is stopped. Readers that should keep
+    // going (e.g. a live connection to a reader) can override this.
+    public default void readsCleared() {
+        stopReading();
+    }
+
     // We'll keep this so that if somebody is actively reading, it floats a notification or UI to the top. 
     // i.e., the "Timing" tab turns green or something. 
     public BooleanProperty getReadingStatus();

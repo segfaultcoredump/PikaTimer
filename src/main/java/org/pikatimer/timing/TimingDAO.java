@@ -275,7 +275,10 @@ public class TimingDAO {
         // and add them to the cookedTimesList;
         
         if (cookedTimeList == null) {
-            cookedTimeList =FXCollections.observableArrayList(CookedTimeData.extractor());
+            // No extractor: with hundreds of thousands of times that is two
+            // listeners per time, and nothing needs the update events. The
+            // timing table edits the ignore flag and saves it directly. 
+            cookedTimeList =FXCollections.observableArrayList();
             
             Task fetchCookedFromDB = new Task<Void>() {
                 
@@ -347,7 +350,9 @@ public class TimingDAO {
                             s.getTransaction().commit(); 
 
                             Platform.runLater(() -> {
-                                FxBulk.addAll(cookedTimeList, newTimes);
+                                // A plain add is one cheap change. The timing table 
+                                // merges new times into its sorted view in the background. 
+                                cookedTimeList.addAll(newTimes);
                             });
                             Set<String> bibs = new HashSet();
                             pending.stream().forEach(c -> {

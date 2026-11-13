@@ -443,7 +443,7 @@ public class TimingLocationInput implements TimingListener{
     }
     
     public void clearLocalReads() {
-        stopReader();
+        timingReader.readsCleared();
         // blow away the rawTimeSet
         if (rawTimeSet != null && !rawTimeSet.isEmpty()) {
             rawTimeSet.clear();

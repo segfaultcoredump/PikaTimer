@@ -1,0 +1,31 @@
+/* -------------------------------------------------------------
+   PikaReader input controls (PikaReaderDirectReader.fxml) and the
+   PikaReader selection dialog.
+   ------------------------------------------------------------- */
+
+/* Reader profile ChoiceBox: keep the profile name readable while it is
+   disabled (reader is reading). Modena fades both .choice-box:disabled and
+   .label:disabled to 40% opacity, so both need to be undone. */
+.choice-box.profile-choice-box:disabled {
+    -fx-opacity: 1.0;
+}
+/* The ChoiceBox's text is an internal Label, which is also disabled and
+   gets Modena's .label:disabled fade on its own */
+.choice-box.profile-choice-box:disabled > .label {
+    -fx-opacity: 1.0;
+}
+/* Still hint that it can't be changed: fade just the arrow */
+.choice-box.profile-choice-box:disabled > .open-button > .arrow {
+    -fx-opacity: 0.3;
+}
+
+/* Problems (reader not responding, low battery, RFID reader down,
+   a bad manually entered address) */
+.label.warning-label {
+    -fx-text-fill: #cc0000;
+}
+
+/* Good news text (e.g. a PikaReader found at a manually entered address) */
+.label.ok-label {
+    -fx-text-fill: #00A37A;
+}

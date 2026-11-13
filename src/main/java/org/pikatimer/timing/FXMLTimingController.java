@@ -23,6 +23,7 @@ import org.pikatimer.race.Race;
 import org.pikatimer.race.Wave;
 import org.pikatimer.results.ResultsDAO;
 import org.pikatimer.util.AlphanumericComparator;
+import org.pikatimer.util.BackgroundSortedFilteredList;
 import org.pikatimer.util.DurationFormatter;
 import org.pikatimer.util.DurationParser;
 import org.pikatimer.util.DurationStringConverter;
@@ -37,10 +38,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javafx.animation.KeyFrame;
+import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
@@ -55,8 +57,6 @@ import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ListChangeListener.Change;
 import javafx.collections.ObservableList;
-import javafx.collections.transformation.FilteredList;
-import javafx.collections.transformation.SortedList;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -72,7 +72,9 @@ import javafx.scene.control.ButtonBar.ButtonData;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Dialog;
+import javafx.scene.control.IndexedCell;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -86,6 +88,7 @@ import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldListCell;
+import javafx.scene.control.skin.VirtualFlow;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -130,7 +133,7 @@ public class FXMLTimingController {
     @FXML private Label listSizeLabel;
     @FXML private Label filteredSizeLabel;
     @FXML private TableView<CookedTimeData> timeTableView;
-    @FXML private TableColumn bibColumn;
+    @FXML private TableColumn<CookedTimeData,String> bibColumn;
     @FXML private TableColumn<CookedTimeData,String> chipColumn;
     @FXML private TableColumn<CookedTimeData,Duration> timeColumn;
     @FXML private TableColumn<CookedTimeData,String> nameColumn;
@@ -156,7 +159,7 @@ public class FXMLTimingController {
     @FXML private ComboBox<Race> assignToRaceComboBox;
     
     private ObservableList<CookedTimeData> cookedTimeList;
-    FilteredList<CookedTimeData> filteredTimesList;
+    private BackgroundSortedFilteredList<CookedTimeData> timeView;
     private ObservableList<TimingLocation> timingLocationList;
     private TimingLocation selectedTimingLocation;
     private RaceDAO raceDAO;
@@ -245,18 +248,17 @@ public class FXMLTimingController {
 
         
         
-        // Deal with the filtering and such. 
-        // TODO Only filter on the visible colums 
-        // 1. Wrap the ObservableList in a FilteredList (initially display all data).
+        // The table can hold a million or more times, so the filtering and
+        // sorting happen in the background (see BackgroundSortedFilteredList)
+        // and the predicate / sort keys only use snapshots taken here on the
+        // JavaFX thread. 
         cookedTimeList = timingDAO.getCookedTimes();
-        filteredTimesList = new FilteredList<>(cookedTimeList, p -> true);
+        timeView = new BackgroundSortedFilteredList<>(cookedTimeList, "Thread-TimingTableView", javafx.util.Duration.millis(250));
+        timeView.setUpdateHooks(this::beforeTimeViewUpdate, this::afterTimeViewUpdate);
 
-        // 2. Set the filter Predicate whenever the filter changes.
+        // Set the filter Predicate whenever the filter changes.
         // We will use a Timeline to act as a debounce so the filter will only
         // fire after .25 seconds of no input. 
-        
-        // TODO: Rework to implement the asynchronous background thread 
-        // for filtering and updates every 500ms and not 20x per second. 
         Timeline debounceTimeline = new Timeline();
         javafx.util.Duration bounceTime = javafx.util.Duration.millis(250);
         searchTextBox.textProperty().addListener((observable, oldValue, newValue) -> {
@@ -279,24 +281,37 @@ public class FXMLTimingController {
         });
         
         searchScopeCheckComboBox.getItems().setAll(timingLocationList);
-
-        // 3. Wrap the FilteredList in a SortedList. 
-        SortedList<CookedTimeData> sortedTimeList = new SortedList<>(filteredTimesList);
-
-        // 4. Bind the SortedList comparator to the TableView comparator.
-        sortedTimeList.comparatorProperty().bind(timeTableView.comparatorProperty());
         
-        // 5. Set the cell factories and stort routines... 
-        bibColumn.setCellValueFactory(new PropertyValueFactory<>("bib"));
-        bibColumn.setComparator(new AlphanumericComparator());
+        // The name filter / sort work off of a snapshot of the participants, 
+        // so take a new one once the participants settle down after a change. 
+        PauseTransition participantsChanged = new PauseTransition(javafx.util.Duration.seconds(1));
+        participantsChanged.setOnFinished(e -> {
+            if (!searchTextBox.getText().isEmpty()) updateFilterPredicate();
+            if (timeTableView.getSortOrder().contains(nameColumn)) updateSort();
+        });
+        participantDAO.listParticipants().addListener((ListChangeListener.Change<? extends Participant> c) -> {
+            if (Platform.isFxApplicationThread()) participantsChanged.playFromStart();
+            else Platform.runLater(participantsChanged::playFromStart);
+        });
+
+        // The table does not sort its items itself, it hands the sort order 
+        // to the background list. 
+        timeTableView.setSortPolicy(tv -> {
+            updateSort();
+            return true;
+        });
+        
+        // Set the cell factories and stort routines... 
+        // Bib, Chip, and Time use a fixed width font (see fxmlpika.css)
+        bibColumn.setCellValueFactory(c -> c.getValue().bibProperty());
         bibColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
+        bibColumn.getStyleClass().add("mono-cell");
         
         chipColumn.setCellValueFactory(c -> c.getValue().rawChipIDProperty());
-        chipColumn.setComparator(new AlphanumericComparator());
         chipColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
+        chipColumn.getStyleClass().add("mono-cell");
         
-        // Sort on the Duration itself (the default comparator uses its natural 
-        // order) and only turn it into text for the cells that are on the screen. 
+        // Only turn the Duration into text for the cells that are on the screen. 
         timeColumn.setCellValueFactory(c -> c.getValue().timestampProperty());
         timeColumn.setCellFactory(column -> new TableCell<CookedTimeData,Duration>() {
             @Override
@@ -307,14 +322,13 @@ public class FXMLTimingController {
             }
         });
         timeColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
+        timeColumn.getStyleClass().add("mono-cell");
         
         nameColumn.setCellValueFactory(cellData -> {
             String bib = cellData.getValue().getBib();
             Participant p = participantDAO.getParticipantByBib(bib);
             if (p == null) { 
-                if (bib.startsWith("Unmapped")) return new SimpleStringProperty("Unknown Chip");
-                if (cellData.getValue().getRawChipID().equals("0")) return new SimpleStringProperty("START TRIGGER");
-                return new SimpleStringProperty("Unregistered bib: " + bib);
+                return new SimpleStringProperty(unregisteredName(cellData.getValue()));
             } else {
                 return p.fullNameProperty();
             }
@@ -337,44 +351,18 @@ public class FXMLTimingController {
             }
         });
         
-        backupColumn.setCellValueFactory(new PropertyValueFactory<>("backupTime"));
-        //backupColumn.setCellFactory(tc -> new CheckBoxTableCell<>());
+        backupColumn.setCellValueFactory(c -> c.getValue().backupTimeProperty());
         backupColumn.setCellFactory(column -> new BackupFlagTableCell());
         backupColumn.setEditable(false);
         backupColumn.setStyle( "-fx-alignment: CENTER;");
         
-        ignoreColumn.setCellValueFactory(new PropertyValueFactory<>("ignoreTime"));
-        ignoreColumn.setCellFactory(tc -> new CheckBoxTableCell<>());
+        // The cell saves the change itself (the cooked time list has no 
+        // extractor to tell anyone that the flag changed)
+        ignoreColumn.setCellValueFactory(c -> c.getValue().ignoreTimeProperty());
+        ignoreColumn.setCellFactory(tc -> new IgnoreFlagTableCell());
         
-        
-        ///
-        // FIX THIS if we permit multiple select and a right mouse click to set the ignored state
-        // for multiple times at once.... (use c.getFrom -> c.getTo)
-        // until then this is simpler
-        ///
-
-        sortedTimeList.addListener((ListChangeListener.Change<? extends CookedTimeData> c) -> {
-            while (c.next()) {
-                if (c.wasUpdated()) {
-                    timingDAO.saveCookedTime(sortedTimeList.get(c.getFrom()));
-                    logger.debug("CookedTimeData "+sortedTimeList.get(c.getFrom()).getBib()+" changed value to " +sortedTimeList.get(c.getFrom()).getIgnoreTime());
-                }
-            }
-        });
-//        ///It is not this easy: CheckBoxTableCell does ot fire an onEditCommit action
-//        //Need a change listener for the ignoreColumn. Find the cooked read, flag it as an ignore, reprocess the bib
-//        ignoreColumn.setOnEditCommit((CellEditEvent<CookedTimeData, Boolean> t) -> {
-//            CookedTimeData ct = t.getTableView().getItems().get(t.getTablePosition().getRow());
-//            logger.debug("Ignore flag for CookedTime for bib " + ct.getBib() + " at " + ct.getTimestamp().toString() + " is now " + ct.ignoreTimeProperty().toString());
-//            timingDAO.saveCookedTime(ct);
-//        });
-
-        
-        
-        
-        
-        // 6. Add sorted (and filtered) data to the table.
-        timeTableView.setItems(sortedTimeList);
+        // Add the sorted (and filtered) data to the table.
+        timeTableView.setItems(timeView);
         timeTableView.setPlaceholder(new Label("No times have been entered yet"));
         
         // set the default sort order to the finish time
@@ -382,12 +370,8 @@ public class FXMLTimingController {
         timeTableView.getSortOrder().clear();
         timeTableView.getSortOrder().add(timeColumn);
         
-        // Set the bib number to be an alphanumeric sort
-        bibColumn.setComparator(new AlphanumericComparator());
-        
-        
         listSizeLabel.textProperty().bind(Bindings.size(cookedTimeList).asString());
-        filteredSizeLabel.textProperty().bind(Bindings.size(sortedTimeList).asString());
+        filteredSizeLabel.textProperty().bind(Bindings.size(timeView).asString());
         
         
         // load up the TimingLocationDetailsPane
@@ -1443,64 +1427,170 @@ public class FXMLTimingController {
         }
     }
     
+    // What the name column shows for a time that does not belong to a participant
+    private static String unregisteredName(CookedTimeData c) {
+        String bib = c.getBib();
+        if (bib == null) return "";
+        if (bib.startsWith("Unmapped")) return "Unknown Chip";
+        if ("0".equals(c.getRawChipID())) return "START TRIGGER";
+        return "Unregistered bib: " + bib;
+    }
+    
+    // bib -> full name for every participant. The participant map in the 
+    // ParticipantDAO is a plain HashMap and not safe to read from the 
+    // background sort/filter thread, so take a copy here. 
+    private Map<String,String> participantNameSnapshot(boolean stripAccents) {
+        Map<String,String> names = new HashMap<>();
+        participantDAO.listParticipants().forEach(p -> {
+            String bib = p.getBib();
+            if (bib == null || bib.isEmpty()) return;
+            String name = p.fullNameProperty().getValueSafe();
+            names.put(bib, stripAccents ? StringUtils.stripAccents(name) : name);
+        });
+        return names;
+    }
+    
     private void updateFilterPredicate(){
         logger.trace("updateFilterPredicate called...");
-        filteredTimesList.setPredicate(cookedRead -> {
-            // If filter text is empty, display all persons.
-           // logger.debug("filteredParticpantsList.predicateProperty changing...");
-            if (searchTextBox.textProperty().getValueSafe().isEmpty() && searchScopeCheckComboBox.getCheckModel().getCheckedItems().isEmpty()) {
-                //logger.trace("...both are empty: true");
-                return true;
-            }
-
-            BooleanProperty waveFilterMatch = new SimpleBooleanProperty(false);
-
-            if (!searchScopeCheckComboBox.getCheckModel().getCheckedItems().isEmpty()) {
-                searchScopeCheckComboBox.getCheckModel().getCheckedItems().forEach(tl -> {
-                        if (tl != null && tl.getID().equals(cookedRead.getTimingLocationId())) waveFilterMatch.set(true);
-                    }); 
-            } else {
-                //logger.trace("...searchWaveComboBox is empty: true");
-
-                waveFilterMatch.set(true);
-            }
-
-            if (searchTextBox.textProperty().getValueSafe().isEmpty() && waveFilterMatch.getValue()) {
-                //logger.trace("...filterField is empty and wave matches");
-                return true;
-            } else if (!waveFilterMatch.getValue()) {
-                //logger.trace("...filterField is empty and wave does not match");
-                return false;
-            } 
-
-            // Compare first name and last name of every person with filter text.
-            String lowerCaseFilter = "(.*)(" + searchTextBox.textProperty().getValueSafe() + ")(.*)";
-            try {
-                Pattern pattern =  Pattern.compile(lowerCaseFilter, Pattern.CASE_INSENSITIVE);
-
-                String name; 
-                Participant p = participantDAO.getParticipantByBib(cookedRead.getBib());
-                if (p == null) { 
-                    if (cookedRead.getBib().startsWith("Unmapped")) name="Unknown Chip";
-                    else if (cookedRead.getRawChipID().equals("0")) name="START TRIGGER";
-                    else name="Unregistered bib: " + cookedRead.getBib();
-                } else {
-                    name =  StringUtils.stripAccents(p.fullNameProperty().get());
-                }
-                
-
-                if (    pattern.matcher(name).matches() ||
-                        pattern.matcher(cookedRead.getRawChipID()).matches() ||
-                        pattern.matcher(cookedRead.getBib()).matches()) {
-                    return true; // Filter matches first/last/bib.
-                } 
-
-            } catch (PatternSyntaxException e) {
-                
-                return true;
-            }
-            return false; // Does not match.
+        
+        final String filterText = searchTextBox.textProperty().getValueSafe();
+        final Set<Integer> locationIDs = new HashSet<>();
+        searchScopeCheckComboBox.getCheckModel().getCheckedItems().forEach(tl -> {
+            if (tl != null) locationIDs.add(tl.getID());
         });
+        
+        // If both are empty, display everything
+        if (filterText.isEmpty() && locationIDs.isEmpty()) {
+            timeView.setFilter(null);
+            return;
+        }
+        
+        // Everything the predicate needs is captured here, it runs on a 
+        // background thread. 
+        final String needle = StringUtils.stripAccents(filterText);
+        final Map<String,String> names = filterText.isEmpty() ? Map.of() : participantNameSnapshot(true);
+        
+        timeView.setFilter(cookedRead -> {
+            if (!locationIDs.isEmpty() && !locationIDs.contains(cookedRead.getTimingLocationId())) return false;
+            if (needle.isEmpty()) return true;
+            
+            // Match the name, chip, or bib
+            if (StringUtils.containsIgnoreCase(cookedRead.getBib(), needle)) return true;
+            if (StringUtils.containsIgnoreCase(cookedRead.getRawChipID(), needle)) return true;
+            String name = names.get(cookedRead.getBib());
+            if (name == null) name = unregisteredName(cookedRead);
+            return StringUtils.containsIgnoreCase(name, needle);
+        });
+    }
+    
+    // Turn the table's sort order into sort keys for the background list.
+    // Like the filter, the keys can only use snapshots. 
+    private void updateSort() {
+        List<BackgroundSortedFilteredList.SortKey<CookedTimeData>> keys = new ArrayList<>();
+        
+        Map<String,String> names = null;
+        Map<Integer,String> locationNames = new HashMap<>();
+        Map<Integer,String> inputNames = new HashMap<>();
+        timingLocationList.forEach(tl -> {
+            locationNames.put(tl.getID(), tl.getLocationName());
+            tl.getInputs().forEach(tli -> inputNames.put(tli.getID(), tli.getLocationName()));
+        });
+        
+        for (TableColumn<CookedTimeData,?> col: timeTableView.getSortOrder()) {
+            boolean desc = col.getSortType() == TableColumn.SortType.DESCENDING;
+            if (col == bibColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.of(CookedTimeData::getBib, new AlphanumericComparator<String>(), desc));
+            } else if (col == chipColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.of(CookedTimeData::getRawChipID, new AlphanumericComparator<String>(), desc));
+            } else if (col == timeColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(CookedTimeData::getTimestamp, desc));
+            } else if (col == nameColumn) {
+                if (names == null) names = participantNameSnapshot(false);
+                final Map<String,String> n = names;
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(c -> {
+                    String name = n.get(c.getBib());
+                    return name != null ? name : unregisteredName(c);
+                }, desc));
+            } else if (col == locationColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(c -> locationNames.getOrDefault(c.getTimingLocationId(), "Unknown"), desc));
+            } else if (col == inputColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(c -> inputNames.getOrDefault(c.getTimingLocationInputId(), "Unknown"), desc));
+            } else if (col == backupColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(CookedTimeData::getBackupTime, desc));
+            } else if (col == ignoreColumn) {
+                keys.add(BackgroundSortedFilteredList.SortKey.natural(CookedTimeData::getIgnoreTime, desc));
+            }
+        }
+        timeView.setSortKeys(keys);
+    }
+    
+    // Selection and scroll position to put back after the time view changes
+    private CookedTimeData selectedTimeBeforeUpdate;
+    private CookedTimeData topTimeBeforeUpdate;
+    
+    private void beforeTimeViewUpdate(BackgroundSortedFilteredList.Update kind) {
+        selectedTimeBeforeUpdate = timeTableView.getSelectionModel().getSelectedItem();
+        topTimeBeforeUpdate = null;
+        if (kind == BackgroundSortedFilteredList.Update.ROWS_ADDED) return;
+        
+        // A whole new list (a resort, a new filter, or a reprocess)
+        if (timeTableView.lookup(".virtual-flow") instanceof VirtualFlow<?> flow) {
+            IndexedCell<?> first = flow.getFirstVisibleCell();
+            if (first != null && first.getIndex() >= 0 && first.getIndex() < timeView.size()) {
+                topTimeBeforeUpdate = timeView.get(first.getIndex());
+            }
+        }
+        // The TableView is slow to work out where a selected row went in a 
+        // very large replace, and we put it back ourselves anyway
+        if (selectedTimeBeforeUpdate != null) timeTableView.getSelectionModel().clearSelection();
+    }
+    
+    private void afterTimeViewUpdate(BackgroundSortedFilteredList.Update kind) {
+        int selected = timeView.indexOfIdentity(selectedTimeBeforeUpdate);
+        if (selected >= 0 && timeTableView.getSelectionModel().getSelectedIndex() != selected) {
+            timeTableView.getSelectionModel().clearAndSelect(selected);
+        } else if (selected < 0 && selectedTimeBeforeUpdate != null) {
+            timeTableView.getSelectionModel().clearSelection();
+        }
+        
+        if (kind == BackgroundSortedFilteredList.Update.VIEW_CHANGED) {
+            // A new view: show the selected time, or start at the top
+            timeTableView.scrollTo(Math.max(selected, 0));
+        } else if (kind == BackgroundSortedFilteredList.Update.SOURCE_REPLACED) {
+            // Same view, new data: try to stay where we were
+            int top = timeView.indexOfIdentity(topTimeBeforeUpdate);
+            if (top >= 0) timeTableView.scrollTo(top);
+        }
+        selectedTimeBeforeUpdate = null;
+        topTimeBeforeUpdate = null;
+    }
+
+    private class IgnoreFlagTableCell extends TableCell<CookedTimeData, Boolean> {
+        private final CheckBox checkBox = new CheckBox();
+        
+        IgnoreFlagTableCell() {
+            setAlignment(Pos.CENTER);
+            setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            checkBox.setOnAction(e -> {
+                CookedTimeData c = getTableRow() == null ? null : getTableRow().getItem();
+                if (c == null) return;
+                c.setIgnoreTime(checkBox.isSelected());
+                logger.debug("CookedTimeData " + c.getBib() + " changed value to " + c.getIgnoreTime());
+                timingDAO.saveCookedTime(c);
+                if (timeTableView.getSortOrder().contains(ignoreColumn)) updateSort();
+            });
+        }
+        
+        @Override
+        protected void updateItem(Boolean ignore, boolean empty) {
+            super.updateItem(ignore, empty);
+            if (empty || ignore == null) {
+                setGraphic(null);
+            } else {
+                checkBox.setSelected(ignore);
+                setGraphic(checkBox);
+            }
+        }
     }
 
         private class BackupFlagTableCell extends TableCell<CookedTimeData, Boolean> {

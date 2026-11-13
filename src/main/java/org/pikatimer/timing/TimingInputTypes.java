@@ -21,6 +21,7 @@ import org.pikatimer.timing.reader.PikaRFIDFileReader;
 import org.pikatimer.timing.reader.PikaTextFileReader;
 import org.pikatimer.timing.reader.PikaReaderDirectReader;
 import org.pikatimer.timing.reader.TridentDirectReader;
+import org.pikatimer.timing.reader.SelectTimerReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -36,7 +37,8 @@ public enum TimingInputTypes {
     RFIDFile,
     RFIDDirect,
     Trident,
-    TextFile;
+    TextFile,
+    SelectTimer;
 
     
     private static final Map<TimingInputTypes, String> InputMap = createMap();
@@ -49,6 +51,7 @@ public enum TimingInputTypes {
         result.put(RFIDDirect, "RFID Ultra/Joey (TCP)");
         result.put(Trident, "Trident TimeMachine (TCP)");
         result.put(TextFile, "Text File (Bib/Chip + Time)");
+        result.put(SelectTimer, "Automatic Select Timer (Phone/Tablet)");
 
         return Collections.unmodifiableMap(result);
     }
@@ -72,6 +75,8 @@ public enum TimingInputTypes {
                 return new TridentDirectReader();
             case TextFile:
                 return new PikaTextFileReader();
+            case SelectTimer:
+                return new SelectTimerReader();
         }
         return null;
     }

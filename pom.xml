@@ -123,6 +123,21 @@
             <version>1.6.0</version>
             <type>jar</type>
         </dependency>
+        <!-- Self-signed certificate for the HTTPS port (the select timer web app needs a
+             secure page for camera access). Used as a library only, not as a JCE provider. -->
+        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcpkix-jdk18on -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.87</version>
+        </dependency>
+        <!-- QR codes for the select timer link -->
+        <!-- https://mvnrepository.com/artifact/com.google.zxing/core -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.4</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -163,7 +178,19 @@
                         </goals>
                         <configuration>
                             <shadedArtifactAttached>true</shadedArtifactAttached>
-                            <shadedClassifierName>uber</shadedClassifierName> 
+                            <shadedClassifierName>uber</shadedClassifierName>
+                            <filters>
+                                <!-- Signed jars (BouncyCastle) can't keep their signatures once merged -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/*.EC</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                         </configuration>
                     </execution>
                 </executions>

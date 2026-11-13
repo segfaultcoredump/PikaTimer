@@ -714,7 +714,15 @@ public class TimingDAO {
     }
 
     public void removeTimingLocation(TimingLocation tl) {
-        
+
+        // stop the readers for the location's inputs
+        new ArrayList<>(tl.getInputs()).forEach(tli -> {
+            try {
+                tli.stopReader();
+            } catch (Exception ex) {
+                logger.warn("Unable to stop the reader for input " + tli.getLocationName(), ex);
+            }
+        });
         clearRawTimes(tl);
         Session s=HibernateUtil.getSessionFactory().getCurrentSession();
         s.beginTransaction();
@@ -847,6 +855,12 @@ public class TimingDAO {
       
     }
     public void removeTimingLocationInput(TimingLocationInput t) {
+        // stop the reader (disconnect from the hardware, stop accepting reads)
+        try {
+            t.stopReader();
+        } catch (Exception ex) {
+            logger.warn("Unable to stop the reader for input " + t.getLocationName(), ex);
+        }
         // clear out any raw times
         clearRawTimes(t); 
         // clear out any cooked times

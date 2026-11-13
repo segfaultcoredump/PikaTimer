@@ -194,25 +194,38 @@ public class TimingLocationInput implements TimingListener{
     }
     
     public void initializeReader(Pane readerDisplayPane) {
-        
+        initializeReader();
+        timingReader.showControls(readerDisplayPane);
+    }
+
+    /**
+     * Set up the reader without showing its controls. Readers are normally
+     * set up when their timing location is shown in the Timing tab; this lets
+     * a reader that is reached some other way (e.g. a select timer device
+     * calling in) start before then. Must be called on the FX thread.
+     */
+    public void initializeReader() {
         // only do this once to prevent issues
         if (!timingReaderInitialized.getValue()) {
             timingReader.setTimingListener(this);
-            
-            
+
+
             timingReaderInitialized.setValue(Boolean.TRUE);
-        
+
             if (rawTimeSet == null) {
-                
-                rawTimeSet = Collections.newSetFromMap(new ConcurrentHashMap<>()); 
-                
+
+                rawTimeSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
                 rawTimeSet.addAll(timingDAO.getRawTimes(this));
-                logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
+                logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times");
                 updateReadCount();
-            } 
+            }
         }
-        
-        timingReader.showControls(readerDisplayPane);
+    }
+
+    @Transient
+    public TimingReader getTimingReader() {
+        return timingReader;
     }
 
     

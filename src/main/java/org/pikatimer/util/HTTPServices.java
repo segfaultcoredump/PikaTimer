@@ -22,16 +22,25 @@ import org.pikatimer.participant.ParticipantDAO;
 import org.pikatimer.race.RaceDAO;
 import org.pikatimer.results.ProcessedResult;
 import org.pikatimer.results.ResultsDAO;
+import org.pikatimer.timing.reader.SelectTimerService;
 import io.javalin.Javalin;
+import io.javalin.http.staticfiles.Location;
 //import static io.javalin.apibuilder.ApiBuilder.get;
 //import static io.javalin.apibuilder.ApiBuilder.path;
 import io.javalin.websocket.WsContext;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.InterfaceAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -41,6 +50,14 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javafx.concurrent.Task;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.SecureRequestCustomizer;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.slf4j.LoggerFactory;
@@ -54,8 +71,17 @@ public class HTTPServices {
 
     private static final List<WsContext> wsSessionList = new ArrayList();
     private Integer port = 8080;
-    private final Javalin server = Javalin.create();
+    private Integer httpsPort = -1;
+    private final Javalin server;
     private String url = "Not Available";
+    
+    // Where the select timer web app's files are served from
+    public static final String SELECT_TIMER_ASSETS = "/select/assets";
+    
+    // HTTPS (for the select timer web app)
+    private volatile Server jettyServer = null;
+    private SslContextFactory.Server sslContextFactory = null;
+    private volatile SelfSignedCertificate certificate = null;
     private static final BlockingQueue<String> eventQueue = new ArrayBlockingQueue(100000);
     
     private static Map<WsContext,Set<String>> announcerDupeCheckHash = new HashMap();
@@ -94,25 +120,62 @@ public class HTTPServices {
             logger.info("System IP Address : " + ip); 
             url = "http://" + ip;
         
+        server = Javalin.create(config -> {
+            // The select timer web app (page, scripts, OCR runtime and models).
+            // Everything is served from here since there may be no internet.
+            // The OCR runtime and models are large and rarely change: let the
+            // devices cache them for a day. (Not precompress, Javalin won't
+            // precompress files over 2 MB; they are compressed as they are sent.)
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = SELECT_TIMER_ASSETS + "/lib";
+                staticFiles.directory = "/web/select/lib";
+                staticFiles.location = Location.CLASSPATH;
+                staticFiles.headers = Map.of(
+                        "Cache-Control", "max-age=86400",
+                        "Cross-Origin-Opener-Policy", "same-origin",
+                        "Cross-Origin-Embedder-Policy", "require-corp",
+                        "Cross-Origin-Resource-Policy", "same-origin");
+            });
+            // The app itself: always check for a newer copy
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = SELECT_TIMER_ASSETS;
+                staticFiles.directory = "/web/select";
+                staticFiles.location = Location.CLASSPATH;
+                staticFiles.headers = Map.of(
+                        "Cache-Control", "no-cache",
+                        "Cross-Origin-Opener-Policy", "same-origin",
+                        "Cross-Origin-Embedder-Policy", "require-corp",
+                        "Cross-Origin-Resource-Policy", "same-origin");
+            });
+            // Keep a handle on the Jetty server so the HTTPS connector can be added
+            config.jetty.modifyServer(s -> jettyServer = s);
+        });
+        
+        // Routes go in before the server is started
+        setupHTTPDRoutes();
+        SelectTimerService.getInstance().addRoutes(server);
         
         //server.enableCaseSensitiveUrls();
         
         // Lets start at 8080 and just walk up from there until we find a free port
-        // but call it quits at 9,000 
-        while(bound.equals(false) && port < 9000) {
+        // but call it quits at 9,000. Look for the port first: a Javalin server
+        // can't be started again after a failed start.
+        port = findFreePort(8080, 9000, -1);
+        if (port > 0) {
             try {
-                //server.port(port).start();
                 server.start(port);
                 bound = true;
                 url += ":" + port;
             } catch (Exception e) {
-                port++;
+                logger.error("Unable to start the web server on port " + port, e);
             }
+        } else {
+            logger.error("Unable to find a free port for the web server");
         }
         
         logger.info("Web server listening on " + url); 
         
-        setupHTTPDRoutes();
+        startHTTPS();
         startDiscoveryListener();
         startEventQueueProcessor();
     
@@ -122,12 +185,146 @@ public class HTTPServices {
         return port;
     }
     
+    /**
+     * @return the HTTPS port, or -1 if HTTPS is not available
+     */
+    public Integer httpsPort(){
+        return httpsPort;
+    }
+    
     public String getUrl(){
         return url;
     }
     
     public void stopHTTPService(){
         server.stop();
+    }
+    
+    /**
+     * This computer's IPv4 addresses, skipping loopback and interfaces that
+     * are down. Unlike the "preferred" address above this works when there is
+     * no route to the internet.
+     *
+     * @return the addresses, or 127.0.0.1 if there are none
+     */
+    public static List<String> getLocalIPv4Addresses() {
+        List<String> addresses = new ArrayList<>();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                try {
+                    if (networkInterface.isLoopback() || !networkInterface.isUp()) continue;
+                } catch (SocketException ex) {
+                    continue;
+                }
+                for (InterfaceAddress interfaceAddress : networkInterface.getInterfaceAddresses()) {
+                    InetAddress address = interfaceAddress.getAddress();
+                    if (address instanceof Inet4Address && !address.isLinkLocalAddress()) {
+                        addresses.add(address.getHostAddress());
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            logger.warn("Unable to list the network interfaces", ex);
+        }
+        if (addresses.isEmpty()) addresses.add("127.0.0.1");
+        return addresses;
+    }
+    
+    /**
+     * @return the first port in [from, to) that is free on all addresses
+     * (and isn't skip), or -1
+     */
+    private static int findFreePort(int from, int to, int skip) {
+        for (int p = from; p < to; p++) {
+            if (p == skip) continue;
+            try (ServerSocket socket = new ServerSocket()) {
+                socket.setReuseAddress(true);
+                socket.bind(new InetSocketAddress(p));
+                return p;
+            } catch (IOException ex) {
+                logger.trace("Port {} is in use", p);
+            }
+        }
+        return -1;
+    }
+    
+    // Add an HTTPS connector to the running server. This is done after the
+    // plain HTTP side is up so a certificate problem can't take it down.
+    private void startHTTPS() {
+        if (jettyServer == null || !jettyServer.isStarted()) return;
+        try {
+            certificate = SelfSignedCertificate.load(getLocalIPv4Addresses());
+            sslContextFactory = new SslContextFactory.Server();
+            sslContextFactory.setKeyStore(certificate.getKeyStore());
+            sslContextFactory.setKeyStorePassword(certificate.getPassword());
+            sslContextFactory.setCertAlias(SelfSignedCertificate.ALIAS);
+            
+            // Same settings as the HTTP connector, plus the TLS details. Devices
+            // connect by IP address, so there is no SNI host to check.
+            HttpConfiguration httpsConfig = new HttpConfiguration();
+            for (Connector c : jettyServer.getConnectors()) {
+                HttpConnectionFactory f = c.getConnectionFactory(HttpConnectionFactory.class);
+                if (f != null) {
+                    httpsConfig = new HttpConfiguration(f.getHttpConfiguration());
+                    break;
+                }
+            }
+            SecureRequestCustomizer secure = new SecureRequestCustomizer();
+            secure.setSniHostCheck(false);
+            secure.setSniRequired(false);
+            httpsConfig.addCustomizer(secure);
+            
+            for (int p = findFreePort(8443, 9500, port); p > 0; p = findFreePort(p + 1, 9500, port)) {
+                ServerConnector connector = new ServerConnector(jettyServer,
+                        new SslConnectionFactory(sslContextFactory, "http/1.1"),
+                        new HttpConnectionFactory(httpsConfig));
+                connector.setPort(p);
+                try {
+                    jettyServer.addConnector(connector);
+                    connector.start();
+                    httpsPort = p;
+                    logger.info("HTTPS listening on port {} (certificate {})", p, certificate.getFingerprint());
+                    return;
+                } catch (Exception ex) {
+                    jettyServer.removeConnector(connector);
+                    try { connector.stop(); } catch (Exception ignored) {}
+                    logger.trace("HTTPS port {} is not available: {}", p, ex.getMessage());
+                }
+            }
+            logger.warn("Unable to find a free port for HTTPS");
+        } catch (Exception ex) {
+            logger.error("Unable to start HTTPS", ex);
+        }
+    }
+    
+    /**
+     * Make sure the HTTPS certificate covers this computer's current IP
+     * addresses (e.g. after joining the network at the race site). A new
+     * certificate means each device has to accept it again.
+     */
+    public synchronized void refreshCertificate() {
+        if (sslContextFactory == null || certificate == null) return;
+        List<String> addresses = getLocalIPv4Addresses();
+        if (certificate.covers(addresses)) return;
+        try {
+            SelfSignedCertificate updated = SelfSignedCertificate.load(addresses);
+            sslContextFactory.reload(f -> {
+                f.setKeyStore(updated.getKeyStore());
+                f.setKeyStorePassword(updated.getPassword());
+            });
+            certificate = updated;
+        } catch (Exception ex) {
+            logger.warn("Unable to update the HTTPS certificate", ex);
+        }
+    }
+    
+    /**
+     * @return the SHA-256 fingerprint of the HTTPS certificate, or "" if there is none
+     */
+    public String getCertificateFingerprint() {
+        return certificate == null ? "" : certificate.getFingerprint();
     }
     
     

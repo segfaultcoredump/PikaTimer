@@ -17,7 +17,6 @@
 package org.pikatimer.timing.reader;
 
 import java.io.IOException;
-import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -29,9 +28,7 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
-import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -46,12 +43,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -109,9 +103,14 @@ import org.pikatimer.timing.RawTimeData;
 import org.pikatimer.timing.TimingListener;
 import org.pikatimer.timing.TimingReader;
 import org.pikatimer.util.DurationFormatter;
-import org.pikatimer.util.DurationParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.pikatimer.timing.reader.ReaderUtil.errorMessage;
+import static org.pikatimer.timing.reader.ReaderUtil.installTimeFilter;
+import static org.pikatimer.timing.reader.ReaderUtil.runOnFX;
+import static org.pikatimer.timing.reader.ReaderUtil.setStatus;
+import static org.pikatimer.timing.reader.ReaderUtil.toDateTime;
 
 /**
  * Connects a timing input to a PikaReader unit.
@@ -425,11 +424,6 @@ public class PikaReaderDirectReader implements TimingReader {
         if (timingListener != null) timingListener.setAttribute(key, value);
     }
 
-    private static void runOnFX(Runnable r) {
-        if (Platform.isFxApplicationThread()) r.run();
-        else Platform.runLater(r);
-    }
-
     // ------------------------------------------------------------------
     // Messages from the unit
     // ------------------------------------------------------------------
@@ -646,25 +640,6 @@ public class PikaReaderDirectReader implements TimingReader {
         } catch (JSONException ex) {
             return "HTTP " + response.statusCode();
         }
-    }
-
-    /**
-     * @param ex an exception from a CompletableFuture (possibly wrapped)
-     * @return a message suitable for showing to the user
-     */
-    static String errorMessage(Throwable ex) {
-        Throwable cause = ex;
-        while ((cause instanceof CompletionException || cause instanceof ExecutionException) && cause.getCause() != null) {
-            cause = cause.getCause();
-        }
-        if (cause instanceof HttpTimeoutException) return "The reader did not respond in time";
-        if (cause instanceof ConnectException) {
-            if (cause.getCause() instanceof UnresolvedAddressException) return "Unknown host";
-            return "Unable to connect to the reader";
-        }
-        if (cause instanceof TimeoutException) return "The reader did not respond in time";
-        if (cause instanceof javax.net.ssl.SSLException) return "Secure connection failed: " + cause.getMessage();
-        return cause.getMessage() != null ? cause.getMessage() : cause.toString();
     }
 
     // ------------------------------------------------------------------
@@ -892,27 +867,6 @@ public class PikaReaderDirectReader implements TimingReader {
                         alert.show();
                     }
                 }));
-    }
-
-    // Date + time of day (a duration from midnight, so 24:00:00 rolls over to the next day)
-    private static LocalDateTime toDateTime(LocalDate date, String time) {
-        return date.atStartOfDay().plus(DurationParser.parse(time));
-    }
-
-    // Only allow time-like input (HH:MM:SS.sss) in the field, and track if it is a valid time
-    private static void installTimeFilter(TextField timeField, BooleanProperty timeOK) {
-        timeField.textProperty().addListener((observable, oldValue, newValue) -> {
-            timeOK.set(DurationParser.parsable(newValue));
-            if (!(newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?"))) {
-                Platform.runLater(() -> {
-                    int c = timeField.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    timeField.setText(oldValue);
-                    timeField.positionCaret(c);
-                });
-            }
-        });
     }
 
     // ------------------------------------------------------------------
@@ -1182,14 +1136,6 @@ public class PikaReaderDirectReader implements TimingReader {
             logger.debug("Using PikaReader {} at {}", r.unitID(), baseURL(r.secure(), r.host(), r.port()));
             useReader(r.host(), r.port(), r.secure(), r.unitID());
         });
-    }
-
-    // Sets a status label's text, colored with a style class from
-    // PikaReaderDirect.css (ok-label, warning-label) or plain if null
-    private static void setStatus(Label label, String text, String styleClass) {
-        label.getStyleClass().removeAll("ok-label", "warning-label");
-        if (styleClass != null) label.getStyleClass().add(styleClass);
-        label.setText(text);
     }
 
     // ------------------------------------------------------------------

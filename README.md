@@ -12,11 +12,14 @@ To download, go to https://github.com/PikaTimer/pikatimer/releases/
 * Multiple start waves per race
 * Multiple timing locations
 * Multiple splits per race, each associated with a given timing location
-* Direct import of timing data from RFID Ultra and Joey based systems
+* Direct connection and support for PikaReader based systems
+* Direct connection and support for RFIDTiming Ultra and Joey based systems
+* Support for continuous import of text based timing data
+* Experimental support for direct connection to Trident TimeMachine based systems
+* RunSignUp participant synchronization
 * Custom Participant Attributes
 * Custom Award Definitions
 * No practical limit on the number of participants, races, splits, etc. 
-* Support for automatically importing a timing input file and updating the results as new times are entered
 * Automatically process reports and post them to a remote server every 30s/1m/2m/5m 
 * Ability to flag a timing input as a "backup" 
 * Time overrides for a participant on a per split basis
@@ -25,7 +28,6 @@ To download, go to https://github.com/PikaTimer/pikatimer/releases/
 * Ability to "skew" the time for any given timing input 
 * Support for races that are longer than a single day
 * 1, 5, 10, or Custom year age group setup
-* Alphanumeric bib support
 * Built in database engine (H2) that stores the entire event in a single file for for backups, copying, archiving, etc.
 * Outputs basic Overall, Age Group, and Awards text based reports
 * Output of HTML results table (formatted with DataTables for easy mobile viewing)
@@ -37,7 +39,7 @@ To download, go to https://github.com/PikaTimer/pikatimer/releases/
 * In-Progress report options that show runners who started but have not yet finished
 * Course Records for overall course or segments. Support for both the overall and AG records 
 * Support for the Marmot race announcer app for real time announcer feed: https://github.com/PikaTimer/Marmot
-* Windows x64 based native application or jar files for other supported platforms
+* Native Installers for Windows, MacOS, and Linux based platforms
 
 ## Screen Snapshots
 

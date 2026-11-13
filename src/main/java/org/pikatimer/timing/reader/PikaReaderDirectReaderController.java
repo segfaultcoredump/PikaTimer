@@ -311,7 +311,7 @@ public class PikaReaderDirectReaderController {
         request.whenComplete((response, ex) -> Platform.runLater(() -> {
             startReaderButton.setDisable(false);
             if (ex != null) {
-                String msg = PikaReaderDirectReader.errorMessage(ex);
+                String msg = ReaderUtil.errorMessage(ex);
                 logger.warn("Unable to {} {}: {}", action, name, msg);
                 Alert error = new Alert(AlertType.ERROR);
                 error.setTitle(title);
@@ -374,7 +374,7 @@ public class PikaReaderDirectReaderController {
             syncProfileSelection();
 
             if (ex != null) {
-                String msg = PikaReaderDirectReader.errorMessage(ex);
+                String msg = ReaderUtil.errorMessage(ex);
                 logger.warn("Unable to change the profile for {} to {}: {}", name, target.id(), msg);
                 Alert error = new Alert(AlertType.ERROR);
                 error.setTitle("Change Reader Profile");

@@ -115,7 +115,31 @@ import org.slf4j.LoggerFactory;
 
 public class FXMLTimingController {
     private static final Logger logger = LoggerFactory.getLogger(FXMLTimingController.class);
-    
+
+    // Real monospaced fonts with a normal stroke weight, in order of preference.
+    // The JavaFX logical "Monospaced" font maps to Courier New on macOS, which
+    // is thin and looks grey next to the rest of the table.
+    private static final List<String> MONO_FONT_CANDIDATES = List.of(
+            "Menlo", "Consolas", "DejaVu Sans Mono", "Liberation Mono", "Ubuntu Mono");
+    private static String monoFontFamily;
+
+    private static synchronized String monoFontFamily() {
+        if (monoFontFamily == null) {
+            List<String> installed = Font.getFamilies();
+            monoFontFamily = MONO_FONT_CANDIDATES.stream()
+                    .filter(installed::contains)
+                    .findFirst()
+                    .orElse("Monospaced");
+        }
+        return monoFontFamily;
+    }
+
+    private static String monoCellStylesheet() {
+        String css = ".table-cell.mono-cell { -fx-font-family: \"" + monoFontFamily() + "\"; }";
+        return "data:text/css;base64," + java.util.Base64.getEncoder()
+                .encodeToString(css.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @FXML private VBox timingVBox;
     @FXML private ListView<TimingLocation> timingLocListView;
     @FXML private Button timingLocRemoveAllButton;
@@ -302,7 +326,11 @@ public class FXMLTimingController {
         });
         
         // Set the cell factories and stort routines... 
-        // Bib, Chip, and Time use a fixed width font (see fxmlpika.css)
+        // Bib, Chip, and Time use a fixed width font. The mono-cell class only
+        // matches the table cells, so the column headers keep the normal font.
+        // The family is picked at runtime (see monoFontFamily()) because JavaFX
+        // CSS has no font fallback list.
+        timeTableView.getStylesheets().add(monoCellStylesheet());
         bibColumn.setCellValueFactory(c -> c.getValue().bibProperty());
         bibColumn.setStyle( "-fx-alignment: CENTER-RIGHT;");
         bibColumn.getStyleClass().add("mono-cell");

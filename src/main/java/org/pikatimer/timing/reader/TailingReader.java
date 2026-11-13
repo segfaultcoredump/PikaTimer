@@ -70,6 +70,7 @@ public abstract class TailingReader implements TimingReader{
     ProgressIndicator watchProgressIndicator;
     ToggleSwitch autoImportToggleSwitch;
     private Semaphore reading = new Semaphore(1);
+    private volatile boolean tailing = false;
 
     
     public TailingReader(){
@@ -118,28 +119,37 @@ public abstract class TailingReader implements TimingReader{
     @Override
     public void startReading() {
         logger.debug("TailingReader:StartReading() called");
-        if (tailingThread != null && tailingThread.isAlive()) return;
+        // Already tailing the file
+        if (tailing) return;
         if (readingThread != null && readingThread.isAlive()) return;
+        
+        // A Tailer that was just stopped can take up to a second to exit. 
+        // Wait for it so that stopping and restarting (e.g. to re-read the 
+        // file from the top) actually starts a new one. 
+        final Thread previousTailer = tailingThread;
         Task readingTask = new Task<Void>() {
                 @Override public Void call() {
                     try {
-                        // make sure the file exists
-
+                        if (previousTailer != null) previousTailer.join();
                         
+                        // make sure the file exists
                         while (readingStatus.getValue() && (sourceFile == null || !sourceFile.exists() || !sourceFile.canRead() || !sourceFile.isFile())){
                             Thread.sleep(1000);
-                            logger.debug("Waiting for " + sourceFile.getPath());
+                            String waitingFor = sourceFile == null ? "a file to be selected" : sourceFile.getPath();
+                            logger.debug("Waiting for " + waitingFor);
                             Platform.runLater(() ->{
-                                statusLabel.setText("Waiting for " + sourceFile.getPath());
+                                statusLabel.setText("Waiting for " + waitingFor);
                             });
                         }   
                         if (readingStatus.getValue() ) {
                             Platform.runLater(() -> statusLabel.setText("Reading file: " + sourceFile.getPath()));
 
+                            beforeFileRead();
                             MyHandler listener = new MyHandler();
                             tailer = new Tailer(sourceFile, listener, 1000, Boolean.FALSE, Boolean.TRUE);
                             tailingThread = new Thread(tailer);
                             tailingThread.setDaemon(true); // optional
+                            tailing = true;
                             tailingThread.start();
                             readingStatus.setValue(Boolean.TRUE);
                         }
@@ -156,6 +166,7 @@ public abstract class TailingReader implements TimingReader{
     
     @Override
     public void stopReading() {
+        tailing = false;
         if (tailer != null) {
             tailer.stop();
         }
@@ -176,6 +187,10 @@ public abstract class TailingReader implements TimingReader{
             autoImportToggleSwitch.setPadding(new Insets(3, 0, 0, 0)); // this is a hack to get around a ToggleSwitch bug
             //autoImportToggleSwitch.setMaxWidth(75);
             statusLabel = new Label("");
+            statusLabel.setWrapText(true);
+            statusLabel.setMinWidth(0);
+            statusLabel.setPrefWidth(1);                // don't let the text set the pane's width
+            statusLabel.setMaxWidth(Double.MAX_VALUE);  // the VBox stretches it to the width it has
             inputButton = new Button("Select File...");
             inputTextField = new TextField();
             displayVBox.setSpacing(5); 
@@ -256,12 +271,31 @@ public abstract class TailingReader implements TimingReader{
         @Override
         public void handle(String line) {
             logger.debug("handle: " + line);
+            if (line == null) return;
+            line = line.trim();
+            if (line.isEmpty()) return;
             process(line);
+        }
+        
+        // The file was truncated or replaced, the Tailer starts over at the top
+        @Override
+        public void fileRotated() {
+            logger.debug("TailingReader: file rotated, starting over");
+            beforeFileRead();
         }
     }
     
     
     public abstract void process(String s);
+    
+    /**
+     * Called before the file is read from the top: before a readOnce() pass,
+     * before tailing starts, and when the tailed file is truncated or
+     * replaced. Runs on the reading thread. Subclasses can override it to
+     * reset any per-file state (e.g. line counters or header detection).
+     */
+    protected void beforeFileRead() {
+    }
         
     @Override
     public void readOnce() {
@@ -280,6 +314,7 @@ public abstract class TailingReader implements TimingReader{
             @Override public Void call() {
                 try {
                     reading.acquire();
+                    beforeFileRead();
                     try (Stream<String> s = Files.lines(sourceFile.toPath())) {
                         s.map(line -> line.trim()).filter(line -> !line.isEmpty()).forEach(line -> {
                             logger.trace("readOnce read " + s);

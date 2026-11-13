@@ -91,10 +91,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
                   </HBox>
                   <TableView fx:id="timeTableView" editable="true" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" VBox.vgrow="ALWAYS">
                     <columns>
-                      <TableColumn fx:id="bibColumn" prefWidth="50.0" text="Bib" />
-                        <TableColumn fx:id="chipColumn" prefWidth="50.0" text="Chip" />
-                      <TableColumn fx:id="timeColumn" prefWidth="79.0" text="Time" />
-                        <TableColumn fx:id="nameColumn" prefWidth="119.5" text="Name" />
+                      <TableColumn fx:id="bibColumn" prefWidth="75.0" text="Bib" />
+                        <TableColumn fx:id="chipColumn" prefWidth="75.0" text="Chip" />
+                      <TableColumn fx:id="timeColumn" prefWidth="100.0" text="Time" />
+                        <TableColumn fx:id="nameColumn" prefWidth="150.0" text="Name" />
                         <TableColumn fx:id="locationColumn" prefWidth="94.5" text="Location" />
                         <TableColumn fx:id="inputColumn" prefWidth="75.0" text="Input" />
                         <TableColumn fx:id="backupColumn" prefWidth="48.0" text="Backup" />

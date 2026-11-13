@@ -16,11 +16,9 @@
  */
 package org.pikatimer.timing;
 
-import org.pikatimer.timing.reader.PikaGenericChipTimeFileReader;
-import org.pikatimer.timing.reader.PikaPCTimerFileReader;
 import org.pikatimer.timing.reader.PikaRFIDDirectReader;
-import org.pikatimer.timing.reader.PikaRaceTimerFileReader;
 import org.pikatimer.timing.reader.PikaRFIDFileReader;
+import org.pikatimer.timing.reader.PikaTextFileReader;
 import org.pikatimer.timing.reader.PikaReaderDirectReader;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,10 +34,7 @@ public enum TimingInputTypes {
     PikaReader,
     RFIDFile,
     RFIDDirect,
-    PCTimer, 
-    RaceTimer,
-    GeneriChipTimeFile,
-    GeneriBibTimeFile;
+    TextFile;
 
     
     private static final Map<TimingInputTypes, String> InputMap = createMap();
@@ -50,10 +45,7 @@ public enum TimingInputTypes {
         result.put(PikaReader, "PikaReader");
         result.put(RFIDFile, "RFIDServer / Outreach File");
         result.put(RFIDDirect, "RFID Ultra/Joey (TCP)");
-        result.put(PCTimer, "PC Timer (Race Director)");
-        result.put(RaceTimer, "Race Timer");
-        result.put(GeneriChipTimeFile, "Generic Chip -> Time File");
-        result.put(GeneriBibTimeFile, "Generic Bib -> Time File");
+        result.put(TextFile, "Text File (Bib/Chip + Time)");
 
         return Collections.unmodifiableMap(result);
     }
@@ -69,18 +61,12 @@ public enum TimingInputTypes {
         switch(this){
             case PikaReader:
                 return new PikaReaderDirectReader();
-            case PCTimer:
-                return new PikaPCTimerFileReader();
-            case RaceTimer:
-                return new PikaRaceTimerFileReader();
             case RFIDFile:
                 return new PikaRFIDFileReader();
             case RFIDDirect:
                 return new PikaRFIDDirectReader();
-            case GeneriChipTimeFile:
-                return new PikaGenericChipTimeFileReader();
-            case GeneriBibTimeFile:
-                return new PikaGenericChipTimeFileReader();
+            case TextFile:
+                return new PikaTextFileReader();
         }
         return null;
     }

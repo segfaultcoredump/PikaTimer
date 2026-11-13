@@ -13,8 +13,3 @@
     -fx-text-fill: -fx-text-base-color;
     -fx-font-size: 16px; /* all the same except this newly added one */
 }
-/* Fixed width font for table cells that hold bibs, chips, and times
-   (the class is added to the TableColumn, the header keeps the normal font) */
-.table-cell.mono-cell {
-    -fx-font-family: "Monospaced";
-}

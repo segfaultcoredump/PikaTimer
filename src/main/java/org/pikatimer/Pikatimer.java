@@ -50,7 +50,7 @@ public class Pikatimer extends Application {
     private static String jdbcURL; // Holds the jdbcURL for the open db
     private static HTTPServices webServer;
     
-    public static final String VERSION = "2.0_Alpha_2c";
+    public static final String VERSION = "2.0_Beta_1";
     
     /**
     * SingletonHolder is loaded on the first execution of Singleton.getInstance() 

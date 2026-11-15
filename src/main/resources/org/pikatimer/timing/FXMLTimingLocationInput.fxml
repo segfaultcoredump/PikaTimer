@@ -31,7 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<GridPane fx:id="baseGridPane" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" xmlns="http://javafx.com/javafx/8.0.141" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.timing.FXMLTimingLocationInputController">
+<GridPane fx:id="baseGridPane" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" xmlns="http://javafx.com/javafx/23" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.timing.FXMLTimingLocationInputController">
    <children>
       <HBox alignment="CENTER_RIGHT" GridPane.columnIndex="2">
          <children>
@@ -152,9 +152,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
       </VBox>
    </children>
    <columnConstraints>
-      <ColumnConstraints halignment="RIGHT" hgrow="NEVER" maxWidth="104.5" minWidth="33.0" prefWidth="97.5" />
-      <ColumnConstraints hgrow="ALWAYS" maxWidth="1.7976931348623157E308" />
-      <ColumnConstraints hgrow="NEVER" maxWidth="145.0" />
+      <ColumnConstraints halignment="RIGHT" hgrow="NEVER" />
+      <ColumnConstraints hgrow="ALWAYS" maxWidth="1.7976931348623157E308" minWidth="0.0" />
+      <ColumnConstraints hgrow="NEVER" />
    </columnConstraints>
    <rowConstraints>
       <RowConstraints fillHeight="false" vgrow="NEVER" />

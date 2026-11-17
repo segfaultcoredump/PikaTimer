@@ -183,7 +183,7 @@ main {
 }
 #camera-bar label { display: flex; align-items: center; gap: 6px; }
 #zoom { width: 120px; }
-#ocr-stats { margin-left: auto; font-variant-numeric: tabular-nums; }
+#ocr-stats { margin-left: auto; font-variant-numeric: tabular-nums; cursor: pointer; }
 #rotate-button { display: inline-flex; align-items: center; gap: 6px; }
 .link-button { background: none; border: none; color: var(--accent-2); text-decoration: underline; padding: 4px; min-height: 0; }
 

@@ -15,6 +15,12 @@ const MAX_CROP = 1600;
 // Read a little outside the band so bibs on the edge are whole, but only
 // count text whose center is inside the band
 const BAND_MARGIN = 0.15;
+// Text longer than this (width / height) isn't a bib; don't read it
+const MAX_TEXT_ASPECT = 7;
+// The most text boxes read per frame (the tallest); reading is the slow part
+const MAX_READ_BOXES = 10;
+// What the OCR reads when any number is accepted
+const ANY_BIB_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const DEFAULT_BAND = { landscape: { x: 0.05, y: 0.3, w: 0.9, h: 0.4 }, portrait: { x: 0.05, y: 0.35, w: 0.9, h: 0.3 } };
 
 const $ = (id) => document.getElementById(id);
@@ -59,6 +65,7 @@ const settings = {
     cameraId: '',
     requiredHits: 2,
     detLimit: 960,
+    minText: 5,                 // skip text shorter than this % of the band height (0: off)
     showBoxes: true,
     rotation: 'auto',           // 'auto' or 0, 90, 180, 270 (clockwise)
     prominence: true,           // ignore small numbers next to a bigger one
@@ -103,7 +110,9 @@ let stream = null;
 let fileUrl = null;
 let frameId = 0;
 let lastResult = null;           // {items, crop, at} for the overlay
-const frameTimes = [];           // ms per OCR frame, for the stats
+const frameStats = [];           // {total, det, rec, found, boxes} per OCR frame, for the stats
+let ocrThreads = 1;
+let statsDetail = false;
 let wakeLock = null;
 let reads = [];                  // all reads we know about, newest first
 const freshIds = new Set();      // reads to flash in the list
@@ -130,7 +139,25 @@ function startWorker() {
     worker.onmessage = (e) => onWorkerMessage(e.data);
     worker.onerror = (e) => stageMessage(`The OCR stopped: ${e.message ?? 'unknown error'}`);
     worker.postMessage({ type: 'init' });
+    sendCharset();
     stageMessage('Loading the OCR engine…', 0);
+}
+
+// Only read the characters a bib can have: the ones in the registered
+// bibs, so a letter the OCR sees among digits is read as the closest digit
+let charsetSent = null;
+function sendCharset() {
+    if (!worker) return;
+    let chars = ANY_BIB_CHARS;
+    if (tracker.options.knownBibsOnly && link.bibs && link.bibs.length) {
+        const set = new Set();
+        for (const b of link.bibs) for (const ch of String(b).toUpperCase()) if (/[0-9A-Z]/.test(ch)) set.add(ch);
+        if (set.size) chars = [...set].sort().join('');
+    }
+    if (chars === charsetSent) return;
+    charsetSent = chars;
+    // The model reads both cases; bibs are matched in upper case
+    worker.postMessage({ type: 'charset', chars: chars + chars.toLowerCase() });
 }
 
 function onWorkerMessage(msg) {
@@ -144,7 +171,8 @@ function onWorkerMessage(msg) {
             break;
         case 'ready':
             ocrReady = true;
-            $('ocr-stats').textContent = msg.threads > 1 ? `OCR ready (${msg.threads} threads)` : 'OCR ready';
+            ocrThreads = msg.threads || 1;
+            $('ocr-stats').textContent = ocrThreads > 1 ? `OCR ready (${ocrThreads} threads)` : 'OCR ready';
             if (stream || fileUrl) hideStageMessage();
             else showStartButton();
             break;
@@ -360,10 +388,21 @@ function processFrame(now, meta) {
     cropCtx.setTransform(1, 0, 0, 1, 0, 0);
     const image = cropCtx.getImageData(0, 0, cw, ch);
 
+    // Only read text centered in the band (not the margin), and not too
+    // small or too long to be a bib
+    const [vx0, vy0, vx1, vy1] = c.view;
+    const px = (x) => (x - vx0) / (vx1 - vx0) * cw, py = (y) => (y - vy0) / (vy1 - vy0) * ch;
+    const select = {
+        region: [px(band.x), py(band.y), px(band.x + band.w), py(band.y + band.h)],
+        minHeight: settings.minText / 100 * (py(band.y + band.h) - py(band.y)),
+        maxAspect: MAX_TEXT_ASPECT,
+        maxRec: MAX_READ_BOXES
+    };
+
     busy = true;
     const id = ++frameId;
     pending.set(id, { deviceEpochMs, crop: c, cw, ch, rotation: c.R, started: performance.now() });
-    worker.postMessage({ type: 'ocr', id, width: cw, height: ch, buffer: image.data.buffer, detLimit: settings.detLimit },
+    worker.postMessage({ type: 'ocr', id, width: cw, height: ch, buffer: image.data.buffer, detLimit: settings.detLimit, select },
             [image.data.buffer]);
 }
 
@@ -373,8 +412,9 @@ function onOcrResult(msg) {
     const frame = pending.get(msg.id);
     pending.delete(msg.id);
     if (!frame) return;
-    frameTimes.push(performance.now() - frame.started);
-    if (frameTimes.length > 20) frameTimes.shift();
+    const t = msg.timing ?? {};
+    frameStats.push({ total: performance.now() - frame.started, det: t.det ?? 0, rec: t.rec ?? 0, found: t.found ?? 0, boxes: t.boxes ?? 0 });
+    if (frameStats.length > 20) frameStats.shift();
     updateStats();
     // The picture was turned while this frame was being read
     if (frame.rotation !== currentRotation()) return;
@@ -422,9 +462,15 @@ function onOcrResult(msg) {
 }
 
 function updateStats() {
-    if (!frameTimes.length) return;
-    const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
-    $('ocr-stats').textContent = `${(1000 / avg).toFixed(1)} fps · ${Math.round(avg)} ms`;
+    if (!frameStats.length) return;
+    const avg = (k) => frameStats.reduce((a, f) => a + f[k], 0) / frameStats.length;
+    const total = avg('total');
+    tracker.setFrameInterval(total);
+    const fps = `${(1000 / total).toFixed(1)} fps`;
+    // Tap for where the time goes
+    $('ocr-stats').textContent = !statsDetail ? `${fps} · ${Math.round(total)} ms`
+        : `${fps} · find text ${Math.round(avg('det'))} ms · read ${avg('boxes').toFixed(1)} of ${avg('found').toFixed(1)} `
+            + `${Math.round(avg('rec'))} ms · ${ocrThreads} thread${ocrThreads === 1 ? '' : 's'}`;
 }
 
 // ----------------------------------------------------------------------
@@ -808,6 +854,7 @@ function renderConfig() {
         knownBibsOnly: c.knownBibsOnly !== false,
         repeatMs: (c.repeatSeconds ?? 60) * 1000
     });
+    sendCharset();
     $('input-settings').textContent = `Set in PikaTimer: ${c.knownBibsOnly !== false ? 'only registered bibs are read' : 'any number is read'}; `
             + `a bib is ignored for ${c.repeatSeconds ?? 60} s after it is read.`;
     renderBibInfo();
@@ -840,6 +887,7 @@ function setupSettings() {
         $('device-name').value = settings.name;
         $('required-hits').value = String(settings.requiredHits);
         $('det-limit').value = String(settings.detLimit);
+        $('min-text').value = String(settings.minText);
         $('show-boxes').checked = settings.showBoxes;
         $('prominence').checked = settings.prominence;
         renderBibInfo();
@@ -871,6 +919,10 @@ function setupSettings() {
     };
     $('det-limit').onchange = () => {
         settings.detLimit = Number($('det-limit').value);
+        saveSettings();
+    };
+    $('min-text').onchange = () => {
+        settings.minText = Number($('min-text').value);
         saveSettings();
     };
     $('prominence').onchange = () => {
@@ -926,6 +978,10 @@ function init() {
         if (settings.rotation === 'auto') requestSensor();
         startCamera();
     };
+    $('ocr-stats').onclick = () => {
+        statsDetail = !statsDetail;
+        if (!paused) updateStats();
+    };
     $('pause-button').onclick = () => {
         paused = !paused;
         $('pause-button').textContent = paused ? 'Resume' : 'Pause';
@@ -942,6 +998,7 @@ function init() {
     link.addEventListener('config', renderConfig);
     link.addEventListener('bibs', () => {
         tracker.setKnownBibs(link.bibs);
+        sendCharset();
         renderBibInfo();
     });
     link.addEventListener('reads', (e) => {

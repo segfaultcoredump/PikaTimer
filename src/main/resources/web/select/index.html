@@ -119,6 +119,16 @@
           <option value="1280">High (slower, small bibs)</option>
         </select>
       </label>
+      <label class="field">Smallest bib text
+        <select id="min-text">
+          <option value="0">Read all text</option>
+          <option value="3">3% of the band height</option>
+          <option value="5">5% of the band height</option>
+          <option value="8">8% of the band height (faster)</option>
+          <option value="12">12% of the band height (fastest, big bibs)</option>
+        </select>
+      </label>
+      <p class="muted">Reading text is the slow part. If the bibs fill a good part of the band, use Low detail and skip small text; tap the speed under the picture to see where the time goes.</p>
       <label class="check"><input id="prominence" type="checkbox"> Ignore small numbers next to a bigger one (the year, sponsor logos)</label>
       <label class="check"><input id="show-boxes" type="checkbox"> Show the text the OCR finds</label>
       <button type="button" id="reset-band">Reset the band</button>

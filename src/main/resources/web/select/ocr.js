@@ -14,13 +14,22 @@ const DET_THRESH = 0.3;       // pixel probability to count as text
 const DET_BOX_THRESH = 0.6;   // mean probability for a box to be kept
 const DET_UNCLIP = 1.5;       // grow the shrunk text region back out
 const DET_MIN_SIZE = 3;       // smallest box side (detection map pixels)
-const DET_MAX_BOXES = 24;
+const DET_MAX_BOXES = 48;
 
-// Recognition (SVTR/CTC) settings
+// Recognition (SVTR/CTC) settings. Each box is read at its own width
+// (8 pixels per CTC step); PaddleOCR pads to 320, which costs far more and
+// doesn't help short bib numbers.
 const REC_HEIGHT = 48;
-const REC_MIN_WIDTH = 320;
+const REC_MIN_WIDTH = 128;
 const REC_MAX_WIDTH = 960;
 const REC_BATCH = 8;
+// A character that isn't allowed is replaced by the likeliest allowed one
+// (I -> 1, O -> 0) only if the model gave that one at least this chance;
+// otherwise it was really a letter and the text isn't a bib
+const SUB_MIN = 0.05;
+
+// Which detected text is worth reading (see selectBoxes)
+const DEFAULT_SELECT = { region: null, minHeight: 0, maxAspect: 7, maxRec: 10 };
 
 // PaddleOCR normalizes in the order cv2 loads images: B, G, R
 const DET_MEAN = [0.406, 0.456, 0.485];
@@ -46,6 +55,7 @@ export class PaddleOCR {
         this.det = detSession;
         this.rec = recSession;
         this.chars = chars;
+        this.allowed = null;    // Uint8Array over the classes, or null for all
     }
 
     /**
@@ -53,15 +63,31 @@ export class PaddleOCR {
      *
      * @param image RGBA image
      * @param detLimit longest side of the image for detection
+     * @param select which text to read, see selectBoxes
      * @returns {items: [{text, score, box: [x0, y0, x1, y1]}], timing}
      */
-    async run(image, detLimit = 960) {
+    async run(image, detLimit = 960, select = {}) {
         const t0 = now();
-        const boxes = await this.detect(image, detLimit);
+        const found = await this.detect(image, detLimit);
+        const boxes = selectBoxes(found, select);
         const t1 = now();
         const items = boxes.length ? await this.recognize(image, boxes) : [];
         const t2 = now();
-        return { items, timing: { det: t1 - t0, rec: t2 - t1, boxes: boxes.length } };
+        return { items, timing: { det: t1 - t0, rec: t2 - t1, found: found.length, boxes: boxes.length } };
+    }
+
+    /**
+     * Only read these characters (e.g. the ones in the registered bibs).
+     * Where the model's best guess is another character, the best allowed
+     * one is used instead (O -> 0, I -> 1, S -> 5). Null reads anything.
+     */
+    setCharset(chars) {
+        if (!chars) {
+            this.allowed = null;
+            return;
+        }
+        const set = new Set(chars);
+        this.allowed = Uint8Array.from(this.chars, (c, i) => i === 0 || set.has(c) ? 1 : 0);
     }
 
     async detect(image, limit) {
@@ -95,25 +121,24 @@ export class PaddleOCR {
     }
 
     async recognize(image, boxes) {
+        // Each box's width at the recognition height; similar widths are
+        // batched together so one long box doesn't widen the others
+        const list = boxes.map(b => {
+            const w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
+            return { b, rw: Math.min(REC_MAX_WIDTH, Math.max(8, Math.ceil(REC_HEIGHT * w / h))) };
+        }).sort((p, q) => p.rw - q.rw);
+
         const items = [];
-        for (let start = 0; start < boxes.length; start += REC_BATCH) {
-            const batch = boxes.slice(start, start + REC_BATCH);
-            // One width for the batch, like PaddleOCR (padded with zeros)
-            let width = REC_MIN_WIDTH;
-            const widths = batch.map(b => {
-                const w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
-                const rw = Math.min(REC_MAX_WIDTH, Math.max(8, Math.ceil(REC_HEIGHT * w / h)));
-                width = Math.max(width, rw);
-                return rw;
-            });
-            width = Math.min(REC_MAX_WIDTH, Math.ceil(width / 8) * 8);
+        for (let start = 0; start < list.length; start += REC_BATCH) {
+            const batch = list.slice(start, start + REC_BATCH);
+            const width = Math.min(REC_MAX_WIDTH, Math.max(REC_MIN_WIDTH, Math.ceil(batch[batch.length - 1].rw / 8) * 8));
 
             const plane = REC_HEIGHT * width;
+            // Zero is the padding (mid gray after the normalization)
             const input = new Float32Array(batch.length * 3 * plane);
-            batch.forEach((b, n) => {
+            batch.forEach(({ b, rw }, n) => {
                 const offset = n * 3 * plane;
-                const rw = Math.min(widths[n], width);
-                resizeInto(image, b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1, rw, REC_HEIGHT, input, width, REC_HEIGHT,
+                resizeInto(image, b.x0, b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1, Math.min(rw, width), REC_HEIGHT, input, width, REC_HEIGHT,
                     (bl, g, r, i) => {
                         input[offset + i] = bl / 127.5 - 1;
                         input[offset + i + plane] = g / 127.5 - 1;
@@ -126,13 +151,34 @@ export class PaddleOCR {
             const probs = out[this.rec.outputNames[0]];
             const [, steps, classes] = probs.dims;
             for (let n = 0; n < batch.length; n++) {
-                const { text, score } = ctcDecode(probs.data, n * steps * classes, steps, classes, this.chars);
-                const b = batch[n];
+                const { text, score } = ctcDecode(probs.data, n * steps * classes, steps, classes, this.chars, this.allowed);
+                const b = batch[n].b;
                 items.push({ text, score, detScore: b.score, box: [b.x0, b.y0, b.x1, b.y1] });
             }
         }
         return items;
     }
+}
+
+/**
+ * Pick the detected text worth reading. Recognition is the slow part, so
+ * skip what can't be a bib:
+ *  region     [x0, y0, x1, y1]: only boxes centered in here (the band)
+ *  minHeight  smaller text is skipped (pixels)
+ *  maxAspect  longer lines of text (width / height) are skipped
+ *  maxRec     at most this many, the tallest first (bib numbers are big)
+ */
+export function selectBoxes(boxes, select = {}) {
+    const { region, minHeight, maxAspect, maxRec } = { ...DEFAULT_SELECT, ...select };
+    return boxes.filter(b => {
+        const w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
+        if (h < minHeight || w > maxAspect * h) return false;
+        if (region) {
+            const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+            if (cx < region[0] || cx > region[2] || cy < region[1] || cy > region[3]) return false;
+        }
+        return true;
+    }).sort((a, b) => (b.y1 - b.y0) - (a.y1 - a.y0)).slice(0, maxRec);
 }
 
 /**
@@ -146,17 +192,29 @@ export function parseDict(text) {
 }
 
 /**
- * Greedy CTC decode of one sequence.
+ * Greedy CTC decode of one sequence. With allowed (a mask over the
+ * classes), a character that isn't allowed is replaced by the most likely
+ * allowed one at that step, so it isn't lost (1O5 -> 105, not 15). Its
+ * probability is the replacement's; if that is below SUB_MIN the text
+ * can't be read (score 0).
  */
-export function ctcDecode(data, offset, steps, classes, chars) {
+export function ctcDecode(data, offset, steps, classes, chars, allowed = null) {
     let text = '';
-    let total = 0, count = 0, last = -1;
+    let total = 0, count = 0, last = -1, unreadable = false;
     for (let t = 0; t < steps; t++) {
         const base = offset + t * classes;
         let best = 0, bestP = data[base];
         for (let c = 1; c < classes; c++) {
             const p = data[base + c];
             if (p > bestP) { bestP = p; best = c; }
+        }
+        if (best !== 0 && allowed !== null && !allowed[best]) {
+            best = 0;
+            bestP = -1;
+            for (let c = 1; c < classes; c++) {
+                if (allowed[c] && data[base + c] > bestP) { bestP = data[base + c]; best = c; }
+            }
+            if (bestP < SUB_MIN && best !== last) unreadable = true;
         }
         if (best !== 0 && best !== last) {
             text += chars[best] ?? '';
@@ -165,7 +223,7 @@ export function ctcDecode(data, offset, steps, classes, chars) {
         }
         last = best;
     }
-    return { text, score: count ? total / count : 0 };
+    return { text, score: count && !unreadable ? total / count : 0 };
 }
 
 /**

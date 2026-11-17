@@ -10,7 +10,7 @@
  * a read it already has (same bib, same time).
  */
 
-export const APP_VERSION = '1.0';
+export const APP_VERSION = '1.1';
 
 const SEND_BATCH = 50;
 const FETCH_TIMEOUT_MS = 8000;

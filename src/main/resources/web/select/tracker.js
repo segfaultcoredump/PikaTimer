@@ -20,8 +20,17 @@ export const DEFAULTS = {
     trackTimeoutMs: 1500,     // a track ends when it isn't seen for this long
     lonelyScore: 0.9,         // a track that ends with one vote is reported if its score is this good (known bibs only)
     repeatMs: 60000,          // ignore the same bib for this long after reporting it
-    knownBibsOnly: true
+    knownBibsOnly: true,
+    // When the OCR is slow a runner is only seen once or twice, and moves
+    // a long way between frames: follow them further and for longer, and
+    // trust a single good read of a registered bib more
+    slowFrameMs: 700,         // frames further apart than this are slow
+    slowQuickScore: 0.9,
+    slowLonelyScore: 0.8
 };
+
+const MATCH_DISTANCE = 1.5;       // box sizes a runner can move between frames (at 500 ms)
+const MAX_MATCH_DISTANCE = 6;
 
 // What a bib looks like: up to 2 letters, 1 to 6 digits, up to 2 letters
 const BIB_SHAPE = /^[A-Z]{0,2}[0-9]{1,6}[A-Z]{0,2}$/;
@@ -94,10 +103,28 @@ export class BibTracker {
         this.knownBibs = null;           // Set of upper case bibs, or null if unknown
         this.bibCase = new Map();        // upper case -> the bib as registered
         this.nextId = 1;
+        this.frameMs = 0;                // average time between frames, 0 if unknown
     }
 
     setOptions(options) {
         Object.assign(this.options, options);
+    }
+
+    /** The average time between the frames being read (ms) */
+    setFrameInterval(ms) {
+        this.frameMs = ms > 0 ? ms : 0;
+    }
+
+    // The settings, adjusted for the frame rate
+    limits() {
+        const o = this.options;
+        const slow = this.frameMs > o.slowFrameMs;
+        return {
+            timeoutMs: Math.max(o.trackTimeoutMs, 2.5 * this.frameMs),
+            distance: Math.min(MAX_MATCH_DISTANCE, Math.max(MATCH_DISTANCE, MATCH_DISTANCE * this.frameMs / 500)),
+            quickScore: slow ? Math.min(o.quickScore, o.slowQuickScore) : o.quickScore,
+            lonelyScore: slow ? Math.min(o.lonelyScore, o.slowLonelyScore) : o.lonelyScore
+        };
     }
 
     /**
@@ -131,6 +158,7 @@ export class BibTracker {
      */
     addFrame(time, items) {
         const o = this.options;
+        const lim = this.limits();
         const filterKnown = o.knownBibsOnly && this.knownBibs !== null;
         const candidates = [];
         for (const item of items) {
@@ -146,38 +174,52 @@ export class BibTracker {
         // End the tracks that have left the band (before matching, so a
         // new runner isn't added to an old track)
         this.tracks = this.tracks.filter(t => {
-            if (time - t.lastTime <= o.trackTimeoutMs) return true;
+            if (time - t.lastTime <= lim.timeoutMs) return true;
             if (!t.reported) {
                 const [bib, v] = leader(t);
-                if (bib && this.isKnown(bib) && v.scoreSum / v.hits >= o.lonelyScore) {
+                if (bib && this.isKnown(bib) && v.scoreSum / v.hits >= lim.lonelyScore) {
                     this.report(bib, t, v, true, reads);
                 }
             }
             return false;
         });
 
-        // Match each candidate to the nearest live track
-        const used = new Set();
-        for (const c of candidates) {
-            let best = null, bestDist = Infinity;
+        // Match the candidates to the live tracks: a track already reading
+        // the same bib first, then the nearest. A different number only
+        // joins a track close by, and only if it could be a misread of the
+        // same bib; otherwise it's the next runner coming through the same
+        // spot, who needs their own track (and time).
+        const pairs = [];
+        candidates.forEach((c, ci) => {
             for (const t of this.tracks) {
-                if (used.has(t)) continue;
                 const d = boxDistance(t.box, c.box);
-                if (d < bestDist) { bestDist = d; best = t; }
+                const same = t.votes.has(c.bib);
+                if (same ? d <= MAX_MATCH_DISTANCE : d <= lim.distance && couldBeSame(leader(t)[0], c.bib)) {
+                    pairs.push({ ci, t, d, same });
+                }
             }
-            if (best === null || bestDist > 1.5) {
-                best = { id: this.nextId++, firstTime: time, lastTime: time, box: c.box, votes: new Map(), reported: false };
-                this.tracks.push(best);
+        });
+        pairs.sort((p, q) => (q.same - p.same) || (p.d - q.d));
+        const used = new Set(), matched = new Map();
+        for (const p of pairs) {
+            if (used.has(p.t) || matched.has(p.ci)) continue;
+            used.add(p.t);
+            matched.set(p.ci, p.t);
+        }
+        candidates.forEach((c, ci) => {
+            let t = matched.get(ci);
+            if (!t) {
+                t = { id: this.nextId++, firstTime: time, lastTime: time, box: c.box, votes: new Map(), reported: false };
+                this.tracks.push(t);
             }
-            used.add(best);
-            best.lastTime = time;
-            best.box = c.box;
-            const v = best.votes.get(c.bib) ?? { hits: 0, scoreSum: 0, best: 0 };
+            t.lastTime = time;
+            t.box = c.box;
+            const v = t.votes.get(c.bib) ?? { hits: 0, scoreSum: 0, best: 0 };
             v.hits++;
             v.scoreSum += c.score;
             v.best = Math.max(v.best, c.score);
-            best.votes.set(c.bib, v);
-        }
+            t.votes.set(c.bib, v);
+        });
 
         // Report the tracks that have enough votes
         for (const t of this.tracks) {
@@ -185,7 +227,7 @@ export class BibTracker {
             const [bib, v] = leader(t);
             if (!bib) continue;
             const known = this.isKnown(bib);
-            if (v.hits >= o.requiredHits || (known && v.best >= o.quickScore)) {
+            if (v.hits >= o.requiredHits || (known && v.best >= lim.quickScore)) {
                 t.reported = true;
                 this.report(bib, t, v, known, reads);
             }
@@ -238,6 +280,17 @@ function leader(track) {
         }
     }
     return [bestBib, best];
+}
+
+// Could two readings be the same bib: one is part of the other (a partial
+// read), or they differ in one character (a misread)
+function couldBeSame(a, b) {
+    if (a === null || b === null) return true;
+    if (a.includes(b) || b.includes(a)) return true;
+    if (a.length !== b.length) return false;
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i] && ++diff > 1) return false;
+    return true;
 }
 
 // Distance between two box centers, in units of the larger box's size

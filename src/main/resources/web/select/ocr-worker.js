@@ -5,7 +5,8 @@
  * Runs the OCR off the page's main thread.
  *
  * In:  {type: 'init'}
- *      {type: 'ocr', id, width, height, buffer (RGBA ArrayBuffer), detLimit}
+ *      {type: 'charset', chars}   only read these characters (null: any)
+ *      {type: 'ocr', id, width, height, buffer (RGBA ArrayBuffer), detLimit, select}
  * Out: {type: 'progress', what, loaded, total}
  *      {type: 'ready', threads}
  *      {type: 'result', id, items, timing}
@@ -25,6 +26,7 @@ const MODELS = {
 const EXPECTED_BYTES = 14848852 + 4745517 + 7653044;
 
 let ocr = null;
+let charset = null;
 
 self.onmessage = async (e) => {
     const msg = e.data;
@@ -34,6 +36,9 @@ self.onmessage = async (e) => {
         } catch (ex) {
             self.postMessage({ type: 'error', message: `Unable to start the OCR: ${ex?.message ?? ex}` });
         }
+    } else if (msg.type === 'charset') {
+        charset = msg.chars ?? null;
+        if (ocr) ocr.setCharset(charset);
     } else if (msg.type === 'ocr') {
         if (!ocr) {
             self.postMessage({ type: 'error', id: msg.id, message: 'OCR not ready' });
@@ -41,7 +46,7 @@ self.onmessage = async (e) => {
         }
         try {
             const image = { data: new Uint8ClampedArray(msg.buffer), width: msg.width, height: msg.height };
-            const result = await ocr.run(image, msg.detLimit || 960);
+            const result = await ocr.run(image, msg.detLimit || 960, msg.select ?? {});
             self.postMessage({ type: 'result', id: msg.id, items: result.items, timing: result.timing });
         } catch (ex) {
             self.postMessage({ type: 'error', id: msg.id, message: String(ex?.message ?? ex) });
@@ -77,6 +82,7 @@ async function init() {
         ort.env.wasm.numThreads = 1;
         ocr = await PaddleOCR.create(ort, det, rec, dict);
     }
+    ocr.setCharset(charset);
     self.postMessage({ type: 'ready', threads: ort.env.wasm.numThreads });
 }
 

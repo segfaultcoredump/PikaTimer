@@ -16,491 +16,398 @@
  */
 package org.pikatimer.util.fileTransports;
 
-import org.pikatimer.results.ReportDestination;
-import org.pikatimer.util.DurationFormatter;
-import org.pikatimer.util.FileTransport;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintWriter;
-import java.math.RoundingMode;
+import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import javafx.application.Platform;
-import javafx.beans.property.SimpleStringProperty;
+import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import javafx.beans.property.StringProperty;
-import javafx.concurrent.Task;
-import org.apache.commons.io.IOUtils;
+import javax.net.ssl.SSLException;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.net.PrintCommandListener;
 import org.apache.commons.net.ProtocolCommandEvent;
 import org.apache.commons.net.ProtocolCommandListener;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPReply;
 import org.apache.commons.net.ftp.FTPSClient;
+import org.pikatimer.results.ReportDestination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Uploads files over explicit FTPS (AUTH TLS), falling back as gently as possible:
+ * <ol>
+ * <li>Encrypted data channel that resumes the control connection's TLS session
+ * ({@link SessionReuseFTPSClient}).</li>
+ * <li>The same, limited to TLS 1.2, if the server rejected the TLS 1.3 data
+ * connection.</li>
+ * <li>Unencrypted data channel (PROT C) if the server still rejects the
+ * encrypted data connection. The login stays encrypted.</li>
+ * <li>Plain FTP only if the server rejects AUTH TLS outright.</li>
+ * </ol>
+ * The fallbacks only ever move down this list, and only on a definite answer
+ * from the server, never on a network error. They reset when the destination's
+ * settings change.
  *
  * @author jcgarner
  */
-public class FTPSTransport implements FileTransport{
-    private static final Logger logger = LoggerFactory.getLogger(FTPSTransport.class);
-    
-    String basePath;
-    ReportDestination parent;
-    Boolean stripAccents = false;
+public class FTPSTransport extends QueuedFileTransport {
+    private static final Logger LOG = LoggerFactory.getLogger(FTPSTransport.class);
 
-    Thread transferThread;
-    FTPSClient ftpsClient;
-    FTPClient ftpClient;
-    
-    String protMode="P";
-    
-    private static final BlockingQueue<String> transferQueue = new ArrayBlockingQueue(100000);
+    private static final int CONNECT_TIMEOUT_MS = 10_000;
+    private static final int CONTROL_TIMEOUT_MS = 30_000;
+    private static final Duration DATA_TIMEOUT = Duration.ofSeconds(30);
+    private static final int REPLY_DRAIN_TIMEOUT_MS = 5_000;
+    private static final Pattern DATA_TLS_REPLY = Pattern.compile("(?i)reuse|resum|tls|ssl");
+    private static final String TMP_SUFFIX = ".PikaTmp";
 
-    private static final Map<String,String> transferMap = new ConcurrentHashMap();
-    
-    StringProperty transferStatus = new SimpleStringProperty("Idle");
-    
-    String hostname;
-    String username;
-    String password;
+    /** How the data channel is protected. */
+    enum DataProtection {
+        PRIVATE("Connected FTPS", "encrypted"),
+        PRIVATE_TLS12("Connected FTPS (TLS 1.2)", "encrypted, TLS 1.2 only"),
+        CLEAR("Connected FTPS (data unencrypted)", "unencrypted (login still encrypted)");
 
-    Boolean fatalError = false;
-    Boolean needConfigRefresh = true;
-    Boolean encrypted = true;
-    Long lastTransferTimestamp = 0L;
+        final String status;
+        final String description;
 
-    public FTPSTransport() {
-        
-        Task transferTask = new Task<Void>() {
-
-                @Override 
-                public Void call() {
-                   
-
-                    logger.debug("FTPSTransport: new result processing thread started");
-                    String filename = null;
-                    while(true) {
-                        try {
-                            logger.debug("FTPSTransport Thread: Waiting for the first file...");
-                            if (filename == null) filename = transferQueue.take();
-                            
-                            while(true) {
-                                logger.debug("FTPSTransport Thread: Waiting for a file...");
-                                //filename = transferQueue.poll(60, TimeUnit.SECONDS);
-                                if (ftpClient == null || !ftpClient.isConnected()) Platform.runLater(() -> {transferStatus.set("Idle");});
-                                else {
-                                    ftpClient.sendNoOp();
-                                    Platform.runLater(() -> {
-                                        if (encrypted) transferStatus.set("Connected FTPS");
-                                        else transferStatus.set("Connected");
-                                    });
-                                }
-                                
-                                //filename = transferQueue.take(); // blocks until
-                                if (filename == null) filename = transferQueue.poll(15, TimeUnit.SECONDS);
-                                if (filename == null) {
-                                    // If we have been idle for more than 2 minutes, be nice and drop the connection
-                                    if (TimeUnit.NANOSECONDS.toSeconds((System.nanoTime()-lastTransferTimestamp))> 120 ) break;
-                                    else continue;
-                                }
-
-                                logger.debug("FTPSTransport Thread: Transfering " + filename);
-                                String contents = transferMap.get(filename);
-                                
-                                while (fatalError || ftpClient == null || !ftpClient.isConnected()) {
-                                    if (!fatalError) openConnection();
-                                    if (!ftpClient.isConnected()) {
-                                        logger.debug("FTPSTransport Thread: Still not connected, sleeping for 10 seconds...");
-                                        Thread.sleep(10000);
-                                    }
-                                    
-                                }
-
-                                InputStream data = IOUtils.toInputStream(contents, "UTF-8");
-                                //InputStream data = IOUtils.toInputStream(contents);
-                                String fn = filename;
-                                String tmpFn = fn + ".PikaTmp";
-                                Platform.runLater(() -> { 
-                                    if (encrypted && protMode.equalsIgnoreCase("P")) transferStatus.set("Transfering (Secure) " + fn);
-                                    else if (encrypted ) transferStatus.set("Transfering (Clear) " + fn);
-                                    else transferStatus.set("Transfering " + fn);
-                                });
-                                long startTime = System.nanoTime();
-                                
-                                // To get around file locking issues, 
-                                // we upload to a temp fie and then do a rename
-                                
-                                ftpClient.storeFile(tmpFn, data);
-                                
-                                // Try a rename. If it fails, try a delete and then a rename
-                                try {  
-                                    ftpClient.rename(tmpFn, fn);
-                                } catch (Exception ex){
-                                    logger.debug("ftpClient.rename exception thrown");
-                                    
-                                    try { 
-                                        ftpClient.dele(fn);// This may fail if the file does not exist
-                                    } catch (Exception ex2){
-                                        // noop
-                                        logger.debug("ftpClient.dele exception thrown");
-                                    }
-                                    ftpClient.rename(tmpFn, fn);
-                                }
-                                
-                                long endTime = System.nanoTime();
-                                lastTransferTimestamp = endTime;
-
-                                data.close();
-                                transferMap.remove(filename, contents); 
-                                
-                                logger.debug("FTPSTransport Thread: transfer of " + filename + " done in " + DurationFormatter.durationToString(Duration.ofNanos(endTime-startTime), 3, false, RoundingMode.HALF_EVEN));
-                                filename = null;
-                            }
-
-                        } catch (InterruptedException ex) {
-                            logger.debug("FTPSTransport Thread: InterruptedException thrown");
-                            //if (filename!= null) transferQueue.put(filename);
-
-                            //Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
-                        } catch (IOException ex) {
-                            logger.debug("FTPSTransport Thread: IOException thrown: "  + ex.getMessage() );
-                            
-                            if (encrypted) {
-                                logger.debug("Setting protection mode to \"C\" to see if that fixes the problem");
-                                protMode="C";
-                            }
-                            
-                            ex.printStackTrace();
-                            //if (filename!= null) transferQueue.put(filename);
-                            //Logger.getLogger(FTPSTransport.class.getName()).log(Level.SEVERE, null, ex);
-                        } catch (Exception ex) {
-                            logger.debug("FTPSTransport Thread: Exception tossed: " + ex.getMessage() + ex.toString());
-                            logger.debug(Arrays.toString(ex.getStackTrace()));
-                        } finally {
-                            if (ftpClient.isConnected()) {
-                                try {
-                                    logger.debug("FTPSTransport Thread: calling ftpClient.disconnect()");
-                                    ftpClient.disconnect();
-                                    Platform.runLater(() -> {transferStatus.set("Disconnected");});
-                                } catch (IOException f) {
-                                    // do nothing
-                                }
-                            }
-                        }
-                    }
-                    
-                }
-            };
-            transferThread = new Thread(transferTask);
-            transferThread.setName("Thread-FTPS-Transfer");
-            transferThread.setDaemon(true);
-            transferThread.start();
-        
-    }
-    
-    private void openConnection(){
-        try {
-            
-            if (needConfigRefresh) refreshConfig();
-            logger.debug("FTPS Not connected, connecting...");
-            Platform.runLater(() -> {
-                if (encrypted) transferStatus.set("Connecting FTPS...");
-                else transferStatus.set("Connecting...");
-            });
-            // connect to the remote server
-            
-            if (encrypted) {
-                ftpsClient = new FTPSClient(false);
-                ftpClient = ftpsClient;
-            } else {
-                ftpClient = new FTPClient();
-                ftpsClient = null;
-            }
-            
-            //ftpClient.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out), true));
-            
-            ftpsClient.addProtocolCommandListener(new ProtocolCommandListener() {
-                @Override
-                public void protocolCommandSent(ProtocolCommandEvent event) {
-                    // event.getMessage() includes the trailing CRLF change; trim if needed
-                    String message = event.getMessage().trim();
-                    // Don't print the actuall password :-) 
-                    if (message.toUpperCase().startsWith("PASS")) {
-                        logger.trace("FTP CMD SENT: PASS **********");
-                    } else {
-                        logger.trace("FTP CMD SENT: " + message);
-                    }
-                }
-
-                @Override
-                public void protocolReplyReceived(ProtocolCommandEvent event) {
-                    logger.trace("FTP REPLY RCV: " + event.getReplyCode() + " - " + event.getMessage().trim());
-                }
-            });
-            
-            // Connect to host
-            ftpClient.setConnectTimeout(10000); // 10 seconds
-            ftpClient.connect(hostname);
-            int reply = ftpClient.getReplyCode();
-            if (FTPReply.isPositiveCompletion(reply)) {
-                
-                
-                // Login
-                Platform.runLater(() -> {
-                    if (encrypted) transferStatus.set("Loging in...");
-                    else transferStatus.set("Loging in (insecure)...");
-                });
-                
-                
-
-                if (ftpClient.login(username, password)) {
-
-                    if (encrypted) {
-                        // Set protection buffer size
-                        ftpsClient.execPBSZ(0);
-                        // Set data channel protection mode ("P" or "C")
-                      
-                        ftpsClient.execPROT(protMode);
-                    }
-                    // Enter local passive mode
-                    ftpClient.enterLocalPassiveMode();
-                    //ftpClient.setFileType(FTP.ASCII_FILE_TYPE);
-                    ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
-                    //ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
-                    
-                    // Set the data transfer timeout
-                    ftpClient.setDataTimeout(Duration.ofSeconds(10)); 
-                    
-                    Platform.runLater(() -> {transferStatus.set("Changing Directories...");});
-                    if(!ftpClient.changeWorkingDirectory(basePath)) {
-                        reply = ftpClient.mkd(basePath);
-                        
-                        if (!FTPReply.isPositiveCompletion(reply)) {
-                            logger.debug("Unable to make remote dir " + basePath);
-                            Platform.runLater(() -> {transferStatus.set("Error: Unabe to make target directory");});
-                            fatalError=true;
-                            ftpClient.disconnect();
-                        } else {
-                            ftpClient.changeWorkingDirectory(basePath);
-                            fatalError=false;
-                        }
-                    }
-                    Platform.runLater(() -> {transferStatus.set("Connected");});
-                    fatalError=false;
-                } else {
-                  logger.debug("FTP login failed");
-                  Platform.runLater(() -> {transferStatus.set("Error: Login Failed");});
-                  fatalError=true;
-                  try {ftpClient.disconnect();} catch (Exception e) {};
-                }
-            } else {
-              logger.debug("FTP connect to host failed");
-              Platform.runLater(() -> {transferStatus.set("Error: Unable to connect to host");});
-
-              try {ftpClient.disconnect();} catch (Exception e) {};
-            }
-        } catch (IOException ioe) {
-            if (encrypted) {
-                try {ftpClient.disconnect();} catch (Exception e) {};
-                
-                // odds are we don't support encryption, 
-                // let's disable the encryption and try again
-                encrypted = false;
-                openConnection();
-            } else {
-                logger.debug("FTP client received network error");
-                Platform.runLater(() -> {transferStatus.set("Error: Network Error");});
-            }
-            
-
+        DataProtection(String status, String description) {
+            this.status = status;
+            this.description = description;
         }
     }
 
-    @Override
-    public StringProperty statusProperty() {
-        return transferStatus;
+    /** The server answered AUTH TLS with a 5xx: it does not support FTPS. */
+    private static class TlsNotSupportedException extends IOException {
+        TlsNotSupportedException(String reply, Throwable cause) {
+            super(reply, cause);
+        }
     }
-     @Override
-    public boolean isOK() {
-        if (password.isEmpty() || username.isEmpty() || hostname.isEmpty() || basePath.isEmpty()) return false;
-        return true;
+
+    /** The server refused PROT P. */
+    private static class ProtPRejectedException extends IOException {
+        ProtPRejectedException(String reply, Throwable cause) {
+            super(reply, cause);
+        }
+    }
+
+    /** The server refused the encrypted data connection, usually because the TLS session wasn't reused. */
+    private static class DataTlsRejectedException extends IOException {
+        final DataProtection next;
+
+        DataTlsRejectedException(String reply, DataProtection next, Throwable cause) {
+            super(reply, cause);
+            this.next = next;
+        }
+    }
+
+    private static final ProtocolCommandListener COMMAND_LOGGER = new ProtocolCommandListener() {
+        @Override
+        public void protocolCommandSent(ProtocolCommandEvent event) {
+            String message = event.getMessage().trim();
+            if (message.toUpperCase().startsWith("PASS")) message = "PASS **********";
+            LOG.trace("FTP CMD SENT: {}", message);
+        }
+
+        @Override
+        public void protocolReplyReceived(ProtocolCommandEvent event) {
+            LOG.trace("FTP REPLY RCV: {}", event.getMessage().trim());
+        }
+    };
+
+    // Worker thread only
+    private FTPClient client;
+    private boolean plainFtp = false;
+    private DataProtection protection = DataProtection.PRIVATE;
+
+    @Override
+    protected String protocolName() {
+        return "FTPS";
     }
 
     @Override
-    public void save(String filename, String contents) {
-        logger.debug("FTPSTransport.save() called for " + filename);
-        if (stripAccents) contents = StringUtils.stripAccents(contents);
-        transferMap.put(filename,contents);
-        if (! transferQueue.contains(filename)) transferQueue.add(filename);
-        
-        //if (transferThread == null || ftpClient == null || !ftpClient.isConnected() ) transferFile(); // kicks off the thread
+    protected int defaultPort() {
+        return FTP.DEFAULT_PORT;
     }
 
     @Override
-    public void setOutputPortal(ReportDestination op) {
-        parent=op;
+    protected void resetConnectionState() {
+        plainFtp = false;
+        protection = DataProtection.PRIVATE;
     }
 
     @Override
-    public void refreshConfig() {
-        try {
-        // Get the hostname, username, password, basePath
-        password=parent.getPassword();
-        username=parent.getUsername();
-        hostname=parent.getServer();
-        basePath=parent.getBasePath();
-        if (ftpClient != null && ftpClient.isConnected()) {
+    protected boolean isConnected() {
+        return client != null && client.isConnected();
+    }
+
+    @Override
+    protected void connect(Endpoint endpoint) throws IOException {
+        // Each fallback is one-way, so this loops at most twice
+        while (true) {
             try {
-                logger.debug("FTPSTransport::refreshConfig: calling ftpClient.disconnect()");
-                ftpClient.disconnect();
-            } catch (IOException f) {
-                // do nothing
+                client = openClient(endpoint, plainFtp, protection, this::setStatus);
+                logger.info("FTPS: connected to {} ({})", endpoint, describe(client, plainFtp, protection));
+                return;
+            } catch (TlsNotSupportedException e) {
+                logger.warn("FTPS: {} rejected AUTH TLS ({}). Falling back to plain FTP, so the password and files are sent unencrypted.",
+                        endpoint.host(), e.getMessage());
+                plainFtp = true;
+            } catch (ProtPRejectedException e) {
+                if (protection == DataProtection.CLEAR) throw e;
+                logger.warn("FTPS: {} rejected PROT P ({}). Using an unencrypted data channel; the login stays encrypted.",
+                        endpoint.host(), e.getMessage());
+                protection = DataProtection.CLEAR;
             }
         }
-        
-        stripAccents = parent.getStripAccents();
-        
-        encrypted = true;
-                    
-        fatalError=false;
-        needConfigRefresh = false;
-        } catch (Exception e){
-            logger.debug("FTPSTransport::refreshConfig Exception!");
-            e.printStackTrace();
-            fatalError=true;
-            needConfigRefresh = true;
-        }
-    }    
+    }
 
     @Override
-    public void test(ReportDestination parent, StringProperty output) {
-        Task transferTask = new Task<Void>() {
+    protected void upload(String filename, String contents) throws IOException {
+        String tmp = filename + TMP_SUFFIX;
+        try {
+            store(client, tmp, contents.getBytes(StandardCharsets.UTF_8), !plainFtp ? protection : null);
+        } catch (DataTlsRejectedException e) {
+            // Java uses each TLS 1.3 session ticket only once and only gets a couple per control
+            // connection, so a server that requires session reuse typically rejects the third
+            // upload. TLS 1.2 session IDs can be resumed any number of times.
+            logger.warn("FTPS: {} rejected the {} data connection ({}). Switching to {} data connections.{}",
+                    parent == null ? "server" : parent.getServer(), protection.description, e.getMessage(), e.next.description,
+                    e.next == DataProtection.PRIVATE_TLS12 ? " (The server requires TLS session reuse, which works reliably with TLS 1.2.)" : "");
+            protection = e.next;
+            throw new RetryNowException("Data connection rejected: " + e.getMessage(), e);
+        }
+        // Upload to a temp file and rename it, so readers never see a partial file
+        if (!client.rename(tmp, filename)) {
+            String firstReply = reply(client);
+            client.deleteFile(filename); // fails harmlessly if it isn't there
+            if (!client.rename(tmp, filename)) {
+                throw new IOException("Unable to rename " + tmp + " to " + filename + ": " + reply(client)
+                        + " (first attempt: " + firstReply + ")");
+            }
+        }
+    }
 
-                @Override 
-                public Void call() {
-                    
-                    password=parent.getPassword();
-                    username=parent.getUsername();
-                    hostname=parent.getServer();
-                    basePath=parent.getBasePath();
+    @Override
+    protected void keepAlive() throws IOException {
+        if (!client.sendNoOp()) throw new IOException("NOOP failed: " + reply(client));
+    }
 
-                    Platform.runLater(() -> output.set(output.getValueSafe() + "Connecting to " + hostname +" via FTPS..." ));
-                    
-                    
-                    ftpsClient = new FTPSClient(false);
-                    ftpClient = ftpsClient;
-                    ftpClient.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out), true));
-                    
+    @Override
+    protected void disconnectQuietly() {
+        disconnectQuietly(client);
+        client = null;
+    }
 
-                    // Connect to host
-                    
-                    try {
-                        ftpClient.connect(hostname);
-                        Platform.runLater(() -> output.set(output.getValueSafe() + "\nConnected via via FTPS..." ));
-                    } catch (IOException ex) {
-                        Platform.runLater(() -> output.set(output.getValueSafe() + "\nConnection Failed, attempting to use FTP..." ));
-                        ftpClient = new FTPClient();
-                        ftpClient.setConnectTimeout(10000); // 10 seconds
-                        ftpClient.addProtocolCommandListener(new PrintCommandListener(new PrintWriter(System.out), true));
-                        try {
-                            ftpClient.connect(hostname);
-                            Platform.runLater(() -> output.set(output.getValueSafe() + "\nConnected via via FTP..." ));
+    @Override
+    protected String connectedStatus() {
+        return plainFtp ? "Connected (insecure)" : protection.status;
+    }
 
-                        } catch (IOException ex1) {
-                            Platform.runLater(() -> output.set(output.getValueSafe() + "\n\nError: " + ex1.getLocalizedMessage() ));
-                            try {
-                                ftpClient.disconnect();
-                            } catch (IOException ex2) {
-                            }
-                            return null;
-                        }
-                    }
-                    
-                    int reply = ftpClient.getReplyCode();
-                    
-                    if (FTPReply.isPositiveCompletion(reply)) {
-                        try {
-                            Platform.runLater(() -> output.set(output.getValueSafe() + "\nLogging in..." ));
-                            
-                            ftpClient.enterLocalPassiveMode(); 
+    @Override
+    protected String transferringStatus(String filename) {
+        if (plainFtp) return "Transferring (insecure) " + filename;
+        if (protection == DataProtection.CLEAR) return "Transferring (clear) " + filename;
+        return "Transferring (secure) " + filename;
+    }
 
-                            if (ftpClient.login(username, password)) {
-                                // try and CD to the target directory
-                                Platform.runLater(() -> output.set(output.getValueSafe() + "\nLogin successful." ));
+    /**
+     * Connects, logs in, sets the data channel protection and changes to the
+     * target directory. On failure the client is closed and an exception is thrown.
+     */
+    private static FTPClient openClient(Endpoint ep, boolean plain, DataProtection protection, Consumer<String> progress) throws IOException {
+        FTPClient c;
+        if (plain) {
+            c = new FTPClient();
+        } else {
+            SessionReuseFTPSClient s = SessionReuseFTPSClient.create();
+            if (protection == DataProtection.PRIVATE_TLS12) s.setEnabledProtocols(new String[]{"TLSv1.2"});
+            c = s;
+        }
+        c.addProtocolCommandListener(COMMAND_LOGGER);
+        c.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        c.setDefaultTimeout(CONTROL_TIMEOUT_MS); // read timeout on the control connection
+        c.setDataTimeout(DATA_TIMEOUT);
 
-                                Platform.runLater(() -> output.set(output.getValueSafe() + "\nChanging directories..." ));
-
-                                if(!ftpClient.changeWorkingDirectory(basePath)) {
-                                    Platform.runLater(() -> output.set(output.getValueSafe() + "\nTarget directory does not exist\n Attempting to create it..." ));
-
-                                    int reply2 = ftpClient.mkd(basePath);
-                                    
-
-                                    if (!FTPReply.isPositiveCompletion(reply2)) {
-                                        Platform.runLater(() -> output.set(output.getValueSafe() + "\nError: Unable to make the target directory.\n\nTest Failed!" ));
-                                        ftpClient.disconnect();
-                                        return null;
-                                    } else {
-                                        
-                                        if (!ftpClient.changeWorkingDirectory(basePath)) {
-                                            Platform.runLater(() -> output.set(output.getValueSafe() + "\nError: Unabe to change to target directory\n\nTest Failed!" ));
-                                            ftpClient.disconnect();
-                                            return null;
-                                        } else {
-                                            Platform.runLater(() -> output.set(output.getValueSafe() + "\n\nSuccess!"));
-                                            ftpClient.disconnect();
-                                            return null;
-                                        }
-                                        
-                                    }
-                                } else {
-                                    Platform.runLater(() -> output.set(output.getValueSafe() + "\n\nSuccess!"));
-                                    ftpClient.disconnect();
-                                    return null;
-                                }
-                            } else {
-                                Platform.runLater(() -> output.set(output.getValueSafe() + "\nError: Invalid Username or Password\n\nTest Failed!" ));
-                                ftpClient.disconnect();
-                                return null;
-                            }
-                        } catch (IOException ex) {
-                            Platform.runLater(() -> output.set(output.getValueSafe() + "\nError: IO Error " + ex.getLocalizedMessage()+ "\n\nTest Failed!"  ));
-                            try {
-                                ftpClient.disconnect();
-                            } catch (IOException ex1) {
-                                logger.warn("IO exception when disconnecting",ex);
-                            }
-                        }
-                    } else {
-                        Platform.runLater(() -> output.set(output.getValueSafe() + "\n\nError: Error code response from server: " + reply ));
-                        try {
-                            ftpClient.disconnect();
-                        } catch (IOException ex) {
-                            logger.warn("IO exception when disconnecting",ex);
-                        }
-                        return null;
-                    }
-                    try {
-                        ftpClient.disconnect();
-                    } catch (IOException ex) {
-                        logger.warn("IO exception when disconnecting",ex);
-                    }
-                    return null;
+        boolean ok = false;
+        try {
+            progress.accept(plain ? "Connecting (insecure)..." : "Connecting FTPS...");
+            try {
+                c.connect(ep.host(), ep.port());
+            } catch (SSLException e) {
+                // execAUTH throws SSLException(reply) for a non-234 reply. A failed
+                // handshake also throws SSLException, but the last reply is then the 234.
+                if (!plain && FTPReply.isNegativePermanent(c.getReplyCode())) {
+                    throw new TlsNotSupportedException(reply(c), e);
                 }
-        
-        };
-        transferThread = new Thread(transferTask);
-        transferThread.setName("Thread-SFTP-Transfer-Test");
-        transferThread.setDaemon(true);
-        transferThread.start();
+                throw e;
+            }
+            if (!FTPReply.isPositiveCompletion(c.getReplyCode())) {
+                throw new IOException("Server refused the connection: " + reply(c));
+            }
+
+            progress.accept(plain ? "Logging in (insecure)..." : "Logging in...");
+            if (!c.login(ep.username(), ep.password())) {
+                throw new IOException("Login failed: " + reply(c));
+            }
+
+            if (c instanceof FTPSClient s) {
+                s.execPBSZ(0);
+                if (protection == DataProtection.CLEAR) {
+                    s.execPROT("C");
+                } else {
+                    try {
+                        s.execPROT("P");
+                    } catch (SSLException e) {
+                        throw new ProtPRejectedException(reply(c), e);
+                    }
+                }
+            }
+            c.enterLocalPassiveMode();
+            if (!c.setFileType(FTP.BINARY_FILE_TYPE)) {
+                throw new IOException("Unable to set binary mode: " + reply(c));
+            }
+
+            progress.accept("Changing Directories...");
+            if (!c.changeWorkingDirectory(ep.basePath())) {
+                String cwdReply = reply(c);
+                if (!c.makeDirectory(ep.basePath())) {
+                    throw new IOException("Unable to change to or create " + ep.basePath() + ": " + cwdReply + " / " + reply(c));
+                }
+                if (!c.changeWorkingDirectory(ep.basePath())) {
+                    throw new IOException("Unable to change to " + ep.basePath() + ": " + reply(c));
+                }
+            }
+            ok = true;
+            return c;
+        } finally {
+            if (!ok) disconnectQuietly(c);
+        }
+    }
+
+    /**
+     * Stores one file. If protection is P (not null and not CLEAR) and the server
+     * refuses the encrypted data connection, this throws DataTlsRejectedException
+     * naming the next protection level to try.
+     */
+    private static void store(FTPClient c, String name, byte[] data, DataProtection protection) throws IOException {
+        boolean classify = protection != null && protection != DataProtection.CLEAR;
+        boolean stored;
+        try (InputStream in = new ByteArrayInputStream(data)) {
+            stored = c.storeFile(name, in);
+        } catch (SSLException | SocketException e) {
+            // The data connection broke. If the server says why, it is still waiting on the control connection.
+            if (classify) {
+                String pending = readPendingReply(c);
+                if (pending != null && isDataTlsRejection(c.getReplyCode(), pending)) {
+                    throw new DataTlsRejectedException(pending, nextProtection(c, protection), e);
+                }
+            }
+            throw e;
+        }
+        if (!stored) {
+            if (classify && isDataTlsRejection(c.getReplyCode(), c.getReplyString())) {
+                throw new DataTlsRejectedException(reply(c), nextProtection(c, protection), null);
+            }
+            throw new IOException("Upload of " + name + " failed: " + reply(c));
+        }
+    }
+
+    private static boolean isDataTlsRejection(int code, String reply) {
+        if (code == 522) return true; // vsftpd: "522 SSL connection failed: session reuse required"
+        boolean negative = FTPReply.isNegativeTransient(code) || FTPReply.isNegativePermanent(code);
+        return negative && reply != null && DATA_TLS_REPLY.matcher(reply).find();
+    }
+
+    private static DataProtection nextProtection(FTPClient c, DataProtection current) {
+        // Restricting to TLS 1.2 only helps if the control connection used something newer
+        if (current == DataProtection.PRIVATE && c instanceof SessionReuseFTPSClient s
+                && !"TLSv1.2".equals(s.getControlProtocol()) && s.getControlProtocol() != null) {
+            return DataProtection.PRIVATE_TLS12;
+        }
+        return DataProtection.CLEAR;
+    }
+
+    /** Reads a reply the server sent after a failed data transfer. Returns null if none arrives. */
+    private static String readPendingReply(FTPClient c) {
+        try {
+            c.setSoTimeout(REPLY_DRAIN_TIMEOUT_MS);
+            c.getReply();
+            return reply(c);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String describe(FTPClient c, boolean plain, DataProtection protection) {
+        if (plain) return "plain FTP, unencrypted";
+        String tls = c instanceof SessionReuseFTPSClient s ? s.getControlProtocol() : null;
+        return (tls == null ? "TLS" : tls) + ", data channel " + protection.description;
+    }
+
+    private static String reply(FTPClient c) {
+        return StringUtils.normalizeSpace(StringUtils.defaultString(c.getReplyString()));
+    }
+
+    private static void disconnectQuietly(FTPClient c) {
+        if (c == null || !c.isConnected()) return;
+        try {
+            c.disconnect();
+        } catch (IOException e) {
+            LOG.trace("FTPS disconnect failed", e);
+        }
+    }
+
+    @Override
+    public void test(ReportDestination rd, StringProperty output) {
+        Consumer<String> out = testOutput(output);
+        startTestThread(() -> runTest(rd, out));
+    }
+
+    private void runTest(ReportDestination rd, Consumer<String> out) {
+        boolean plain = false;
+        DataProtection prot = DataProtection.PRIVATE;
+        // Each fallback is one-way: at most plain FTP plus two data protection steps
+        for (int attempt = 0; attempt < 4; attempt++) {
+            FTPClient c = null;
+            try {
+                Endpoint ep = Endpoint.from(rd, defaultPort());
+                out.accept("Connecting to " + ep.host() + ":" + ep.port() + (plain ? " via FTP..." : " via FTPS..."));
+                c = openClient(ep, plain, prot, out);
+                out.accept("Connected (" + describe(c, plain, prot) + ")");
+
+                out.accept("Uploading a test file...");
+                String testFile = "PikaTimer-test" + TMP_SUFFIX;
+                store(c, testFile, "PikaTimer connection test\n".getBytes(StandardCharsets.UTF_8), plain ? null : prot);
+                c.deleteFile(testFile);
+
+                out.accept("");
+                if (plain) out.accept("Warning: the server does not support FTPS. Files and the password are sent unencrypted.");
+                else if (prot == DataProtection.CLEAR) out.accept("Warning: files are sent unencrypted (the login is encrypted).");
+                out.accept("Success!");
+                return;
+            } catch (TlsNotSupportedException e) {
+                out.accept("The server does not support FTPS (" + e.getMessage() + "), trying plain FTP...");
+                plain = true;
+            } catch (ProtPRejectedException e) {
+                out.accept("The server refused an encrypted data channel (" + e.getMessage() + "), retrying without...");
+                prot = DataProtection.CLEAR;
+            } catch (DataTlsRejectedException e) {
+                out.accept("The server rejected the encrypted data connection (" + e.getMessage() + ")");
+                out.accept("Retrying with " + e.next.description + " data connections...");
+                prot = e.next;
+            } catch (IOException | RuntimeException e) {
+                logger.debug("FTPS test failed", e);
+                out.accept("Error: " + StringUtils.defaultIfBlank(e.getMessage(), e.toString()));
+                out.accept("");
+                out.accept("Test Failed!");
+                return;
+            } finally {
+                disconnectQuietly(c);
+            }
+        }
+        out.accept("Test Failed!");
     }
 }

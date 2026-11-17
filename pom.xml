@@ -109,7 +109,7 @@
         <dependency>
             <groupId>com.github.mwiede</groupId>
             <artifactId>jsch</artifactId>
-            <version>0.2.26</version>
+            <version>2.28.8</version>
         </dependency>
         <dependency>
             <groupId>io.javalin</groupId>
@@ -163,6 +163,11 @@
                             <classpathPrefix>lib/</classpathPrefix>
                             <mainClass>org.pikatimer.Pikatimer</mainClass>
                         </manifest>
+                        <manifestEntries>
+                            <!-- Lets multi-release dependencies (JSch, BouncyCastle, ...) use their
+                                 Java 9+ classes from the shaded jar -->
+                            <Multi-Release>true</Multi-Release>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>

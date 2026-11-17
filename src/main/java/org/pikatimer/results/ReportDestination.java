@@ -129,6 +129,7 @@ public class ReportDestination {
             
             
                                
+            if (fileTransport != null) fileTransport.shutdown();
             fileTransport = t.getNewTransport();
             fileTransport.setOutputPortal(this);
             
@@ -309,6 +310,11 @@ public class ReportDestination {
             return false;
         }
         return Objects.equals(this.uuidProperty.getValue(),((ReportDestination)obj).uuidProperty.getValue());
+    }
+
+    /** Stops the transport's background thread, e.g. when this destination is deleted. */
+    void shutdownTransport() {
+        if (fileTransport != null) fileTransport.shutdown();
     }
 
     void save(String filename, String contents) {

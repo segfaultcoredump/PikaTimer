@@ -36,5 +36,11 @@ public interface FileTransport {
     public StringProperty statusProperty();
     
     public void test(ReportDestination parent, StringProperty output);
+
+    /**
+     * Stops any background work (worker threads, open connections). Called when
+     * the destination is deleted or switched to a different transport.
+     */
+    public default void shutdown() {}
     
 }

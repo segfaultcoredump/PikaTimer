@@ -53,6 +53,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     <logger name="org.eclipse" level="INFO" />
     <logger name="org.flywaydb" level="INFO" />
     <logger name="com.mchange" level="INFO" />
+    <logger name="com.jcraft.jsch" level="WARN" />
     
 
     <logger name="org.pikatimer" level="TRACE" />

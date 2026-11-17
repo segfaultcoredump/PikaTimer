@@ -1048,6 +1048,7 @@ public class ResultsDAO {
         s.delete(op);
         s.getTransaction().commit(); 
         reportDestinationList.remove(op);
+        op.shutdownTransport();
     }
     
     

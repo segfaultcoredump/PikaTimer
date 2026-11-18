@@ -41,7 +41,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="TRACE"> 
+    <root level="DEBUG"> 
         <appender-ref ref="STDOUT" />
         <appender-ref ref="FILE" />
 

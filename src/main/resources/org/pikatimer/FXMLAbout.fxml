@@ -25,6 +25,11 @@
                   <Insets top="-10.0" />
                </padding>
             </Label>
+            <Label fx:id="pikaBuildLabel" text="Built">
+               <font>
+                  <Font size="14.0" />
+               </font>
+            </Label>
             <Hyperlink onAction="#openLink" text="https://pikatimer.org/">
                <font>
                   <Font size="18.0" />

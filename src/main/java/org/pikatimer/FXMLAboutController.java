@@ -16,6 +16,14 @@
  */
 package org.pikatimer;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.FormatStyle;
+import java.util.Properties;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Hyperlink;
@@ -33,14 +41,45 @@ public class FXMLAboutController{
 
 
     @FXML Label pikaVersionLabel;
-    
+    @FXML Label pikaBuildLabel;
+
     /**
      * Initializes the controller class.
      */
     public void initialize() {
-        // TODO
         pikaVersionLabel.setText("Version " + Pikatimer.VERSION);
-    }    
+
+        String buildTime = getBuildTime();
+        if (buildTime != null) {
+            pikaBuildLabel.setText("Built " + buildTime);
+        } else {
+            pikaBuildLabel.setVisible(false);
+            pikaBuildLabel.setManaged(false);
+        }
+    }
+
+    /**
+     * The build time recorded by Maven in build.properties, formatted in the
+     * local time zone, or null if it isn't available (e.g. a build that skipped
+     * Maven's resource filtering).
+     */
+    private String getBuildTime() {
+        try (InputStream in = getClass().getResourceAsStream("/org/pikatimer/build.properties")) {
+            if (in == null) {
+                logger.debug("build.properties not found");
+                return null;
+            }
+            Properties props = new Properties();
+            props.load(in);
+            Instant built = Instant.parse(props.getProperty("build.timestamp", "").trim());
+            return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+                    .withZone(ZoneId.systemDefault())
+                    .format(built);
+        } catch (IOException | DateTimeParseException e) {
+            logger.debug("Unable to read the build timestamp", e);
+            return null;
+        }
+    }
     
     @FXML
     protected void openLink(ActionEvent fxevent) {

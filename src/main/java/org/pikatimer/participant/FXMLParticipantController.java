@@ -25,10 +25,6 @@ import org.pikatimer.results.ResultsDAO;
 import org.pikatimer.timing.TimingDAO;
 import org.pikatimer.util.AlphanumericComparator;
 import org.pikatimer.util.WaveStringConverter;
-import io.datafx.controller.flow.Flow;
-import io.datafx.controller.flow.FlowException;
-import io.datafx.controller.flow.FlowHandler;
-import io.datafx.controller.flow.container.DefaultFlowContainer;
 import java.io.File;
 import java.io.IOException;
 import static java.lang.Double.MAX_VALUE;
@@ -68,7 +64,6 @@ import javafx.collections.transformation.FilteredList;
 import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
@@ -98,7 +93,6 @@ import javafx.scene.control.TextFormatter;
 import javafx.scene.control.cell.TextFieldListCell;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
-import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
@@ -106,9 +100,7 @@ import javafx.scene.layout.Priority;
 import static javafx.scene.layout.Region.USE_PREF_SIZE;
 import static javafx.scene.layout.Region.USE_COMPUTED_SIZE;
 import javafx.stage.FileChooser;
-import javafx.stage.Modality;
 import javafx.stage.Screen;
-import javafx.stage.Stage;
 import org.apache.commons.lang3.StringUtils;
 import org.controlsfx.control.CheckComboBox;
 import org.controlsfx.control.ListSelectionView;
@@ -1121,24 +1113,7 @@ public class FXMLParticipantController  {
     }
     
     public void importParticipants(){
-        try {
-            // todo
-            Stage importStage = new Stage();
-            
-            Flow flow  = new Flow(ImportWizardController.class);
-            
-            FlowHandler flowHandler = flow.createHandler();
-            
-            StackPane pane = flowHandler.start(new DefaultFlowContainer());
-            
-            importStage.setScene(new Scene(pane));
-            importStage.initModality(Modality.APPLICATION_MODAL);
-            importStage.setTitle("Import Participants..."); 
-            importStage.show();
-        } catch (FlowException ex) {
-            logger.error("importParticipants FlowException!",ex);
-        }
-       
+        new ParticipantImportWizard(importButton.getScene().getWindow()).show();
     }
     
     public void exportParticipants(){

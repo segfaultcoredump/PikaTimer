@@ -276,6 +276,7 @@ public class Participant {
                      } catch (Exception e){
                          
                      }
+                     break;
                          
                  case "email": this.setEmail(entry.getValue()); break; 
                      

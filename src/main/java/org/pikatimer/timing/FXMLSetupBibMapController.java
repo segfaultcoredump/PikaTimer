@@ -284,8 +284,8 @@ public class FXMLSetupBibMapController  {
                         }
                         mapModified.setValue(true);    
                         
-                        logger.debug("No header in file");
-                        logger.debug("Mapped chip " + t[0] + " to " + t[1]);
+                        logger.debug("No header in file. Assuming Bib -> Chip");
+                        logger.debug("Mapped chip " + t[1] + " to " + t[0]);
                     }
                     Files.lines(sourceFile.toPath())
                         .map(s -> s.trim())

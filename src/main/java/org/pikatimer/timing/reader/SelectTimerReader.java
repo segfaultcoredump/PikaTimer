@@ -87,7 +87,7 @@ public class SelectTimerReader implements TimingReader {
 
     // No look alike characters (0/o, 1/l/i), since the link may be typed in
     private static final String TOKEN_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
-    private static final int TOKEN_LENGTH = 8;
+    private static final int TOKEN_LENGTH = 4;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** What happened to a read sent in by a device */

@@ -56,7 +56,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
     <logger name="com.jcraft.jsch" level="WARN" />
     
 
-    <logger name="org.pikatimer" level="TRACE" />
+    <logger name="org.pikatimer" level="DEBUG" />
     
     
 </configuration>

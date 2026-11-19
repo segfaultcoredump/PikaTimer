@@ -566,7 +566,7 @@ public class FXMLAwardDetailsController {
 
         Label startAgeLabel = new Label("Start Age");
         TextField startAgeTextField = new TextField();
-        startAgeTextField.setTextFormatter(TextFieldFormatters.integerFormatter());
+        TextFieldFormatters.integerField(startAgeTextField, false);
         startAgeTextField.textProperty().setValue(agi.getStartAge().toString());
         
         dialogGrid.add(startAgeLabel, 0, row);

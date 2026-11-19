@@ -19,7 +19,6 @@ package org.pikatimer.race;
 import static org.pikatimer.participant.CustomAttributeType.TIME;
 import org.pikatimer.participant.Participant;
 import org.pikatimer.participant.ParticipantDAO;
-import org.pikatimer.util.Formatters;
 import org.pikatimer.util.IntegerEditingCell;
 import org.pikatimer.util.TextFieldFormatters;
 import java.util.HashMap;
@@ -162,7 +161,7 @@ public class FXMLAwardCategoryController {
         
         depthTypeComboBox.getSelectionModel().select(awardCategory.getDepthType());
         
-        depthTextField.setTextFormatter(Formatters.integerFormatter());
+        TextFieldFormatters.integerField(depthTextField, false);
         depthTextField.setText(awardCategory.getDepth().toString());
         
         TextFormatter<String> AGMformatter = new TextFormatter<>( change -> {

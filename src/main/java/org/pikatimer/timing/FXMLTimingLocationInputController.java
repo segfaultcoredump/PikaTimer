@@ -16,7 +16,8 @@
  */
 package org.pikatimer.timing;
 
-import org.pikatimer.util.DurationParser;
+import org.pikatimer.util.TemporalField;
+import org.pikatimer.util.TextFieldFormatters;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
@@ -155,25 +156,8 @@ public class FXMLTimingLocationInputController{
             
             skewTextField.textProperty().setValue(timingLocationInput.getSkewString());
             
-            skewTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                    logger.trace("TextField Text Changed (newValue: " + newValue + ")");
-                if (newValue.isEmpty()) return; 
-                if (newValue.matches("^-?\\.\\d+$")) {
-                    Platform.runLater(() -> {
-                        int caret = skewTextField.getCaretPosition();
-                        skewTextField.setText(newValue.replaceFirst("\\.","0."));
-                        skewTextField.positionCaret(caret+1);
-                    });
-                } else if (newValue.matches("^-?(\\d*:)?(\\d*:)?\\d*\\.?\\d*$")){
-                    logger.debug("Good skew time: " + newValue);
-                } else {
-                    Platform.runLater(() -> {
-                        int caret = skewTextField.getCaretPosition();
-                        skewTextField.setText(oldValue);
-                        skewTextField.positionCaret(caret-1);
-                    });
-                }
-            });
+            // [-][[HH:]MM:]SS[.sss]
+            TemporalField<Duration> skewField = TextFieldFormatters.durationField(skewTextField, "[-][H:][MM:]ss[.SSS]");
             
             skewTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
                 if (!newPropertyValue) {
@@ -182,7 +166,12 @@ public class FXMLTimingLocationInputController{
                         logger.debug("Skew changed from " + timingLocationInput.getSkewString()+ " to " + skewTextField.getText());
                         Duration oldSkew = timingLocationInput.getSkew();
                         //timingLocationInput.setSkewString(skewTextField.getText());
-                        Duration newSkew = DurationParser.parse(skewTextField.getText(), false);
+                        if (!skewField.isValid()) {
+                            logger.debug("Bad skew time {}, reverting", skewTextField.getText());
+                            skewTextField.setText(timingLocationInput.getSkewString());
+                            return;
+                        }
+                        Duration newSkew = skewField.getValue() == null ? Duration.ZERO : skewField.getValue();
                         if (! oldSkew.equals(newSkew)){
                             timingLocationInput.setSkew(newSkew);
                             timingLocationDAO.updateTimingLocationInput(timingLocationInput);

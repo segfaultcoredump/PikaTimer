@@ -57,7 +57,7 @@ Features:
 
 
     --TableView Custom Cells:
-        --Create a DurationTextField / LocalTimeTextField that "does the right thing"
+        Done: Time/duration/number TextFields that "do the right thing" (util/TextFieldFormatters)
         --Create a DurationCell (or whatever) for inline edits of durations
     --Upgrade to Hibernate 7.x
     --TableCell editCell that does a commit on focus change (WTF Oracle)?

@@ -22,7 +22,8 @@ import org.pikatimer.timing.RawTimeData;
 import org.pikatimer.timing.TimingListener;
 import org.pikatimer.timing.TimingReader;
 import org.pikatimer.util.DurationFormatter;
-import org.pikatimer.util.DurationParser;
+import org.pikatimer.util.TemporalField;
+import org.pikatimer.util.TextFieldFormatters;
 import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -1599,38 +1600,8 @@ public class PikaRFIDDirectReader implements TimingReader {
         allOK.bind(Bindings.and(endTimeOK, startTimeOK));
         
         
-        startTime.textProperty().addListener((observable, oldValue, newValue) -> {
-            startTimeOK.setValue(false);
-            if (DurationParser.parsable(newValue)) startTimeOK.setValue(Boolean.TRUE);
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = startTime.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    startTime.setText(oldValue);
-                    startTime.positionCaret(c);
-                });
-                logger.debug("Bad start time (newValue: " + newValue + ")");
-            }
-        });
-        endTime.textProperty().addListener((observable, oldValue, newValue) -> {
-            endTimeOK.setValue(false);
-            if (DurationParser.parsable(newValue)) endTimeOK.setValue(Boolean.TRUE);
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = endTime.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    endTime.setText(oldValue);
-                    endTime.positionCaret(c);
-                });
-                logger.debug("Bad end time (newValue: " + newValue + ")");
-            }
-        });
+        TemporalField<Duration> startTimeField = ReaderUtil.installTimeFilter(startTime, startTimeOK);
+        TemporalField<Duration> endTimeField = ReaderUtil.installTimeFilter(endTime, endTimeOK);
         
         //Default to event date / 00:00 for the start time, event date 23:59:00 for the end time
         startDate.setValue(Event.getInstance().getLocalEventDate());
@@ -1646,9 +1617,9 @@ public class PikaRFIDDirectReader implements TimingReader {
             if (dialogButton == rewindButtonType) {
                 RewindData result = new RewindData();
                 result.startDate = startDate.getValue();
-                result.startTime = DurationParser.parse(startTime.getText());
+                result.startTime = startTimeField.getValue();
                 result.endDate = endDate.getValue();
-                result.endTime = DurationParser.parse(endTime.getText());
+                result.endTime = endTimeField.getValue();
                 return result;
             }
             return null;
@@ -2740,22 +2711,9 @@ public class PikaRFIDDirectReader implements TimingReader {
         
         BooleanProperty timeOK = new SimpleBooleanProperty(false);
 
-        ultraTime.textProperty().addListener((observable, oldValue, newValue) -> {
-            timeOK.setValue(false);
-            if (DurationParser.parsable(newValue)) timeOK.setValue(Boolean.TRUE);
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good start Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = ultraTime.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    ultraTime.setText(oldValue);
-                    ultraTime.positionCaret(c);
-                });
-                logger.debug("Bad clock time (newValue: " + newValue + ")");
-            }
-        });
+        TemporalField<LocalTime> ultraTimeField = TextFieldFormatters.localTimeField(ultraTime, "HH:MM[:ss]");
+        ultraTimeField.setRequired(true);
+        timeOK.bind(ultraTimeField.validProperty());
         
         
         ultraDate.setValue(LocalDate.now());
@@ -2779,7 +2737,7 @@ public class PikaRFIDDirectReader implements TimingReader {
                 if (localTZ.equals(ultraTZ)) setClock(LocalDateTime.now(),null,autoGPS.selectedProperty().get());
                 else setClock(LocalDateTime.now(),localTZ,autoGPS.selectedProperty().get());
             } else {
-                LocalTime time = LocalTime.MIDNIGHT.plusSeconds(DurationParser.parse(ultraTime.getText()).getSeconds());
+                LocalTime time = ultraTimeField.getValue().withNano(0);
                 Integer newTZ = tzSpinner.getValue();
                 if (newTZ.equals(ultraTZ)) setClock(LocalDateTime.of(ultraDate.getValue(), time),null,autoGPS.selectedProperty().get());
                 else {

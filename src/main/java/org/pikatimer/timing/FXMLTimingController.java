@@ -25,8 +25,9 @@ import org.pikatimer.results.ResultsDAO;
 import org.pikatimer.util.AlphanumericComparator;
 import org.pikatimer.util.BackgroundSortedFilteredList;
 import org.pikatimer.util.DurationFormatter;
-import org.pikatimer.util.DurationParser;
 import org.pikatimer.util.DurationStringConverter;
+import org.pikatimer.util.TemporalField;
+import org.pikatimer.util.TextFieldFormatters;
 import org.pikatimer.util.WaveStringConverter;
 import java.io.IOException;
 import java.time.Duration;
@@ -498,13 +499,15 @@ public class FXMLTimingController {
 //            }
 //                
 //        });
-        // but only update when the textfield focus changes. 
+        // Times of day (or elapsed from midnight), saved when the textfield focus changes. 
+        TemporalField<Duration> filterStartField = TextFieldFormatters.durationField(filterStartTextField, "H:MM[:ss[.SSS]]");
+        TemporalField<Duration> filterEndField = TextFieldFormatters.durationField(filterEndTextField, "H:MM[:ss[.SSS]]");
         filterStartTextField.focusedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             if (!newPropertyValue) {
                 logger.debug("filterStartTextField out focus");
                 Duration newTime;
-                if (DurationParser.parsable(filterStartTextField.getText())){
-                    newTime = DurationParser.parse(filterStartTextField.getText());
+                if (filterStartField.isValid()){
+                    newTime = filterStartField.getValue() == null ? Duration.ZERO : filterStartField.getValue();
                 } else {
                     filterStartTextField.textProperty().setValue(DurationFormatter.durationToString(selectedTimingLocation.getFilterStartDuration(), 3, Boolean.TRUE).replace(".000", ""));
                     return;
@@ -530,8 +533,8 @@ public class FXMLTimingController {
                 logger.debug("filterEndTextField out focus");
                                         
                 Duration newTime;
-                if (DurationParser.parsable(filterEndTextField.getText())){
-                    newTime = DurationParser.parse(filterEndTextField.getText());
+                if (filterEndField.isValid()){
+                    newTime = filterEndField.getValue() == null ? Duration.ZERO : filterEndField.getValue();
                 } else {
                     filterEndTextField.textProperty().setValue(DurationFormatter.durationToString(selectedTimingLocation.getFilterEndDuration(), 3, Boolean.TRUE).replace(".000", ""));
                     return;
@@ -553,39 +556,6 @@ public class FXMLTimingController {
             }
         });
         
-        filterStartTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            logger.trace("TextField Text Changed (newValue: " + newValue + ")");
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]+(:([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = filterStartTextField.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    filterStartTextField.setText(oldValue);
-                    filterStartTextField.positionCaret(c);
-                });
-                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
-            }
-                
-        });
-        
-        filterEndTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-            logger.trace("TextField Text Changed (newValue: " + newValue + ")");
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]+(:([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = filterEndTextField.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    filterEndTextField.setText(oldValue);
-                    filterEndTextField.positionCaret(c);
-                });
-                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
-            }
-                
-        });
         announcerToggleSwitch.selectedProperty().addListener((ObservableValue<? extends Boolean> arg0, Boolean oldPropertyValue, Boolean newPropertyValue) -> {
             TimingLocation tl = timingLocListView.getSelectionModel().getSelectedItems().get(0);
             if (tl != null && !Objects.equals(newPropertyValue, tl.getIsAnnouncer())) {
@@ -1041,33 +1011,16 @@ public class FXMLTimingController {
         relativeCheckBox.disableProperty().setValue(Boolean.TRUE);
         
         TextField timeTextField = new TextField();
-        timeTextField.setPromptText("HH:MM:SS.sss");
-        timeTextField.textProperty().addListener((observable, oldValue, newValue) -> {
-                    logger.trace("TextField Text Changed (newValue: " + newValue + ")");
-            timeOK.setValue(false);
-            
-            if (TimeOverrideType.OVERRIDE.equals(typeComboBox.getValue())) {
-                if (relativeCheckBox.isSelected() && DurationParser.parsable(newValue)) timeOK.setValue(Boolean.TRUE);
-                else if (!relativeCheckBox.isSelected() && DurationParser.parsable(newValue, false)) timeOK.setValue(Boolean.TRUE);
-                else timeOK.setValue(false);
-            } else {
-                if (DurationParser.parsable(newValue)) timeOK.setValue(Boolean.TRUE);
-                else timeOK.setValue(false);
-            }
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?(\\.\\d*)?)?)?)?)?)?)?") ){
-                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
-            } else {
-                Platform.runLater(() -> {
-                    int c = timeTextField.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    timeTextField.setText(oldValue);
-                    timeTextField.positionCaret(c);
-                });
-                logger.debug("Bad End Filter Time (newValue: " + newValue + ")");
-            }
-                
-        });
+        // An override at a time of day needs the hours, anything relative to the start does not
+        String timeOfDayPattern = "H:MM[:ss[.SSS]]";
+        String elapsedPattern = "[H:]MM:ss[.SSS]";
+        TemporalField<Duration> timeField = TextFieldFormatters.durationField(timeTextField, elapsedPattern);
+        timeField.setRequired(true);
+        Runnable updateTimePattern = () -> timeField.setPattern(
+                TimeOverrideType.OVERRIDE.equals(typeComboBox.getValue()) && !relativeCheckBox.isSelected() ? timeOfDayPattern : elapsedPattern);
+        relativeCheckBox.selectedProperty().addListener((obs, ov, nv) -> updateTimePattern.run());
+        typeComboBox.valueProperty().addListener((obs, ov, nv) -> updateTimePattern.run());
+        timeOK.bind(timeField.validProperty());
         
         
         
@@ -1162,15 +1115,14 @@ public class FXMLTimingController {
                     o.setOverrideType(typeComboBox.getValue());
                     o.setSplitId(splitComboBox.getValue().getID());
 
-                    if (relativeCheckBox.isSelected()) o.setTimestamp(DurationParser.parse(timeTextField.getText(), false));
-                    else o.setTimestamp(DurationParser.parse(timeTextField.getText(), true));
+                    o.setTimestamp(timeField.getValue());
                     o.setRelative(relativeCheckBox.isSelected());
                     o.setNote(noteTextField.getText());
                     
                 } else {
                     o.setOverrideType(typeComboBox.getValue());
                     o.setSplitId(-1);
-                    o.setTimestamp(DurationParser.parse(timeTextField.getText(), false));
+                    o.setTimestamp(timeField.getValue());
                     o.setRelative(true);
                     o.setNote(noteTextField.getText());
                     

@@ -21,6 +21,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
 import java.nio.channels.UnresolvedAddressException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.concurrent.CompletionException;
@@ -31,6 +32,8 @@ import javafx.beans.property.BooleanProperty;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import org.pikatimer.util.DurationParser;
+import org.pikatimer.util.TemporalField;
+import org.pikatimer.util.TextFieldFormatters;
 
 /**
  * Helpers shared by the direct (network) timing readers.
@@ -53,20 +56,13 @@ final class ReaderUtil {
         return date.atStartOfDay().plus(DurationParser.parse(time));
     }
 
-    // Only allow time-like input (HH:MM:SS.sss) in the field, and track if it is a valid time
-    static void installTimeFilter(TextField timeField, BooleanProperty timeOK) {
-        timeField.textProperty().addListener((observable, oldValue, newValue) -> {
-            timeOK.set(DurationParser.parsable(newValue));
-            if (!(newValue.isEmpty() || newValue.matches("^[0-9]*(:?([0-5]?([0-9]?(:([0-5]?([0-9]?)?)?)?)?)?)?"))) {
-                Platform.runLater(() -> {
-                    int c = timeField.getCaretPosition();
-                    if (oldValue.length() > newValue.length()) c++;
-                    else c--;
-                    timeField.setText(oldValue);
-                    timeField.positionCaret(c);
-                });
-            }
-        });
+    // Only allow time-like input (H:MM[:SS[.sss]]) in the field, and track if it is a valid time.
+    // It is a duration from midnight (see toDateTime), so 24:00:00 is allowed.
+    static TemporalField<Duration> installTimeFilter(TextField timeField, BooleanProperty timeOK) {
+        TemporalField<Duration> f = TextFieldFormatters.durationField(timeField, "H:MM[:ss[.SSS]]");
+        f.setRequired(true);
+        timeOK.bind(f.validProperty());
+        return f;
     }
 
     // Sets a status label's text, colored with a style class from

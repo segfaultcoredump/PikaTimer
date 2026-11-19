@@ -1,0 +1,11 @@
+/*
+ * Red highlight for text fields set up by org.pikatimer.util.TextFieldFormatters
+ * while their text is partial or invalid. ValidatedField adds this stylesheet
+ * to each field, so it also works inside dialogs.
+ */
+.text-field:invalid {
+    -fx-control-inner-background: #ffe0e0;
+    -fx-text-box-border: #d32f2f;
+    -fx-focus-color: #d32f2f;
+    -fx-faint-focus-color: #d32f2f22;
+}

@@ -19,328 +19,171 @@ package org.pikatimer.util;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
 import javafx.scene.control.TextFormatter.Change;
-import javafx.util.StringConverter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
+ * One-call setup for TextFields that hold times, durations, integers or
+ * decimals. Each method installs a keystroke filter and a red highlight that
+ * shows while the text is partial or invalid, and returns a
+ * {@link ValidatedField} with the live parsed value and validity:
+ * <pre>
+ *   TemporalField&lt;LocalTime&gt; start = TextFieldFormatters.localTimeField(startTextField, "HH:MM[:ss[.SSS]]");
+ *   okButton.disableProperty().bind(start.validProperty().not());
+ *   ... start.getValue() ...
+ * </pre>
+ * See {@link TimePattern} for the pattern syntax.
+ * <p>
+ * Time fields make the delimiters easy to type. A ':' (or '.') is added for you
+ * when you keep typing digits past a full 2 digit unit, and space, ';', ',',
+ * '/', '-' and ':' all become whichever delimiter fits where you are. '.'
+ * starts the fraction when one fits there, and acts like a ':' otherwise.
+ * Deleting is never blocked, and digits typed into the middle of the text go
+ * in as-is, so inline edits work; the field just shows red until the time is
+ * valid again.
  *
  * @author John Garner <segfaultcoredump@gmail.com>
  */
-public class TextFieldFormatters {
-    private static final Logger logger = LoggerFactory.getLogger(TextFieldFormatters.class);
-    
-    
-    public static TextFormatter<Integer> integerFormatter() {
-        return integerFormatter(false);
-    }
-    public static TextFormatter<Integer> integerFormatter(Boolean negOK) {
-        
-        UnaryOperator<TextFormatter.Change> filter = c -> {
-            String newText = c.getControlNewText() ;
-            if (newText.isEmpty()) { // always allow deleting all characters
-                return c ;
-            } else if (negOK && ! newText.matches("-?([1-9]\\d*)*")) { 
-                return null;
-            } else if (! newText.matches("[1-9]\\d*")) {// otherwise, must have all digits:
-                return null ;
-            }
-            return c;
-        };
-        
-        // Custom string converter to deal with blanks and such
-        StringConverter<Integer> sc = new StringConverter<Integer>() {
+public final class TextFieldFormatters {
 
-            @Override
-            public String toString(Integer i) {
-                if (i == null) return "";
-                return i.toString() ;
-            }
-
-            @Override
-            public Integer fromString(String s) {
-                if (s != null && s.matches("-?\\d+")) {
-                    return Integer.valueOf(s);
-                } else {
-                    // fall back to what the value used to be 
-                    // (in case they blanked it out)
-                    return null ;
-                }
-            }
-        };
-        
-        return new TextFormatter<>(sc, 0, filter) ;
+    private TextFieldFormatters() {
     }
-    
-    public static TextFormatter<BigDecimal> getBigDecimalFormatter(){
-        UnaryOperator<Change> decimalFilter = change -> {
-            // if the content does not change, just return
+
+    // ---- Times and durations ----
+
+    /**
+     * Sets up a time-of-day field, e.g. {@code localTimeField(tf, "HH:MM[:ss[.SSS]]")}.
+     */
+    public static TemporalField<LocalTime> localTimeField(TextField tf, String pattern) {
+        TemporalField<LocalTime> f = new TemporalField<>(tf, new TimePattern(pattern, true),
+                d -> LocalTime.ofNanoOfDay(d.toNanos()));
+        tf.setTextFormatter(new TextFormatter<>(timeFilter(f::getTimePattern)));
+        return f;
+    }
+
+    /**
+     * Sets up a duration field, e.g. {@code durationField(tf, "[H:]MM:ss[.SSS]")}.
+     * Start the pattern with "[-]" to allow negative durations.
+     */
+    public static TemporalField<Duration> durationField(TextField tf, String pattern) {
+        TemporalField<Duration> f = new TemporalField<>(tf, new TimePattern(pattern, false), d -> d);
+        tf.setTextFormatter(new TextFormatter<>(timeFilter(f::getTimePattern)));
+        return f;
+    }
+
+    /**
+     * The keystroke filter for time fields. The pattern is looked up on every
+     * change so it can be swapped at runtime.
+     */
+    static UnaryOperator<Change> timeFilter(Supplier<TimePattern> patternSupplier) {
+        return change -> {
             if (!change.isContentChange()) return change;
-            
-            String newValue = change.getControlNewText();
-            logger.trace("BigDecimalFormatter TextFormatter fired: Changed? {} Value: {}",change.isContentChange(),newValue);
-            
-            if (newValue.isEmpty() || newValue.matches("^-?([0-9]+)?(\\.[0-9]*)?$")) { 
-                logger.trace("TextFieldFormatters::BigDecimal {} matches",newValue);
-                return change;
-            }
-            logger.debug("TextFieldFormatters::BigDecimal {} does NOT match a decimal format",newValue);
-            return null;
-        };
-        
-        return new TextFormatter<>(decimalFilter);
-    }
-    
-    public static TextFormatter<BigDecimal> getPositiveBigDecimalFormatter(){
-        UnaryOperator<Change> decimalFilter = change -> {
-            // if the content does not change, just return
-            if (!change.isContentChange()) return change;
-            
-            String newValue = change.getControlNewText();
-            logger.trace("PositiveBigDecimalFormatter TextFormatter fired: Changed? {} Value: {}",change.isContentChange(),newValue);
-            
-            if (newValue.isEmpty() || newValue.matches("^([0-9]+)?(\\.[0-9]*)?$")) { 
-                logger.trace("TextFieldFormatters::BigDecimal pre-parser {} matches",newValue);
-                return change;
-            }
-            logger.debug("TextFieldFormatters::PositiveBigDecimal {} does NOT match a decimal format",newValue);
-            return null;
-        };
-        
-        return new TextFormatter<>(decimalFilter);
-    }
-    
-    
-    public static TextFormatter<LocalTime> getLocalTimeFormatter(){
-        UnaryOperator<Change> localTimeFilter = change -> {
-            // if the content does not change, just return
-            if (!change.isContentChange()) return change;
-            
-            String newValue = change.getControlNewText();
-            logger.trace("LocalTimeFormatter TextFormatter fired: Changed? {} Value: {}",change.isContentChange(),newValue);
-            
-            if (newValue.isBlank()) return change;
-            else if (newValue.matches("^([3-9])|([0-9]:)$")) {  // zero pad the hour              
-                change.setText("0" + newValue);
-                change.setRange(0,newValue.length()-1);
-                change.setAnchor(change.getAnchor()+1);
-                change.setCaretPosition(change.getCaretPosition()+1);
-                return change;
-            } else if ( newValue.matches("^([012]|[01][0-9]|2[0-3]):?$") || 
-                        newValue.matches("^([01][0-9]|2[0-3]):[0-5]?$") || 
-                        newValue.matches("^([01][0-9]|2[0-3]):[0-5]?[0-9]?:[0-5]?[0-9]?$") ){
-                logger.debug("Possiblely good LocalTime (newValue: " + newValue + ")");
-                return change;
-            } else if(newValue.matches("^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]*)?)?$") ) { // Looks like a time, lets check
-                logger.debug("Testing Race Start Time (newValue: " + newValue + ")");            
-                try {
-                    if (!newValue.isEmpty()) {
-                        LocalTime.parse(newValue, DateTimeFormatter.ISO_LOCAL_TIME);
-                        return change;
-                    }
-                } catch (Exception e) {
-                    logger.debug("Exception Bad Race Start Time (newValue: " + newValue + ")");
-                    return null;
-                }
-            } else {
-                logger.debug("Bad Race Start Time (newValue: " + newValue + ")");
-                return null;
-            }
-            
-            return null;
-        };
-        
-        
-        return new TextFormatter<>(localTimeFilter);
-    }
-    
-    
-    public static TextFormatter<LocalTime> getNewLocalTimeFormatter(){
-        String BASE_MASK = "00:00:00";
-        String FULL_MASK = "00:00:00.000";
+            String typed = change.getText();
+            if (typed.isEmpty()) return change; // deletions are always allowed
 
-
-        UnaryOperator<TextFormatter.Change> localTimeFilter = change -> {
-            String currentText = change.getControlText();
+            TimePattern tp = patternSupplier.get();
+            String old = change.getControlText();
             int start = change.getRangeStart();
             int end = change.getRangeEnd();
+            String after = old.substring(end);
 
-            // 1. Handle Deletions (Backspace / Delete / Selection Clear)
-            if (change.isDeleted() && change.getText().isEmpty()) {
-                StringBuilder sb = new StringBuilder(currentText);
-               
-                // If deleting across or inside the millisecond boundary, handle length reduction
-                if (currentText.contains(".") && end > 8) {
-                    sb.delete(start, end);
-                    // Strip the trailing dot if no digits remain after it
-                    if (sb.toString().endsWith(".")) {
-                        sb.deleteCharAt(sb.length() - 1);
-                    }
-                } else {
-                    // Standard inline edit: revert deleted characters back to '0' placeholders
-                    for (int i = start; i < end; i++) {
-                        if (i < BASE_MASK.length()) {
-                            sb.setCharAt(i, BASE_MASK.charAt(i));
-                        }
-                    }
+            // Map each typed character onto what the pattern wants at that spot
+            StringBuilder sb = new StringBuilder(old.substring(0, start));
+            for (int i = 0; i < typed.length(); i++) {
+                char c = typed.charAt(i);
+                String prefix = sb.toString();
+                if (Character.isDigit(c)) {
+                    sb.append(c);
+                } else if (c == '-' && prefix.isEmpty() && tp.negativeAllowed() && !after.startsWith("-")) {
+                    sb.append(c);
+                } else if (c == '.' || c == ',') {
+                    if (tp.fractionLegalAfter(prefix)) sb.append('.');
+                    else appendDelimiter(tp, sb);
+                } else if (Character.isWhitespace(c) || ":;/-_".indexOf(c) >= 0) {
+                    appendDelimiter(tp, sb);
                 }
+                // anything else (letters, etc) is dropped
+            }
+            String inserted = sb.substring(start);
 
-                // Final safety validation pass on deletion structure
-                String result = sb.toString();
-                if (result.isEmpty()) result = BASE_MASK; // Never allow a completely empty field
-               
-                change.setText(result);
-                change.setRange(0, currentText.length());
-                change.setCaretPosition(start);
-                change.setAnchor(start);
-                return change;
+            // Typing one digit at the end of a full unit adds the next delimiter for you
+            if (typed.length() == 1 && Character.isDigit(typed.charAt(0))
+                    && start == end && end == old.length()) {
+                String prefix = old;
+                if (tp.trailingSegmentFull(prefix)) {
+                    if (tp.colonLegalAfter(prefix)) inserted = ":" + inserted;
+                    else if (tp.fractionLegalAfter(prefix)) inserted = "." + inserted;
+                    else return null; // nowhere for another digit to go
+                }
             }
 
-            // 2. Handle Additions (Typing / Pasting)
-            String input = change.getText();
-            if (input.isEmpty()) {
-                return change; // Simple cursor movement
-            }
+            if (inserted.isEmpty()) return null;
+            if (!tp.structurallyOk(old.substring(0, start) + inserted + after)) return null;
 
-            // Combine current state to project the new string layout
-            StringBuilder sb = new StringBuilder(currentText);
-            int caret = start;
-
-            for (int i = 0; i < input.length(); i++) {
-                char inputChar = input.charAt(i);
-
-                // Dynamically select the active mask template based on the caret position
-                String activeMask = (caret >= 8 || inputChar == '.' || sb.indexOf(".") != -1) ? FULL_MASK : BASE_MASK;
-
-                if (caret >= activeMask.length()) {
-                    return null; // Enforce hard cap maximum length
-                }
-
-                char maskChar = activeMask.charAt(caret);
-
-                // Handle manual typing/pasting of delimiters securely
-                if ((maskChar == ':' || maskChar == '.') && (inputChar == ':' || inputChar == '.')) {
-                    caret++;
-                    continue;
-                }
-
-                // Auto-advance caret if it currently sits on a formatting delimiter
-                if (maskChar == ':' || maskChar == '.') {
-                    if (maskChar == '.' && !sb.toString().contains(".")) {
-                        sb.insert(caret, '.');
-                    }
-                    caret++;
-                    if (caret >= activeMask.length()) return null;
-                    maskChar = activeMask.charAt(caret);
-                }
-
-                // Block non-numeric characters for time segment slots
-                if (!Character.isDigit(inputChar)) {
-                    return null;
-                }
-
-                // Insert or overwrite based on target position
-                if (caret < sb.length()) {
-                    sb.setCharAt(caret, inputChar);
-                } else {
-                    sb.append(inputChar);
-                }
-                caret++;
-            }
-
-            // 3. Structural Validation (Chronological Boundary Logic)
-            String validatedStr = sb.toString();
-            if (!isValidVariableTime(validatedStr)) {
-                return null;
-            }
-
-            // 4. Commit changes back to the text control
-            change.setText(validatedStr);
-            change.setRange(0, currentText.length());
-
-            // Skip trailing delimiter gaps smoothly so next character doesn't overwrite it
-            String activeMask = validatedStr.contains(".") ? FULL_MASK : BASE_MASK;
-            if (caret < activeMask.length() && (activeMask.charAt(caret) == ':' || activeMask.charAt(caret) == '.')) {
-                caret++;
-            }
-
-            change.setCaretPosition(Math.min(caret, validatedStr.length()));
-            change.setAnchor(Math.min(caret, validatedStr.length()));
+            change.setText(inserted);
+            int caret = start + inserted.length();
+            change.selectRange(caret, caret);
             return change;
         };
+    }
 
-        return new TextFormatter<>(localTimeFilter);
+    // Space and friends become a ':' if one fits, otherwise the '.' for the fraction
+    private static void appendDelimiter(TimePattern tp, StringBuilder sb) {
+        String prefix = sb.toString();
+        if (tp.colonLegalAfter(prefix)) sb.append(':');
+        else if (tp.fractionLegalAfter(prefix)) sb.append('.');
     }
-    
-    public static TextFormatter<Duration> getDurationFormatter(){
-        UnaryOperator<Change> durationFilter = change -> {
-            // if the content does not change, just return
-            if (!change.isContentChange()) return change;
-            
-            String newValue = change.getControlNewText();
-            logger.trace("DurationFormatter TextFormatter fired: Changed? {} Value: {}",change.isContentChange(),newValue);
 
-            if ( newValue.isEmpty() || newValue.matches("^-?[0-9]+(:(([0-5]([0-9](:([0-5]([0-9](\\.\\d*)?)?)?)?)?)?)?)?$") ){
-                logger.debug("Possiblely good Time (newValue: " + newValue + ")");
-                return change;
-            }
-            
-            logger.debug("Invalid duration: {}",newValue);
-            return null;
-        };
-        
-        return new TextFormatter<>(durationFilter);
+    // ---- Numbers ----
+
+    /** Sets up a whole number field. */
+    public static ValidatedField<Integer> integerField(TextField tf, boolean allowNegative) {
+        ValidatedField<Integer> f = new ValidatedField<>(tf, TextFieldFormatters::parseInteger);
+        tf.setTextFormatter(new TextFormatter<>(integerFilter(allowNegative)));
+        f.revalidate();
+        return f;
     }
-    
-    public static TextFormatter<Duration> getPositiveDurationFormatter(){
-        UnaryOperator<Change> durationFilter = change -> {
-            // if the content does not change, just return
-            if (!change.isContentChange()) return change;
-            
-            String newValue = change.getControlNewText();
-            
-            logger.trace("PositiveDurationFormatter TextFormatter fired: Changed? {} Value: {}",change.isContentChange(),newValue);
-            
-            if ( newValue.isEmpty() || newValue.matches("^[0-9]+(:(([0-5]([0-9](:([0-5]([0-9](\\.\\d*)?)?)?)?)?)?)?)?$") ){
-                logger.debug("getDurationFormatter()  Possiblely good duration: {}",newValue);
-                return change;
-            }
-            
-            logger.debug("Invalid duration: {}",newValue);
-            return null;
-        };
-        
-        return new TextFormatter<>(durationFilter);
+
+    /** Sets up a decimal number field. */
+    public static ValidatedField<BigDecimal> decimalField(TextField tf, boolean allowNegative) {
+        ValidatedField<BigDecimal> f = new ValidatedField<>(tf, TextFieldFormatters::parseDecimal);
+        tf.setTextFormatter(new TextFormatter<>(decimalFilter(allowNegative)));
+        f.revalidate();
+        return f;
     }
-    
-    // Handles validation cleanly for both "HH:mm:ss" and "HH:mm:ss.SSS" layouts
-    private static boolean isValidVariableTime(String timeStr) {
+
+    /** Only lets digits (and a leading '-' if allowed) into a field. */
+    public static UnaryOperator<Change> integerFilter(boolean allowNegative) {
+        String regex = allowNegative ? "-?\\d*" : "\\d*";
+        return change -> change.getControlNewText().matches(regex) ? change : null;
+    }
+
+    /** Only lets a decimal number (with a leading '-' if allowed) into a field. */
+    public static UnaryOperator<Change> decimalFilter(boolean allowNegative) {
+        String regex = allowNegative ? "-?\\d*(\\.\\d*)?" : "\\d*(\\.\\d*)?";
+        return change -> change.getControlNewText().matches(regex) ? change : null;
+    }
+
+    /** The Integer in the text, or null if there isn't one. */
+    public static Integer parseInteger(String s) {
+        if (s == null) return null;
         try {
-            if (timeStr.length() < 8) return false;
-
-            int hr = Integer.parseInt(timeStr.substring(0, 2));
-            int min = Integer.parseInt(timeStr.substring(3, 5));
-            int sec = Integer.parseInt(timeStr.substring(6, 8));
-
-            if (hr > 23 || min > 59 || sec > 59) return false;
-
-            // Optional Milliseconds validation if delimiter exists
-            if (timeStr.contains(".")) {
-                int dotIdx = timeStr.indexOf(".");
-                String msStr = timeStr.substring(dotIdx + 1);
-                if (!msStr.isEmpty()) {
-                    int ms = Integer.parseInt(msStr);
-                    if (ms > 999) return false;
-                }
-            }
-            return true;
+            return Integer.valueOf(s.strip());
         } catch (NumberFormatException e) {
-            return false;
+            return null;
         }
     }
-    
+
+    /** The BigDecimal in the text, or null if there isn't one. */
+    public static BigDecimal parseDecimal(String s) {
+        if (s == null) return null;
+        try {
+            return new BigDecimal(s.strip());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 }

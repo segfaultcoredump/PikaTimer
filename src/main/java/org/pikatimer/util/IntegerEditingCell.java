@@ -39,27 +39,14 @@ public class IntegerEditingCell<T> extends TableCell<T,Integer> {
 
     private final TextField textField = new TextField();;
     private final TextFormatter<Integer> textFormatter ;
-    private Boolean negOK = true;
     
-    public IntegerEditingCell(Boolean permitNegatives){
-        this();
-        negOK= permitNegatives;
+    public IntegerEditingCell() {
+        this(true);
     }
 
-    public IntegerEditingCell() {
+    public IntegerEditingCell(Boolean permitNegatives) {
         
-        
-        UnaryOperator<TextFormatter.Change> filter = c -> {
-            String newText = c.getControlNewText() ;
-            if (newText.isEmpty()) { // always allow deleting all characters
-                return c ;
-            } else if (negOK && ! newText.matches("-?\\d*")) { 
-                return null;
-            } else if (! newText.matches("\\d+")) {// otherwise, must have all digits:
-                return null ;
-            }
-            return c;
-        };
+        UnaryOperator<TextFormatter.Change> filter = TextFieldFormatters.integerFilter(permitNegatives);
         
         // Custom string converter to deal with blanks and such
         StringConverter<Integer> sc = new StringConverter<Integer>() {
@@ -72,13 +59,10 @@ public class IntegerEditingCell<T> extends TableCell<T,Integer> {
 
             @Override
             public Integer fromString(String s) {
-                if (s != null && s.matches("-?\\d+")) {
-                    return Integer.valueOf(s);
-                } else {
-                    // fall back to what the value used to be 
-                    // (in case they blanked it out)
-                    return getItem() ;
-                }
+                // fall back to what the value used to be
+                // (in case they blanked it out)
+                Integer v = TextFieldFormatters.parseInteger(s);
+                return v != null ? v : getItem();
             }
         };
         

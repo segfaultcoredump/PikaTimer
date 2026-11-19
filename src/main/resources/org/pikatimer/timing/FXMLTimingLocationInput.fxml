@@ -24,6 +24,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Separator?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
@@ -31,7 +32,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<GridPane fx:id="baseGridPane" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308" xmlns="http://javafx.com/javafx/23" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.timing.FXMLTimingLocationInputController">
+<TitledPane fx:id="inputTitledPane" animated="false" maxWidth="1.7976931348623157E308" xmlns="http://javafx.com/javafx/23" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pikatimer.timing.FXMLTimingLocationInputController">
+<content>
+<GridPane fx:id="baseGridPane" maxHeight="1.7976931348623157E308" maxWidth="1.7976931348623157E308">
    <children>
       <HBox alignment="CENTER_RIGHT" GridPane.columnIndex="2">
          <children>
@@ -152,9 +155,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
       </VBox>
    </children>
    <columnConstraints>
-      <ColumnConstraints halignment="RIGHT" hgrow="NEVER" />
+      <ColumnConstraints halignment="RIGHT" hgrow="NEVER" minWidth="-Infinity" />
       <ColumnConstraints hgrow="ALWAYS" maxWidth="1.7976931348623157E308" minWidth="0.0" />
-      <ColumnConstraints hgrow="NEVER" />
+      <ColumnConstraints hgrow="NEVER" minWidth="-Infinity" />
    </columnConstraints>
    <rowConstraints>
       <RowConstraints fillHeight="false" vgrow="NEVER" />
@@ -167,3 +170,5 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
       <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
    </padding>
 </GridPane>
+</content>
+</TitledPane>

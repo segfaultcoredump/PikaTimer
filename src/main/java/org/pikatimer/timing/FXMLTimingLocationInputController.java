@@ -35,7 +35,9 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +51,7 @@ import org.slf4j.LoggerFactory;
 public class FXMLTimingLocationInputController{
     private static final Logger logger = LoggerFactory.getLogger(FXMLTimingLocationInputController.class);
     
+    @FXML private TitledPane inputTitledPane;
     @FXML private TextField locationNameTextField; 
     @FXML private GridPane baseGridPane; 
     //@FXML private Pane readerPane;
@@ -105,6 +108,13 @@ public class FXMLTimingLocationInputController{
                 }
             });
             
+            locationNameTextField.setOnAction(e -> {
+                if ( ! locationNameTextField.getText().equals(timingLocationInput.getLocationName()) ) {
+                    timingLocationInput.setLocationName(locationNameTextField.getText());
+                    timingLocationDAO.updateTimingLocationInput(timingLocationInput);
+                }
+            });
+            
             // Get the reader type and wire in the choice box
             ObservableList<TimingInputTypes> readerTypeList = FXCollections.observableArrayList(Arrays.asList(TimingInputTypes.values()));
             inputTypeChoiceBox.setItems(readerTypeList);
@@ -118,6 +128,21 @@ public class FXMLTimingLocationInputController{
             timingLocationInput.initializeReader(readerVBox);
             
             readCountLabel.textProperty().bind(Bindings.convert(timingLocationInput.readCountProperty())); 
+            
+            // Summary in the title bar so a collapsed input still shows what it is up to
+            inputTitledPane.textProperty().bind(Bindings.createStringBinding(() -> {
+                    StringBuilder title = new StringBuilder(timingLocationInput.getLocationName());
+                    if (inputTypeChoiceBox.getValue() != null) title.append("  \u00b7  ").append(inputTypeChoiceBox.getValue());
+                    int reads = timingLocationInput.readCountProperty().get();
+                    title.append("  \u00b7  ").append(reads).append(reads == 1 ? " read" : " reads");
+                    String last = timingLocationInput.getLastReadSummary();
+                    if (!last.isEmpty()) title.append("  \u00b7  Last: ").append(last);
+                    return title.toString();
+                }, 
+                timingLocationInput.LocationNameProperty(), 
+                inputTypeChoiceBox.valueProperty(), 
+                timingLocationInput.readCountProperty(), 
+                timingLocationInput.lastReadProperty()));
             
             // flag as a backup time
             backupCheckBox.setSelected(timingLocationInput.getIsBackup()); 
@@ -190,6 +215,10 @@ public class FXMLTimingLocationInputController{
         }
     }
     
+    public void setExpanded(boolean expanded) {
+        inputTitledPane.setExpanded(expanded);
+    }
+    
     public void removeTimingInput(ActionEvent fxevent){
         
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
@@ -204,7 +233,7 @@ public class FXMLTimingLocationInputController{
 
         Optional<ButtonType> result = alert.showAndWait();
         if (result.get() == removeButtonType) {
-            boolean remove = ((VBox) baseGridPane.getParent()).getChildren().remove(baseGridPane);
+            ((Pane) inputTitledPane.getParent()).getChildren().remove(inputTitledPane);
             if (timingLocationInput != null) {
                 timingLocationDAO.removeTimingLocationInput(timingLocationInput);
             }

@@ -462,9 +462,11 @@ public class FXMLTimingController {
                     addTimingInput(null);
                 } else { // display all of the inputs
                     logger.debug("Starting the display of inputs for a timing location");
+                    // Only open the input up if it is the only one
+                    boolean expand = selectedTimingLocation.getInputs().size() == 1;
                     selectedTimingLocation.getInputs().forEach(i -> {
                         logger.debug("showing input for a timing location ");
-                        showTimingInput(i);
+                        showTimingInput(i, expand);
                     });
                     logger.debug("Done showing inputs for a timing location");
                 }
@@ -829,11 +831,11 @@ public class FXMLTimingController {
         tli.setTimingLocation(selectedTimingLocation);
         tli.setLocationName("New " + selectedTimingLocation.getLocationName() + " Input " + (selectedTimingLocation.inputsProperty().size()+1));
         timingDAO.addTimingLocationInput(tli);
-        showTimingInput(tli);
+        showTimingInput(tli, true);
         //timingLocationDetailsController.selectTimingLocation(selectedTimingLocation);
     }
     
-    private void showTimingInput(TimingLocationInput i) {
+    private void showTimingInput(TimingLocationInput i, boolean expanded) {
         logger.debug("showTimingInput called... ");
         FXMLLoader tlLoader = new FXMLLoader(getClass().getResource("/org/pikatimer/timing/FXMLTimingLocationInput.fxml"));
         try {
@@ -842,7 +844,9 @@ public class FXMLTimingController {
         } catch (IOException ex) {
             logger.error("Unable to load FXML FXMLTimingLocationInput.fxml",ex);
         }
-        ((FXMLTimingLocationInputController)tlLoader.getController()).setTimingLocationInput(i); 
+        FXMLTimingLocationInputController tliController = tlLoader.getController();
+        tliController.setTimingLocationInput(i); 
+        tliController.setExpanded(expanded);
         //timingLocationDetailsController.selectTimingLocation(selectedTimingLocation);
     }
     

@@ -36,8 +36,10 @@ import javafx.application.Platform;
 import javafx.beans.Observable;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.concurrent.Task;
@@ -96,6 +98,9 @@ public class TimingLocationInput implements TimingListener{
 
     private final IntegerProperty readCountProperty = new SimpleIntegerProperty();
     private final AtomicBoolean readCountUpdatePending = new AtomicBoolean(false);
+    // Most recent new read, handed to the FX thread along with the read count
+    private volatile RawTimeData lastRawRead;
+    private final ObjectProperty<RawTimeData> lastReadProperty = new SimpleObjectProperty<>();
     private Set<RawTimeData> rawTimeSet;
     
     
@@ -193,6 +198,37 @@ public class TimingLocationInput implements TimingListener{
         return readCountProperty;         
     }
     
+    // The newest read we have, updated on the FX thread with the read count
+    public ObjectProperty<RawTimeData> lastReadProperty() {
+        return lastReadProperty;
+    }
+    
+    /**
+     * A short "chip @ time" (or "chip/bib @ time" when the chip maps to a 
+     * different bib) description of the newest read, or an empty string if
+     * there are no reads yet. Call from the FX thread.
+     */
+    @Transient
+    public String getLastReadSummary() {
+        RawTimeData r = lastReadProperty.get();
+        if (r == null) return "";
+        String chip = r.getChip();
+        String id = chip;
+        if (timingReader != null && !timingReader.chipIsBib()) {
+            String bib = timingDAO.getBibFromChip(chip);
+            if (bib != null && !bib.equals(chip)) id = chip + "/" + bib;
+        }
+        return id + " @ " + DurationFormatter.durationToString(r.getTimestamp(), 3, Boolean.TRUE);
+    }
+    
+    // Seed the last read from the newest time we loaded from the database
+    private void seedLastRead() {
+        lastRawRead = rawTimeSet.stream()
+                .filter(t -> t.getTimestamp() != null)
+                .max((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()))
+                .orElse(null);
+    }
+    
     public void initializeReader(Pane readerDisplayPane) {
         initializeReader();
         timingReader.showControls(readerDisplayPane);
@@ -218,6 +254,7 @@ public class TimingLocationInput implements TimingListener{
 
                 rawTimeSet.addAll(timingDAO.getRawTimes(this));
                 logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times");
+                seedLastRead();
                 updateReadCount();
             }
         }
@@ -347,6 +384,7 @@ public class TimingLocationInput implements TimingListener{
             Platform.runLater(() -> {
                 readCountUpdatePending.set(false);
                 readCountProperty.set(rawTimeSet == null ? 0 : rawTimeSet.size());
+                lastReadProperty.set(lastRawRead);
             });
         }
     }
@@ -373,6 +411,7 @@ public class TimingLocationInput implements TimingListener{
             //if not, save it to our local stash of times. 
             rawTimeSet.add(r);
             timingDAO.saveRawTimes(r); 
+            lastRawRead = r;
 
             updateReadCount();
 
@@ -460,6 +499,7 @@ public class TimingLocationInput implements TimingListener{
         // blow away the rawTimeSet
         if (rawTimeSet != null && !rawTimeSet.isEmpty()) {
             rawTimeSet.clear();
+            lastRawRead = null;
             updateReadCount();
         }
     }
@@ -579,6 +619,7 @@ public class TimingLocationInput implements TimingListener{
 
             rawTimeSet.addAll(timingDAO.getRawTimes(this));
             logger.debug("TimingLocationInput.initializeReader: Read in " + rawTimeSet.size() + " existing times"); 
+            seedLastRead();
             updateReadCount();
         } 
         

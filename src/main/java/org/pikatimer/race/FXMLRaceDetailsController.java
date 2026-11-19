@@ -1153,7 +1153,7 @@ public class FXMLRaceDetailsController {
         
         TextField distanceTextField = new TextField();
         ValidatedField<BigDecimal> distanceField = TextFieldFormatters.decimalField(distanceTextField, false);
-        
+        distanceTextField.setPrefWidth(50);
         // Split Distance must be greater than 0 and less than the race distance
         BooleanProperty distOK = new SimpleBooleanProperty(false);
         distanceField.valueProperty().addListener((obs,oldVal,dist) -> {
@@ -1194,7 +1194,7 @@ public class FXMLRaceDetailsController {
         
         TextField minTimeTextField = new TextField(DurationFormatter.durationToString(s.splitMinTimeDuration()));
         TemporalField<Duration> minTimeField = TextFieldFormatters.durationField(minTimeTextField, "[H:]MM:ss[.SSS]");
-        minTimeTextField.setPrefWidth(75);
+        minTimeTextField.setPrefWidth(100);
         
         dialogGrid.add(splitMinTimeLabel, 0, row);
         dialogGrid.add(minTimeTextField,1, row);
@@ -1213,7 +1213,7 @@ public class FXMLRaceDetailsController {
 
         TextField cutoffTimeTextField = new TextField(DurationFormatter.durationToString(s.splitCutoffDuration()));
         TemporalField<Duration> cutoffTimeField = TextFieldFormatters.durationField(cutoffTimeTextField, "H:MM[:ss[.SSS]]");
-        cutoffTimeTextField.setPrefWidth(75);
+        cutoffTimeTextField.setPrefWidth(100);
         ToggleSwitch absoluteToggleSwitch = new ToggleSwitch("Relative to Start");
         absoluteToggleSwitch.setSelected(s.getSplitCutoffIsRelative());
         cutoffHBox.getChildren().setAll(cutoffTimeTextField, absoluteToggleSwitch);

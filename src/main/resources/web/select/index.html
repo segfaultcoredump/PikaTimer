@@ -45,7 +45,10 @@
       <div id="stage-message">
         <p id="stage-text">Loading…</p>
         <div id="progress" hidden><div id="progress-bar"></div></div>
-        <button id="start-button" class="primary" hidden>Start Camera</button>
+        <div id="mode-buttons" class="mode-buttons" hidden>
+          <button id="start-button" class="primary">Start Camera (automatic)</button>
+          <button id="manual-button">Enter Bibs by Hand</button>
+        </div>
       </div>
     </div>
     <div id="camera-bar">
@@ -58,6 +61,36 @@
       <button id="rotate-auto" class="link-button" hidden>Auto</button>
       <label id="zoom-wrap" hidden>Zoom <input id="zoom" type="range" min="1" max="1" step="0.1" value="1"></label>
       <span id="ocr-stats" class="muted"></span>
+      <button id="to-keypad" title="Type the bibs in by hand instead">Keypad</button>
+    </div>
+  </section>
+
+  <section id="keypad-pane" hidden>
+    <div id="entry-box">
+      <div id="entry" class="empty"><span id="entry-text"></span><span class="caret"></span></div>
+      <div id="entry-info">
+        <div id="entry-who"></div>
+        <div id="entry-detail" class="muted"></div>
+      </div>
+    </div>
+    <div id="keypad">
+      <button tabindex="-1" data-key="1">1</button>
+      <button tabindex="-1" data-key="2">2</button>
+      <button tabindex="-1" data-key="3">3</button>
+      <button tabindex="-1" data-key="back" class="key-fn" aria-label="Backspace">&#9003;</button>
+      <button tabindex="-1" data-key="4">4</button>
+      <button tabindex="-1" data-key="5">5</button>
+      <button tabindex="-1" data-key="6">6</button>
+      <button tabindex="-1" data-key="clear" class="key-fn">Clear</button>
+      <button tabindex="-1" data-key="7">7</button>
+      <button tabindex="-1" data-key="8">8</button>
+      <button tabindex="-1" data-key="9">9</button>
+      <button tabindex="-1" data-key="enter" class="key-enter primary">Enter</button>
+      <button tabindex="-1" data-key="0" class="key-zero">0</button>
+    </div>
+    <div id="keypad-bar">
+      <span class="muted">Keypad entry</span>
+      <button id="to-camera" class="link-button">Use the camera instead</button>
     </div>
   </section>
 
@@ -79,10 +112,17 @@
       <input id="device-name" maxlength="40" autocomplete="off">
     </label>
 
-    <label class="field">Camera
+    <label class="field">How bibs are recorded
+      <select id="mode-select">
+        <option value="camera">Camera (automatic)</option>
+        <option value="manual">Keypad (typed by hand)</option>
+      </select>
+    </label>
+
+    <label class="field camera-only">Camera
       <select id="camera-select"></select>
     </label>
-    <label class="field">Picture rotation
+    <label class="field camera-only">Picture rotation
       <select id="rotation-select">
         <option value="auto">Auto (use the motion sensor)</option>
         <option value="0">None</option>
@@ -91,8 +131,8 @@
         <option value="270">90° counter-clockwise</option>
       </select>
     </label>
-    <p id="rotation-info" class="muted"></p>
-    <label class="field file-field">Or use a video file (for testing)
+    <p id="rotation-info" class="muted camera-only"></p>
+    <label class="field file-field camera-only">Or use a video file (for testing)
       <input id="video-file" type="file" accept="video/*">
     </label>
 
@@ -100,10 +140,10 @@
       <legend>Bibs</legend>
       <p id="bib-info" class="muted"></p>
       <button type="button" id="refresh-bibs">Refresh Bibs</button>
-      <p id="input-settings" class="muted"></p>
+      <p id="input-settings" class="muted camera-only"></p>
     </fieldset>
 
-    <fieldset>
+    <fieldset class="camera-only">
       <legend>Reading</legend>
       <label class="field">Frames a bib must be read in before it counts
         <select id="required-hits">
@@ -144,6 +184,7 @@
     <details>
       <summary>Help</summary>
       <ul class="help">
+        <li>Keypad: type the bib number and press Enter as the runner crosses. The time is the moment Enter is pressed. The runner's name, age and sex show as you type; a bib that isn't registered is still recorded. A keyboard works too (Enter, Backspace, Esc to clear).</li>
         <li>Turn the phone sideways for a wide view of the finish line. With Auto rotation the picture turns upright by itself, even with rotation lock on. If it comes out sideways or upside down, tap Rotate until it is upright.</li>
         <li>Point the camera at the finish line, then drag the green band so it covers the area where runners' bibs pass. Only bibs inside the band are read.</li>
         <li>Only the biggest number on a bib is read. Smaller numbers near it, like the event year or a number in a sponsor's logo, are ignored (shown in orange). Turn this off in Settings if your bibs have two numbers of the same size.</li>

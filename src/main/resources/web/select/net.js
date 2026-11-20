@@ -10,7 +10,7 @@
  * a read it already has (same bib, same time).
  */
 
-export const APP_VERSION = '1.1';
+export const APP_VERSION = '1.2';
 
 const SEND_BATCH = 50;
 const FETCH_TIMEOUT_MS = 8000;
@@ -52,6 +52,7 @@ export class PikaLink extends EventTarget {
 
         // Bibs
         this.bibs = null;
+        this.participants = {};     // bib -> {name, age, sex, race}
         this.bibVersion = null;
         this.bibsUpdated = 0;
 
@@ -201,6 +202,7 @@ export class PikaLink extends EventTarget {
             const saved = JSON.parse(localStorage.getItem(`pika-select-bibs-${this.token}`) ?? 'null');
             if (saved && Array.isArray(saved.bibs)) {
                 this.bibs = saved.bibs;
+                this.participants = saved.participants ?? {};
                 this.bibVersion = saved.version;
                 this.bibsUpdated = saved.updated ?? 0;
             }
@@ -222,11 +224,12 @@ export class PikaLink extends EventTarget {
             if (!res.ok) return false;
             const o = await res.json();
             this.bibs = o.bibs;
+            this.participants = o.participants ?? {};
             this.bibVersion = o.version;
             this.bibsUpdated = Date.now();
             try {
                 localStorage.setItem(`pika-select-bibs-${this.token}`,
-                        JSON.stringify({ bibs: this.bibs, version: this.bibVersion, updated: this.bibsUpdated }));
+                        JSON.stringify({ bibs: this.bibs, participants: this.participants, version: this.bibVersion, updated: this.bibsUpdated }));
             } catch (ex) {
                 // no storage, keep it in memory
             }
@@ -237,6 +240,21 @@ export class PikaLink extends EventTarget {
         }
     }
 
+    /** The runner with this bib ({name, age, sex, race}), or null */
+    participant(bib) {
+        return Object.hasOwn(this.participants, bib) ? this.participants[bib] : null;
+    }
+
+    /** The length of the longest registered all-digit bib (6 if none are known) */
+    maxBibLength() {
+        if (this.maxBib?.bibs !== this.bibs) {
+            let max = 0;
+            for (const b of this.bibs ?? []) if (/^[0-9]+$/.test(b) && b.length > max) max = b.length;
+            this.maxBib = { bibs: this.bibs, length: max || 6 };
+        }
+        return this.maxBib.length;
+    }
+
     // ------------------------------------------------------------------
     // Reads
     // ------------------------------------------------------------------
@@ -244,7 +262,7 @@ export class PikaLink extends EventTarget {
     /**
      * Queue a read: saved first, then sent.
      *
-     * @param read {bib, deviceEpochMs, score}
+     * @param read {bib, deviceEpochMs, score, manual}
      */
     async addRead(read) {
         const r = {
@@ -254,6 +272,7 @@ export class PikaLink extends EventTarget {
             epochMs: Math.round(this.toServerTime(read.deviceEpochMs)),
             clockSynced: this.clockSynced,
             score: read.score,
+            manual: read.manual === true,
             status: 'queued',
             participant: null,
             created: Date.now()

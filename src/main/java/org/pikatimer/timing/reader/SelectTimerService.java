@@ -26,8 +26,9 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +59,7 @@ import org.slf4j.LoggerFactory;
  * <pre>
  * GET  /select/{token}/            the web app (its files are under /select/assets/)
  * GET  /api/select/{token}/config  input settings
- * GET  /api/select/{token}/bibs    the registered bibs (ETag, so a refresh is cheap)
+ * GET  /api/select/{token}/bibs    the registered bibs and runner details (ETag, so a refresh is cheap)
  * GET  /api/select/{token}/time    this computer's clock, for the device's clock sync (also the heartbeat)
  * POST /api/select/{token}/reads   bibs seen by the device; answered with acks and participant details
  * </pre>
@@ -221,13 +222,37 @@ public final class SelectTimerService {
             json(ctx, o);
         }));
 
+        // The registered bibs, and each runner's name, age, sex and race so
+        // the device can show who a bib is before it is sent (keypad entry)
         server.get("/api/select/{token}/bibs", api((ctx, reader, device) -> {
-            Set<String> bibs = new TreeSet<>();
+            // Sorted by bib, so the version (hash) is the same for the same list
+            Map<String, String[]> runners = new TreeMap<>();
+            boolean multiRace = multipleRaces();
             for (Participant p : new ArrayList<>(ParticipantDAO.getInstance().listParticipants())) {
                 String bib = p.getBib();
-                if (bib != null && !bib.isBlank()) bibs.add(bib.trim());
+                if (bib == null || bib.isBlank()) continue;
+                Integer age = p.getAge();
+                runners.put(bib.trim(), new String[] {
+                    (Objects.toString(p.getFirstName(), "") + " " + Objects.toString(p.getLastName(), "")).trim(),
+                    age == null ? "" : age.toString(),
+                    Objects.toString(p.getSex(), ""),
+                    multiRace ? raceName(p) : ""
+                });
             }
-            String version = hash(String.join("\n", bibs));
+            Set<String> bibs = runners.keySet();
+            JSONObject participants = new JSONObject();
+            StringBuilder all = new StringBuilder();
+            for (Map.Entry<String, String[]> e : runners.entrySet()) {
+                String[] r = e.getValue();
+                JSONObject o = new JSONObject();
+                o.put("name", r[0]);
+                if (!r[1].isEmpty()) o.put("age", Integer.parseInt(r[1]));
+                o.put("sex", r[2]);
+                if (!r[3].isEmpty()) o.put("race", r[3]);
+                participants.put(e.getKey(), o);
+                all.append(e.getKey()).append('\t').append(String.join("\t", r)).append('\n');
+            }
+            String version = hash(all.toString());
             String etag = "\"" + version + "\"";
             ctx.header("ETag", etag);
             ctx.header("Cache-Control", "no-cache");
@@ -238,6 +263,7 @@ public final class SelectTimerService {
             JSONObject o = new JSONObject();
             o.put("version", version);
             o.put("bibs", new JSONArray(bibs));
+            o.put("participants", participants);
             json(ctx, o);
         }));
 
@@ -345,15 +371,22 @@ public final class SelectTimerService {
         Integer age = p.getAge();
         if (age != null) o.put("age", age);
         o.put("sex", p.getSex());
-        o.put("race", raceName(p));
+        o.put("race", multipleRaces() ? raceName(p) : "");
         return o;
     }
 
-    // The race name, only if there is more than one race
+    // The race name is only shown if there is more than one race
+    private static boolean multipleRaces() {
+        try {
+            return RaceDAO.getInstance().listRaces().size() > 1;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
     private static String raceName(Participant p) {
         try {
             RaceDAO raceDAO = RaceDAO.getInstance();
-            if (raceDAO.listRaces().size() < 2) return "";
             List<String> names = new ArrayList<>();
             for (Integer id : new ArrayList<>(p.getWaveIDs())) {
                 Wave w = raceDAO.getWaveByID(id);

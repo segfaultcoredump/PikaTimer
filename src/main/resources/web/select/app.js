@@ -3,9 +3,11 @@
  * GPLv3, see the PikaTimer LICENSE.
  *
  * PikaTimer automatic select timer: watch the finish line with the camera,
- * read the bibs, and send them to PikaTimer.
+ * read the bibs, and send them to PikaTimer. Or type the bibs in on a keypad
+ * (manual.js).
  */
 import { PikaLink, APP_VERSION, newId } from './net.js';
+import { ManualEntry, runnerName, runnerDetail, formatTime } from './manual.js';
 import { BibTracker, ProminenceFilter, cleanBib } from './tracker.js';
 import { viewSize, viewToRaw, deviceUp, uprightRotation, normalizeAngle, OrientationFilter } from './rotation.js';
 
@@ -69,6 +71,7 @@ const settings = {
     showBoxes: true,
     rotation: 'auto',           // 'auto' or 0, 90, 180, 270 (clockwise)
     prominence: true,           // ignore small numbers next to a bigger one
+    mode: null,                 // 'camera', 'manual' (keypad), or null: not chosen yet
     ...load('pika-select-settings', {})
 };
 const saveSettings = () => save('pika-select-settings', settings);
@@ -116,6 +119,7 @@ let statsDetail = false;
 let wakeLock = null;
 let reads = [];                  // all reads we know about, newest first
 const freshIds = new Set();      // reads to flash in the list
+let mode = null;                 // 'camera' or 'manual' once chosen
 
 // Picture rotation
 let autoRotation = 0;            // from the motion sensor
@@ -197,6 +201,7 @@ function cameraAvailable() {
 }
 
 async function startCamera() {
+    if (mode !== 'camera') setMode('camera');
     if (!cameraAvailable()) {
         stageMessage(window.isSecureContext
             ? 'This browser does not allow camera access.'
@@ -223,10 +228,9 @@ async function startCamera() {
             saveSettings();
             return startCamera();
         }
-        stageMessage(ex.name === 'NotAllowedError'
+        showStartButton(ex.name === 'NotAllowedError'
             ? 'Camera access was blocked. Allow the camera for this site in the browser settings, then reload.'
             : `Unable to start the camera: ${ex.message}`);
-        showStartButton();
         return;
     }
     video.srcObject = stream;
@@ -277,6 +281,7 @@ async function listCameras() {
 }
 
 function startFile(file) {
+    if (mode !== 'camera') setMode('camera');
     stopSource();
     fileUrl = URL.createObjectURL(file);
     video.srcObject = null;
@@ -301,7 +306,7 @@ function stopSource() {
 }
 
 function sourceStarted() {
-    $('start-button').hidden = true;
+    $('mode-buttons').hidden = true;
     $('pause-button').disabled = false;
     if (ocrReady) hideStageMessage();
     else stageMessage('Loading the OCR engine…');
@@ -365,7 +370,7 @@ function cropRect() {
 }
 
 function processFrame(now, meta) {
-    if (busy || paused || !ocrReady || !video.videoWidth || video.paused && !stream) return;
+    if (mode !== 'camera' || busy || paused || !ocrReady || !video.videoWidth || video.paused && !stream) return;
     // When the frame was captured, on the same clock as performance.now()
     const captured = meta?.captureTime ?? meta?.presentationTime ?? now;
     const deviceEpochMs = performance.timeOrigin + captured;
@@ -744,25 +749,59 @@ function hideStageMessage() {
     $('stage-message').hidden = true;
 }
 
-function showStartButton() {
+// The start screen: start the camera, or type the bibs in instead
+function showStartButton(message = null) {
     $('stage-message').hidden = false;
     $('progress').hidden = true;
-    $('stage-text').textContent = cameraAvailable()
-        ? 'Point the camera at the finish line, then set the band where the bibs pass.'
-        : 'The camera only works on a secure (https) page. Open the https:// link from PikaTimer, or pick a video file in Settings.';
+    $('stage-text').textContent = message ?? (cameraAvailable()
+        ? 'Start the camera and point it at the finish line, then set the band where the bibs pass. Or type the bibs in on a keypad.'
+        : 'The camera only works on a secure (https) page. Open the https:// link from PikaTimer, pick a video file in Settings, or type the bibs in on a keypad.');
+    $('mode-buttons').hidden = false;
     $('start-button').hidden = !cameraAvailable();
+}
+
+// ----------------------------------------------------------------------
+// Mode: camera or keypad
+// ----------------------------------------------------------------------
+
+let manual = null;
+
+function setMode(m) {
+    mode = m;
+    if (settings.mode !== m) {
+        settings.mode = m;
+        saveSettings();
+    }
+    const keypad = m === 'manual';
+    $('camera-pane').hidden = keypad;
+    $('keypad-pane').hidden = !keypad;
+    document.querySelectorAll('.camera-only').forEach(el => el.hidden = keypad);
+    $('mode-select').value = m;
+    if (keypad) {
+        // Let the camera go (and stop reading frames)
+        stopSource();
+        video.srcObject = null;
+        $('band').hidden = true;
+        tracker.clearTracks();
+        lastResult = null;
+        drawOverlay();
+        manual.activate();
+        requestWakeLock();
+    } else {
+        manual.deactivate();
+        if (!worker) startWorker();
+        if (!stream && !fileUrl) showStartButton();
+        // The pane was hidden, so it has no size until now
+        requestAnimationFrame(() => {
+            layoutVideo();
+            layoutBand();
+        });
+    }
 }
 
 // ----------------------------------------------------------------------
 // Reads list
 // ----------------------------------------------------------------------
-
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-
-function formatTime(epochMs) {
-    const d = new Date(epochMs);
-    return `${timeFormat.format(d)}.${Math.floor(d.getMilliseconds() / 100)}`;
-}
 
 function readState(r) {
     if (r.status === 'queued') return { cls: 'queued', text: 'Queued' };
@@ -780,10 +819,10 @@ function renderReads() {
         const li = document.createElement('li');
         const state = readState(r);
         li.className = state.cls + (freshIds.has(r.id) ? ' new' : '');
-        const p = r.participant;
-        const who = p ? (p.name || `${p.first ?? ''} ${p.last ?? ''}`.trim() || '—')
-                : (r.status === 'queued' ? 'Waiting for PikaTimer…' : '—');
-        const detail = p ? [p.age != null && p.age !== 0 ? `Age ${p.age}` : '', p.sex || '', p.race || ''].filter(Boolean).join(' · ') : '';
+        // Until PikaTimer answers, use the runner from the bib list
+        const p = r.participant ?? link.participant(r.bib);
+        const who = p ? runnerName(p) : (r.status === 'queued' ? 'Waiting for PikaTimer…' : '—');
+        const detail = runnerDetail(p);
         li.innerHTML = `<span class="bib"></span><span class="who"></span><span class="time"></span>
                         <span class="detail"></span><span class="status"></span>`;
         li.querySelector('.bib').textContent = r.bib;
@@ -791,7 +830,7 @@ function renderReads() {
         li.querySelector('.who').textContent = who;
         li.querySelector('.time').textContent = formatTime(r.epochMs);
         li.querySelector('.detail').textContent = detail;
-        li.querySelector('.status').textContent = state.text;
+        li.querySelector('.status').textContent = r.manual ? `Keyed · ${state.text}` : state.text;
         list.appendChild(li);
     }
     freshIds.clear();
@@ -900,6 +939,10 @@ function setupSettings() {
         device.name = settings.name;
         saveSettings();
     };
+    $('mode-select').onchange = () => {
+        setMode($('mode-select').value);
+        dialog.close();
+    };
     $('camera-select').onchange = () => {
         settings.cameraId = $('camera-select').value;
         saveSettings();
@@ -968,6 +1011,11 @@ function setupSettings() {
 // ----------------------------------------------------------------------
 
 function init() {
+    manual = new ManualEntry({
+        link,
+        recentRead: (bib) => reads.find(r => r.bib === bib) ?? null,
+        canType: () => !$('settings').open
+    });
     setupBandEditing();
     setupSettings();
     setupRotation();
@@ -978,6 +1026,9 @@ function init() {
         if (settings.rotation === 'auto') requestSensor();
         startCamera();
     };
+    $('manual-button').onclick = () => setMode('manual');
+    $('to-keypad').onclick = () => setMode('manual');
+    $('to-camera').onclick = () => setMode('camera');
     $('ocr-stats').onclick = () => {
         statsDetail = !statsDetail;
         if (!paused) updateStats();
@@ -1000,6 +1051,9 @@ function init() {
         tracker.setKnownBibs(link.bibs);
         sendCharset();
         renderBibInfo();
+        // Runner names may have changed
+        renderReads();
+        if (mode === 'manual') manual.render();
     });
     link.addEventListener('reads', (e) => {
         reads = e.detail.reads.slice().sort((a, b) => b.epochMs - a.epochMs);
@@ -1014,7 +1068,7 @@ function init() {
     renderStatus();
 
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && (stream || fileUrl)) requestWakeLock();
+        if (document.visibilityState === 'visible' && (stream || fileUrl || mode === 'manual')) requestWakeLock();
     });
     window.addEventListener('beforeunload', (e) => {
         if (link.queue.length > 0) {
@@ -1028,7 +1082,15 @@ function init() {
         return;
     }
     link.start().catch(ex => console.warn('Unable to start', ex));
-    startWorker();
+    // The keypad needs nothing more, so go straight back to it. The camera
+    // needs a tap to start, so show the choice (and load the OCR if the
+    // camera was used last time; the keypad doesn't need it).
+    if (settings.mode === 'manual') {
+        setMode('manual');
+    } else {
+        if (settings.mode === 'camera') startWorker();
+        showStartButton();
+    }
 }
 
 init();
